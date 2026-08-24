@@ -8,6 +8,18 @@ spring:
     gateway:
       routes: [] # rutas activas solo en perfil local (ver abajo)
 
+# Sin fallback: en produccion JWT_ACCESS_SECRET debe venir por entorno (fail-fast)
+etribunal:
+  jwt:
+    access-secret: ${JWT_ACCESS_SECRET}
+    issuer: ${JWT_ISSUER:etribunal}
+  gateway:
+    enabled: true
+    public-paths:
+      - /api/auth/register
+      - /api/auth/login
+      - /api/auth/refresh
+
 management:
   endpoints:
     web:
@@ -38,3 +50,9 @@ spring:
           uri: http://localhost:8083
           predicates:
             - Path=/api/automation/**
+
+etribunal:
+  jwt:
+    # DEV ONLY - debe coincidir con identity-service (mismos secretos compartidos)
+    access-secret: "dev-only-access-secret-0123456789abcdef0123456789abcdef"
+    issuer: etribunal

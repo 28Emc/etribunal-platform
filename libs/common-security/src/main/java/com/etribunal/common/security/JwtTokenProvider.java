@@ -53,6 +53,15 @@ public class JwtTokenProvider {
         this.refreshTtl = refreshTtl;
     }
 
+    /**
+     * Instancia de solo validación para componentes que verifican tokens sin emitirlos (gateway).
+     * No puede firmar: los TTL en cero producen tokens ya expirados.
+     */
+    public static JwtTokenProvider forAccessValidation(byte[] accessSecret, String issuer) {
+        return new JwtTokenProvider(
+                accessSecret, new byte[32], issuer, Duration.ZERO, Duration.ZERO);
+    }
+
     public String generateAccessToken(UUID userId, String username, List<String> roles) {
         return sign(userId, username, roles, TOKEN_TYPE_ACCESS, accessTtl, accessSecret);
     }
