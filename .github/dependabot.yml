@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /services/gateway-service
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /services/identity-service
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /services/core-domain-service
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /services/ai-engine-service
+    schedule:
+      interval: weekly
