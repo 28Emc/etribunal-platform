@@ -1,0 +1,96 @@
+# Infra local de eTribunal — Fase 0.
+#
+# ⚠️ FLOCI EXTERNO: NO se declara aquí. Ya corre como servicio global del host
+#    (contenedor `floci`, endpoint :4566, proxies RDS en rango :7001-7099).
+#    Instancias RDS de este proyecto (crear/consultar con AWS CLI --endpoint-url http://localhost:4566):
+#      - etribunal-identity-local → jdbc:postgresql://localhost:7002/etribunal_identity
+#      - etribunal-core-local     → jdbc:postgresql://localhost:7003/etribunal_core
+#
+# Redis: usa el standalone existente del host (:6379) — no se declara aquí.
+# Kafka: diferido a Fase 1.
+#
+# Uso:
+#   docker compose up -d                          # nada aún (todo opt-in)
+#   docker compose --profile temporal up -d       # Temporal + UI
+#   docker compose --profile services up -d       # servicios Spring ya construidos
+
+services:
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    container_name: etribunal-temporal
+    profiles: ["temporal"]
+    environment:
+      DB: postgres12
+      POSTGRES_SEEDS: host.docker.internal # Floci RDS proxy
+      POSTGRES_PORT: "7002"
+      POSTGRES_USER: etribunal_user
+      POSTGRES_PWD: etribunal_pass
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "7233:7233"
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: etribunal-temporal-ui
+    profiles: ["temporal"]
+    environment:
+      TEMPORAL_ADDRESS: host.docker.internal:7233
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8233:8080"
+    depends_on:
+      - temporal
+
+  gateway-service:
+    build:
+      context: .
+      dockerfile: services/gateway-service/Dockerfile
+    image: etribunal/gateway-service
+    container_name: etribunal-gateway
+    profiles: ["services"]
+    ports:
+      - "8080:8080"
+
+  identity-service:
+    build:
+      context: .
+      dockerfile: services/identity-service/Dockerfile
+    image: etribunal/identity-service
+    container_name: etribunal-identity
+    profiles: ["services"]
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://host.docker.internal:7002/etribunal_identity
+      SPRING_DATA_REDIS_HOST: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8081:8081"
+
+  core-domain-service:
+    build:
+      context: .
+      dockerfile: services/core-domain-service/Dockerfile
+    image: etribunal/core-domain-service
+    container_name: etribunal-core
+    profiles: ["services"]
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://host.docker.internal:7003/etribunal_core
+      SPRING_DATA_REDIS_HOST: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8082:8082"
+
+  ai-engine-service:
+    build:
+      context: .
+      dockerfile: services/ai-engine-service/Dockerfile
+    image: etribunal/ai-engine-service
+    container_name: etribunal-ai
+    profiles: ["services"]
+    ports:
+      - "8083:8083"
