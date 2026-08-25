@@ -18,4 +18,10 @@ public interface CaseRepository
             + "c.updatedAt = CURRENT_TIMESTAMP WHERE c.id = :caseId")
     int adjustCommentCounter(@Param("caseId") UUID caseId,
                              @Param("delta") int delta);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE CaseEntity c SET c.totalShares = c.totalShares + :delta, "
+            + "c.updatedAt = CURRENT_TIMESTAMP WHERE c.id = :caseId")
+    int adjustShareCounter(@Param("caseId") UUID caseId,
+                           @Param("delta") int delta);
 }
