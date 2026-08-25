@@ -19,6 +19,12 @@ etribunal:
       - /api/auth/register
       - /api/auth/login
       - /api/auth/refresh
+      # Perfiles públicos de users (identity aplica auth opcional; el resto de /users sigue protegido en el edge)
+      - /api/users/search
+      - /api/users/top-judges
+      - /api/users/*
+      - /api/users/*/followers
+      - /api/users/*/following
 
 management:
   endpoints:

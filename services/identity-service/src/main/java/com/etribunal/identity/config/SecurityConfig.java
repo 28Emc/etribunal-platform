@@ -3,6 +3,7 @@ package com.etribunal.identity.config;
 import com.etribunal.identity.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -25,6 +26,13 @@ public class SecurityConfig {
                                                 "/auth/login",
                                                 "/auth/refresh",
                                                 "/actuator/**")
+                                        .permitAll()
+                                        .requestMatchers(
+                                                HttpMethod.GET,
+                                                "/users",
+                                                "/users/*",
+                                                "/users/*/followers",
+                                                "/users/*/following")
                                         .permitAll()
                                         .anyRequest()
                                         .authenticated())

@@ -74,12 +74,7 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
 
     boolean isPublic(String path) {
         return path.startsWith("/actuator")
-                || properties.publicPaths().stream()
-                        .anyMatch(
-                                p ->
-                                        p.endsWith("/**")
-                                                ? pathMatcher.match(p, path)
-                                                : path.equals(p));
+                || properties.publicPaths().stream().anyMatch(p -> pathMatcher.match(p, path));
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange) {

@@ -133,7 +133,7 @@ class AuthServiceTest {
     @Test
     void loginSuccessClearsAttemptsAndReturnsTokens() {
         when(valueOperations.get(AuthService.ATTEMPTS_PREFIX + "ana")).thenReturn(null);
-        when(userRepository.findByEmailIgnoreCaseOrUsernameIgnoreCase("ana", "ana"))
+        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNullOrUsernameIgnoreCaseAndDeletedAtNull("ana", "ana"))
                 .thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("Password1", "hashed")).thenReturn(true);
 
@@ -150,7 +150,7 @@ class AuthServiceTest {
         AtomicLong counter = new AtomicLong(0);
         when(valueOperations.increment(anyString()))
                 .thenAnswer(inv -> counter.incrementAndGet());
-        when(userRepository.findByEmailIgnoreCaseOrUsernameIgnoreCase("ana", "ana"))
+        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNullOrUsernameIgnoreCaseAndDeletedAtNull("ana", "ana"))
                 .thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("wrong", "hashed")).thenReturn(false);
 
@@ -171,7 +171,7 @@ class AuthServiceTest {
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("bloqueada");
 
-        verify(userRepository, never()).findByEmailIgnoreCaseOrUsernameIgnoreCase(any(), any());
+        verify(userRepository, never()).findByEmailIgnoreCaseAndDeletedAtNullOrUsernameIgnoreCaseAndDeletedAtNull(any(), any());
     }
 
     @Test

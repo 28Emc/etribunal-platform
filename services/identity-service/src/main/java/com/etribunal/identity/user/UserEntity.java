@@ -51,6 +51,30 @@ public class UserEntity {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    @Column(name = "is_anonymous", nullable = false)
+    private Boolean isAnonymous = false;
+
+    @Column(name = "is_bot", nullable = false)
+    private Boolean isBot = false;
+
+    @Column(name = "receive_notifications", nullable = false)
+    private Boolean receiveNotifications = true;
+
+    @Column(nullable = false, length = 10)
+    private String language = "es";
+
+    @Column(name = "email_verified", nullable = false)
+    private Boolean emailVerified = false;
+
+    @Column(name = "last_login")
+    private Instant lastLogin;
+
+    @Column(name = "total_shares", nullable = false)
+    private Integer totalShares = 0;
+
+    @Column(length = 255)
+    private String bio;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -89,6 +113,22 @@ public class UserEntity {
     public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public Boolean getIsAnonymous() { return isAnonymous; }
+    public void setIsAnonymous(Boolean isAnonymous) { this.isAnonymous = isAnonymous; }
+    public Boolean getIsBot() { return isBot; }
+    public void setIsBot(Boolean isBot) { this.isBot = isBot; }
+    public Boolean getReceiveNotifications() { return receiveNotifications; }
+    public void setReceiveNotifications(Boolean receiveNotifications) { this.receiveNotifications = receiveNotifications; }
+    public String getLanguage() { return language; }
+    public void setLanguage(String language) { this.language = language; }
+    public Boolean getEmailVerified() { return emailVerified; }
+    public void setEmailVerified(Boolean emailVerified) { this.emailVerified = emailVerified; }
+    public Instant getLastLogin() { return lastLogin; }
+    public void setLastLogin(Instant lastLogin) { this.lastLogin = lastLogin; }
+    public Integer getTotalShares() { return totalShares; }
+    public void setTotalShares(Integer totalShares) { this.totalShares = totalShares; }
+    public String getBio() { return bio; }
+    public void setBio(String bio) { this.bio = bio; }
 
     public boolean isActive() {
         return STATUS_ACTIVE.equals(status) && deletedAt == null;
