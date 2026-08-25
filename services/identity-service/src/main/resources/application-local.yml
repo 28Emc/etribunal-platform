@@ -37,6 +37,7 @@ etribunal:
     issuer: etribunal
     access-ttl: PT15M
     refresh-ttl: P7D
+  internal-token: ${INTERNAL_API_KEY:dev-only-internal-token-1234} # igual que core-domain
 
 management:
   health:

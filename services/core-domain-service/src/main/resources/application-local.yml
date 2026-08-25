@@ -31,6 +31,11 @@ management:
     kafka:
       enabled: false # sin broker en Fase 0
 
+etribunal:
+  internal:
+    identity-base-url: ${IDENTITY_BASE_URL:http://localhost:8081/api}
+    token: ${INTERNAL_API_KEY:dev-only-internal-token-1234} # igual que identity
+
 logging:
   level:
     com.etribunal: DEBUG
