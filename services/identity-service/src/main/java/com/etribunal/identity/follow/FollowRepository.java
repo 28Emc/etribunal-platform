@@ -28,4 +28,7 @@ public interface FollowRepository extends JpaRepository<FollowEntity, FollowId> 
             "select count(f) from FollowEntity f where f.following.id = :userId and f.follower.isAnonymous = false"
     )
     long countVisibleFollowers(UUID userId);
+
+    @Query("select f.following.id from FollowEntity f where f.follower.id = :userId")
+    List<UUID> findFollowedIdsByFollower(UUID userId);
 }
