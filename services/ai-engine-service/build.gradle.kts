@@ -5,6 +5,8 @@ plugins {
 dependencies {
     implementation(project(":libs:common-kafka"))
 
+    implementation(libs.spring.boot.starter.data.jpa)
+    implementation(libs.postgresql)
     implementation(libs.spring.boot.starter.webflux)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.actuator)
@@ -12,6 +14,7 @@ dependencies {
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(project(":libs:common-test"))
+    testRuntimeOnly("com.h2database:h2:2.2.224")
 }
 
 // Solo interesa el fat-jar ejecutable (bootJar) — evita *.jar ambiguo en el Dockerfile
