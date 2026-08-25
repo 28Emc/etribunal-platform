@@ -7,6 +7,11 @@ spring:
   cloud:
     gateway:
       routes: [] # rutas activas solo en perfil local (ver abajo)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
 
 # Sin fallback: en produccion JWT_ACCESS_SECRET debe venir por entorno (fail-fast)
 etribunal:
@@ -25,6 +30,15 @@ etribunal:
       - /api/users/*
       - /api/users/*/followers
       - /api/users/*/following
+  migration:
+    enabled: ${MIGRATION_ENABLED:false}
+    nestjs-url: ${NESTJS_URL:http://localhost:3001/api}
+    canary:
+      enabled: ${CANARY_ENABLED:false}
+      default-percentage: ${CANARY_DEFAULT_PCT:0}
+    shadow:
+      enabled: ${SHADOW_ENABLED:false}
+      log-differences: ${SHADOW_LOG_DIFF:false}
 
 management:
   endpoints:
@@ -62,3 +76,13 @@ etribunal:
     # DEV ONLY - debe coincidir con identity-service (mismos secretos compartidos)
     access-secret: "dev-only-access-secret-0123456789abcdef0123456789abcdef"
     issuer: etribunal
+  migration:
+    # Local: deshabilitado por defecto; habilitar con env vars
+    enabled: ${MIGRATION_ENABLED:false}
+    nestjs-url: ${NESTJS_URL:http://localhost:3001/api}
+    canary:
+      enabled: ${CANARY_ENABLED:false}
+      default-percentage: ${CANARY_DEFAULT_PCT:0}
+    shadow:
+      enabled: ${SHADOW_ENABLED:false}
+      log-differences: ${SHADOW_LOG_DIFF:false}
