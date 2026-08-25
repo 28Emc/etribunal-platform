@@ -2,6 +2,8 @@ package com.etribunal.core.cases;
 
 import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
+import com.etribunal.core.cases.dto.RespondSideBRequest;
+import com.etribunal.core.config.FrontendUrlProperties;
 import com.etribunal.core.security.CurrentUserResolver;
 import com.etribunal.core.users.InternalUsersClient;
 import com.etribunal.core.users.UserSummary;
@@ -32,13 +34,16 @@ public class CaseService {
     private final CaseRepository caseRepository;
     private final InternalUsersClient usersClient;
     private final CurrentUserResolver currentUser;
+    private final FrontendUrlProperties frontendUrl;
 
     public CaseService(CaseRepository caseRepository,
                        InternalUsersClient usersClient,
-                       CurrentUserResolver currentUser) {
+                       CurrentUserResolver currentUser,
+                       FrontendUrlProperties frontendUrl) {
         this.caseRepository = caseRepository;
         this.usersClient = usersClient;
         this.currentUser = currentUser;
+        this.frontendUrl = frontendUrl;
     }
 
     @Transactional
@@ -113,6 +118,92 @@ public class CaseService {
 
         return toResponse(List.of(entity), currentUserId.orElse(null))
                 .getFirst();
+    }
+
+    /**
+     * Vista previa del caso WAITING para quien recibe el invite link.
+     */
+    @Transactional(readOnly = true)
+    public CaseResponse getCaseByInviteToken(String token, HttpServletRequest request) {
+        Optional<UUID> currentUserId = currentUser.currentUserId(request);
+
+        CaseEntity entity = caseRepository
+                .findByInviteTokenAndDeletedAtIsNull(token)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Invite link inválido o expirado"));
+
+        if (entity.getType() != CaseType.vote) {
+            throw badRequest("Solo los casos de votación admiten invite link");
+        }
+
+        return toResponse(List.of(entity), currentUserId.orElse(null)).getFirst();
+    }
+
+    /**
+     * Reglas heredadas de respondAsSideB: solo el Side B asignado (o cualquiera
+     * si el caso no reservó Side B) puede responder un caso vote en WAITING.
+     */
+    @Transactional
+    public CaseResponse respondAsSideB(UUID userId, RespondSideBRequest dto) {
+        CaseEntity entity = caseRepository
+                .findByInviteTokenAndDeletedAtIsNull(dto.invite_token())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Invite link inválido o expirado"));
+
+        if (entity.getType() != CaseType.vote) {
+            throw badRequest("Solo los casos de votación admiten respuesta de Side B");
+        }
+        if (entity.getStatus() != CaseStatus.WAITING) {
+            throw badRequest("Este caso ya no está esperando respuesta");
+        }
+        if (entity.getSideAUserId().equals(userId)) {
+            throw badRequest("No puedes responder tu propio caso como Side B");
+        }
+        if (entity.getSideBUserId() != null && !entity.getSideBUserId().equals(userId)) {
+            throw badRequest("Este enlace solo puede ser utilizado por el usuario "
+                    + "seleccionado para Side B");
+        }
+        if (entity.getSideBContent() != null) {
+            throw badRequest("Este caso ya tiene una respuesta registrada");
+        }
+
+        entity.setSideBUserId(userId);
+        entity.setSideBContent(dto.side_b_content().trim());
+        entity.setStatus(CaseStatus.PUBLIC);
+        entity.setInviteToken(null);
+        entity.setAnonymous(Boolean.TRUE.equals(dto.is_anonymous()));
+
+        return toResponse(List.of(entity), userId).getFirst();
+    }
+
+    /**
+     * Devuelve el token existente o genera uno nuevo (regla legacy del
+     * getOrRegenerateInviteLink).
+     */
+    @Transactional
+    public InviteLinkResponse getOrRegenerateInviteLink(UUID userId, UUID caseId) {
+        CaseEntity entity = caseRepository.findById(caseId)
+                .filter(c -> c.getDeletedAt() == null)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Caso no encontrado"));
+
+        if (entity.getType() != CaseType.vote) {
+            throw badRequest("Solo los casos de votación tienen invite link");
+        }
+        if (!entity.getSideAUserId().equals(userId)) {
+            throw badRequest("Solo el creador del caso puede gestionar el invite link");
+        }
+        if (entity.getStatus() != CaseStatus.WAITING) {
+            throw badRequest("El invite link solo está disponible mientras el caso "
+                    + "está en WAITING");
+        }
+
+        String token = entity.getInviteToken();
+        if (token == null || token.isBlank()) {
+            token = UUID.randomUUID().toString();
+            entity.setInviteToken(token);
+        }
+        return new InviteLinkResponse(caseId.toString(), token, frontendUrl.inviteUrl(token));
     }
 
     private List<CaseResponse> toResponse(List<CaseEntity> cases, UUID requesterId) {
@@ -196,5 +287,9 @@ public class CaseService {
 
     private static ResponseStatusException badRequest(String message) {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+    }
+
+    public record InviteLinkResponse(String case_id, String invite_token,
+                                     String invite_url) {
     }
 }

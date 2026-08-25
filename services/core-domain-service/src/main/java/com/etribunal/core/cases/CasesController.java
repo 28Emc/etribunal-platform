@@ -3,6 +3,7 @@ package com.etribunal.core.cases;
 import com.etribunal.core.api.ApiResponse;
 import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
+import com.etribunal.core.cases.dto.RespondSideBRequest;
 import com.etribunal.core.security.CurrentUserResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -59,5 +60,30 @@ public class CasesController {
             @PathVariable UUID id,
             HttpServletRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(caseService.getCase(id, request)));
+    }
+
+    @GetMapping("/invite/{token}")
+    public ResponseEntity<ApiResponse<CaseResponse>> byInviteToken(
+            @PathVariable String token,
+            HttpServletRequest request) {
+        return ResponseEntity.ok(
+                ApiResponse.ok(caseService.getCaseByInviteToken(token, request)));
+    }
+
+    @PostMapping("/respond")
+    public ResponseEntity<ApiResponse<CaseResponse>> respondSideB(
+            @Valid @RequestBody RespondSideBRequest dto,
+            HttpServletRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                caseService.respondAsSideB(currentUser.requiredUserId(request), dto)));
+    }
+
+    @PostMapping("/{id}/invite-link")
+    public ResponseEntity<ApiResponse<CaseService.InviteLinkResponse>> inviteLink(
+            @PathVariable UUID id,
+            HttpServletRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                caseService.getOrRegenerateInviteLink(
+                        currentUser.requiredUserId(request), id)));
     }
 }

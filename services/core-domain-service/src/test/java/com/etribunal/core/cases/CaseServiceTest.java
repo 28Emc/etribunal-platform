@@ -11,6 +11,8 @@ import static org.mockito.Mockito.when;
 
 import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
+import com.etribunal.core.cases.dto.RespondSideBRequest;
+import com.etribunal.core.config.FrontendUrlProperties;
 import com.etribunal.core.security.CurrentUserResolver;
 import com.etribunal.core.users.InternalUsersClient;
 import com.etribunal.core.users.UserSummary;
@@ -46,7 +48,8 @@ class CaseServiceTest {
 
     @BeforeEach
     void setUp() {
-        caseService = new CaseService(caseRepository, usersClient, currentUserResolver);
+        caseService = new CaseService(caseRepository, usersClient, currentUserResolver,
+                new FrontendUrlProperties("http://localhost:3000/"));
         lenient().when(currentUserResolver.currentUserId(request))
                 .thenReturn(Optional.of(authorId));
         lenient().when(usersClient.summaries(anyList())).thenAnswer(invocation -> {
@@ -144,6 +147,89 @@ class CaseServiceTest {
                 .thenReturn(Optional.of(authorId));
         CaseResponse self = caseService.getCase(entity.getId(), request);
         assertThat(self.side_a_user().username()).isEqualTo("anon_user");
+    }
+
+    @Test
+    void respondAsSideBActivatesCaseAndClearsToken() {
+        CaseEntity waiting = minimalCase(false);
+        waiting.setType(CaseType.vote);
+        waiting.setStatus(CaseStatus.WAITING);
+        waiting.setInviteToken("tok-123");
+        when(caseRepository.findByInviteTokenAndDeletedAtIsNull("tok-123"))
+                .thenReturn(Optional.of(waiting));
+
+        CaseResponse response = caseService.respondAsSideB(sideBId,
+                new RespondSideBRequest("tok-123", "Mi version de los hechos es esta.", null));
+
+        assertThat(response.status()).isEqualTo("PUBLIC");
+        assertThat(response.side_b_content())
+                .isEqualTo("Mi version de los hechos es esta.");
+        assertThat(response.side_a_user()).isNotNull();
+    }
+
+    @Test
+    void respondRejectsForeignUserWhenSideBReserved() {
+        CaseEntity waiting = minimalCase(false);
+        waiting.setType(CaseType.vote);
+        waiting.setStatus(CaseStatus.WAITING);
+        waiting.setInviteToken("tok-456");
+        waiting.setSideBUserId(sideBId);
+        when(caseRepository.findByInviteTokenAndDeletedAtIsNull("tok-456"))
+                .thenReturn(Optional.of(waiting));
+
+        UUID intruder = UUID.randomUUID();
+        assertThatThrownBy(() -> caseService.respondAsSideB(intruder,
+                new RespondSideBRequest("tok-456", "Contenido de respuesta valida.", null)))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("solo puede ser utilizado");
+    }
+
+    @Test
+    void respondRejectsAuthorAndAlreadyPublic() {
+        CaseEntity entity = minimalCase(false);
+        entity.setType(CaseType.vote);
+        entity.setStatus(CaseStatus.WAITING);
+        entity.setInviteToken("tok-789");
+        when(caseRepository.findByInviteTokenAndDeletedAtIsNull("tok-789"))
+                .thenReturn(Optional.of(entity));
+
+        // autor no puede responder su propio caso
+        assertThatThrownBy(() -> caseService.respondAsSideB(authorId,
+                new RespondSideBRequest("tok-789", "Contenido de respuesta valida.", null)))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("No puedes responder tu propio caso");
+
+        // caso PUBLIC ya no espera respuesta
+        entity.setStatus(CaseStatus.PUBLIC);
+        assertThatThrownBy(() -> caseService.respondAsSideB(sideBId,
+                new RespondSideBRequest("tok-789", "Contenido de respuesta valida.", null)))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("ya no está esperando");
+    }
+
+    @Test
+    void inviteLinkReturnsExistingTokenForWaitingVoteCase() {
+        CaseEntity waiting = minimalCase(false);
+        waiting.setType(CaseType.vote);
+        waiting.setStatus(CaseStatus.WAITING);
+        waiting.setInviteToken("tok-exist");
+        when(caseRepository.findById(waiting.getId())).thenReturn(Optional.of(waiting));
+
+        var link = caseService.getOrRegenerateInviteLink(authorId, waiting.getId());
+
+        assertThat(link.invite_token()).isEqualTo("tok-exist");
+        assertThat(link.invite_url()).isEqualTo("http://localhost:3000/case/tok-exist");
+    }
+
+    @Test
+    void inviteLinkRejectsClassicOrNonOwner() {
+        CaseEntity classic = minimalCase(false);
+        when(caseRepository.findById(classic.getId())).thenReturn(Optional.of(classic));
+
+        assertThatThrownBy(() -> caseService.getOrRegenerateInviteLink(authorId,
+                classic.getId()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Solo los casos de votación");
     }
 
     private CaseEntity minimalCase(boolean anonymous) {
