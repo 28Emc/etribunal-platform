@@ -3,6 +3,8 @@ package com.etribunal.core.comments;
 import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
+import com.etribunal.core.notifications.NotificationService;
+import com.etribunal.core.notifications.NotificationType;
 import com.etribunal.core.reactions.ReactionRepository;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -29,15 +31,18 @@ public class CommentService {
     private final CaseRepository caseRepository;
     private final ReactionRepository reactionRepository;
     private final com.etribunal.core.users.InternalUsersClient usersClient;
+    private final NotificationService notificationService;
 
     public CommentService(CommentRepository commentRepository,
                           CaseRepository caseRepository,
                           ReactionRepository reactionRepository,
-                          com.etribunal.core.users.InternalUsersClient usersClient) {
+                          com.etribunal.core.users.InternalUsersClient usersClient,
+                          NotificationService notificationService) {
         this.commentRepository = commentRepository;
         this.caseRepository = caseRepository;
         this.reactionRepository = reactionRepository;
         this.usersClient = usersClient;
+        this.notificationService = notificationService;
     }
 
     /**
@@ -121,7 +126,46 @@ public class CommentService {
 
         caseRepository.adjustCommentCounter(caseId, 1);
 
+        // Notificaciones heredadas
+        CaseEntity c = requireCase(caseId);
+        notifyCommentCreated(c, saved, parentId, userId);
+
         return CommentResponse.toResponse(saved, maskedUser(null), List.of(), 0);
+    }
+
+    private void notifyCommentCreated(CaseEntity c, CommentEntity saved,
+                                      UUID parentId, UUID actorId) {
+        // Notificar a Side A
+        if (c.getSideAUserId() != null && !c.getSideAUserId().equals(actorId)) {
+            notificationService.createNotification(c.getSideAUserId(), actorId,
+                    NotificationType.NEW_COMMENT,
+                    Map.of("case_id", c.getId().toString(),
+                           "case_title", c.getTitle(),
+                           "comment_id", saved.getId().toString(),
+                           "actor_id", actorId.toString()));
+        }
+        // Notificar a Side B
+        if (c.getSideBUserId() != null && !c.getSideBUserId().equals(actorId)) {
+            notificationService.createNotification(c.getSideBUserId(), actorId,
+                    NotificationType.NEW_COMMENT,
+                    Map.of("case_id", c.getId().toString(),
+                           "case_title", c.getTitle(),
+                           "comment_id", saved.getId().toString(),
+                           "actor_id", actorId.toString()));
+        }
+        // Si es respuesta, notificar al autor del comentario padre
+        if (parentId != null) {
+            commentRepository.findById(parentId).ifPresent(parent -> {
+                if (!parent.getUserId().equals(actorId)) {
+                    notificationService.createNotification(parent.getUserId(), actorId,
+                            NotificationType.NEW_COMMENT,
+                            Map.of("case_id", c.getId().toString(),
+                                   "case_title", c.getTitle(),
+                                   "comment_id", saved.getId().toString(),
+                                   "actor_id", actorId.toString()));
+                }
+            });
+        }
     }
 
     @Transactional(readOnly = true)

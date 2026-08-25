@@ -27,6 +27,7 @@ spring-kafka = { module = "org.springframework.kafka:spring-kafka" }
 flyway-core = { module = "org.flywaydb:flyway-core" }
 flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
 postgresql = { module = "org.postgresql:postgresql" }
+hibernate-types-60 = { module = "com.vladmihalcea:hibernate-types-60", version = "2.24.0" }
 
 # ─── Utilidades (versiones del BOM de Boot) ───
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }

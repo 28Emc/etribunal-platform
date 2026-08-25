@@ -12,9 +12,12 @@ import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
 import com.etribunal.core.cases.CaseType;
+import com.etribunal.core.notifications.NotificationService;
+import com.etribunal.core.notifications.NotificationType;
 import com.etribunal.core.reactions.ReactionRepository;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +42,9 @@ class CommentServiceTest {
     @Mock
     private com.etribunal.core.users.InternalUsersClient usersClient;
 
+    @Mock
+    private NotificationService notificationService;
+
     private CommentService commentService;
 
     private final UUID caseId = UUID.randomUUID();
@@ -48,7 +54,7 @@ class CommentServiceTest {
     @BeforeEach
     void setUp() {
         commentService = new CommentService(commentRepository, caseRepository,
-                reactionRepository, usersClient);
+                reactionRepository, usersClient, notificationService);
         lenient().when(caseRepository.findById(caseId))
                 .thenReturn(Optional.of(publicCase()));
     }
