@@ -119,6 +119,9 @@ public class CaseEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "search_vector", columnDefinition = "tsvector", insertable = false, updatable = false)
+    private Object searchVector;
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
