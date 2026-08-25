@@ -1,5 +1,6 @@
 package com.etribunal.core.cases;
 
+import com.etribunal.core.reports.ReportStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -92,6 +93,16 @@ public class CaseEntity {
 
     @Column(name = "risk_score")
     private Double riskScore;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "report_status", nullable = false, columnDefinition = "varchar(10)")
+    private ReportStatus reportStatus = ReportStatus.NONE;
+
+    @Column(name = "report_reason", columnDefinition = "text")
+    private String reportReason;
+
+    @Column(name = "reported_by_id")
+    private UUID reportedById;
 
     @Column(name = "side_a_user_id", nullable = false)
     private UUID sideAUserId;
@@ -296,8 +307,36 @@ public class CaseEntity {
         return moderationStatus;
     }
 
+    public void setModerationStatus(ModerationStatus moderationStatus) {
+        this.moderationStatus = moderationStatus;
+    }
+
     public Double getRiskScore() {
         return riskScore;
+    }
+
+    public ReportStatus getReportStatus() {
+        return reportStatus;
+    }
+
+    public void setReportStatus(ReportStatus reportStatus) {
+        this.reportStatus = reportStatus;
+    }
+
+    public String getReportReason() {
+        return reportReason;
+    }
+
+    public void setReportReason(String reportReason) {
+        this.reportReason = reportReason;
+    }
+
+    public UUID getReportedById() {
+        return reportedById;
+    }
+
+    public void setReportedById(UUID reportedById) {
+        this.reportedById = reportedById;
     }
 
     public UUID getSideAUserId() {
