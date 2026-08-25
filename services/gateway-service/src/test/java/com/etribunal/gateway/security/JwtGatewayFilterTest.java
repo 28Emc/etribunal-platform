@@ -125,6 +125,19 @@ class JwtGatewayFilterTest {
     }
 
     @Test
+    void antPatternsMatchSingleSegments() {
+        var patternProps =
+                new GatewayAuthProperties(
+                        true, List.of("/api/users/*", "/api/users/*/followers"));
+        var patternFilter = new JwtGatewayFilter(provider, patternProps);
+
+        assertThat(patternFilter.isPublic("/api/users/ana_t")).isTrue();
+        assertThat(patternFilter.isPublic("/api/users/ana_t/followers")).isTrue();
+        assertThat(patternFilter.isPublic("/api/users/ana_t/follow")).isFalse();
+        assertThat(patternFilter.isPublic("/api/users/profile/me")).isFalse();
+    }
+
+    @Test
     void disabledFilterLetsEverythingThrough() {
         var disabledProps = new GatewayAuthProperties(false, List.of());
         var disabledFilter = new JwtGatewayFilter(provider, disabledProps);

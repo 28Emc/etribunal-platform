@@ -1,5 +1,6 @@
 package com.etribunal.identity.api;
 
+import com.etribunal.common.domain.exception.BadRequestException;
 import com.etribunal.common.domain.exception.BusinessException;
 import com.etribunal.common.domain.exception.ConflictException;
 import com.etribunal.common.domain.exception.NotFoundException;
@@ -41,6 +42,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex) {
         return build(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+    }
+
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBadRequest(BadRequestException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     @ExceptionHandler(NotFoundException.class)

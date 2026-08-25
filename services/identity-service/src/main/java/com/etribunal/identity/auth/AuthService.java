@@ -61,6 +61,8 @@ public class AuthService {
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setDisplayName(
                 request.displayName() != null ? request.displayName().trim() : request.username());
+        user.setAvatarUrl(
+                "https://api.dicebear.com/7.x/identicon/svg?seed=" + request.username());
         userRepository.save(user);
 
         return issueTokens(user);
@@ -80,7 +82,8 @@ public class AuthService {
 
         UserEntity user =
                 userRepository
-                        .findByEmailIgnoreCaseOrUsernameIgnoreCase(normalizedEmail, identifier)
+                        .findByEmailIgnoreCaseAndDeletedAtNullOrUsernameIgnoreCaseAndDeletedAtNull(
+                                normalizedEmail, identifier)
                         .orElseGet(UserEntity::new);
 
         boolean valid =
