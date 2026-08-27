@@ -1,0 +1,56 @@
+# E2E test profile — H2 in-memory for each service
+spring:
+  main:
+    allow-bean-definition-overriding: true
+  application:
+    name: e2e-test
+
+# Identity H2
+identity:
+  datasource:
+    url: jdbc:h2:mem:identity_e2e;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  flyway:
+    enabled: false
+
+# Core H2
+core:
+  datasource:
+    url: jdbc:h2:mem:core_e2e;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  flyway:
+    enabled: false
+
+# Shared JWT
+etribunal:
+  jwt:
+    access-secret: "dev-only-access-secret-0123456789abcdef0123456789abcdef"
+    refresh-secret: "dev-only-refresh-secret-fedcba9876543210fedcba9876543210"
+    issuer: etribunal
+    access-ttl: PT15M
+    refresh-ttl: P7D
+  internal:
+    token: dev-only-internal-token-1234
+    identity-base-url: http://localhost:${identity.server.port:8081}/api
+  frontend:
+    url: http://localhost:3000
+  s3:
+    endpoint: http://localhost:4566
+    region: us-east-1
+    access-key: test
+    secret-key: test
+    bucket: etribunal-media
+
+logging:
+  level:
+    com.etribunal: DEBUG

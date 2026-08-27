@@ -5,6 +5,7 @@ springDependencyManagement = "1.1.6"
 testcontainers = "1.19.8"
 nimbusJoseJwt = "10.3"
 awsSdkS3 = "2.31.25"
+springDoc = "2.8.6"
 
 [libraries]
 # ─── Spring Boot starters (versiones gestionadas por el BOM de Boot) ───
@@ -20,6 +21,10 @@ spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-star
 
 # ─── Spring Cloud ───
 spring-cloud-starter-gateway = { module = "org.springframework.cloud:spring-cloud-starter-gateway" }
+
+# ─── OpenAPI ───
+springdoc-openapi-starter-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springDoc" }
+springdoc-openapi-starter-webflux-ui = { module = "org.springdoc:springdoc-openapi-starter-webflux-ui", version.ref = "springDoc" }
 
 # ─── Messaging ───
 spring-kafka = { module = "org.springframework.kafka:spring-kafka" }

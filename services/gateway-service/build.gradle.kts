@@ -6,6 +6,7 @@ dependencies {
     implementation(libs.spring.cloud.starter.gateway)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.data.redis)
+    implementation(libs.springdoc.openapi.starter.webflux.ui)
     implementation(project(":libs:common-security"))
 
     testImplementation(libs.spring.boot.starter.test)
