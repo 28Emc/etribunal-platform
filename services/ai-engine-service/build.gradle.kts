@@ -18,6 +18,7 @@ dependencies {
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.kafka)
+    implementation(libs.springdoc.openapi.starter.webmvc.ui)
 
     // Spring AI for Gemini (1.1.8 - compatible with Boot 3.5.x)
     implementation("org.springframework.ai:spring-ai-starter-model-vertex-ai-gemini")

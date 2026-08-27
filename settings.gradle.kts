@@ -13,4 +13,5 @@ include(
     "services:identity-service",
     "services:core-domain-service",
     "services:ai-engine-service",
+    "tests:e2e",
 )
