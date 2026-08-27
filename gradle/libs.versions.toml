@@ -1,7 +1,7 @@
 [versions]
 springBoot = "3.5.3"
 springCloud = "2025.0.0"
-springDependencyManagement = "1.1.6"
+springDependencyManagement = "1.1.7"
 testcontainers = "1.19.8"
 nimbusJoseJwt = "10.3"
 awsSdkS3 = "2.31.25"
