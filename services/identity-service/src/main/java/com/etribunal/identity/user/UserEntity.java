@@ -66,6 +66,18 @@ public class UserEntity {
     @Column(name = "email_verified", nullable = false)
     private Boolean emailVerified = false;
 
+    @Column(name = "verification_token", length = 64)
+    private String verificationToken;
+
+    @Column(name = "verification_expires")
+    private Instant verificationExpires;
+
+    @Column(name = "reset_token", length = 64)
+    private String resetToken;
+
+    @Column(name = "reset_token_expires")
+    private Instant resetTokenExpires;
+
     @Column(name = "last_login")
     private Instant lastLogin;
 
@@ -123,6 +135,14 @@ public class UserEntity {
     public void setLanguage(String language) { this.language = language; }
     public Boolean getEmailVerified() { return emailVerified; }
     public void setEmailVerified(Boolean emailVerified) { this.emailVerified = emailVerified; }
+    public String getVerificationToken() { return verificationToken; }
+    public void setVerificationToken(String verificationToken) { this.verificationToken = verificationToken; }
+    public Instant getVerificationExpires() { return verificationExpires; }
+    public void setVerificationExpires(Instant verificationExpires) { this.verificationExpires = verificationExpires; }
+    public String getResetToken() { return resetToken; }
+    public void setResetToken(String resetToken) { this.resetToken = resetToken; }
+    public Instant getResetTokenExpires() { return resetTokenExpires; }
+    public void setResetTokenExpires(Instant resetTokenExpires) { this.resetTokenExpires = resetTokenExpires; }
     public Instant getLastLogin() { return lastLogin; }
     public void setLastLogin(Instant lastLogin) { this.lastLogin = lastLogin; }
     public Integer getTotalShares() { return totalShares; }
