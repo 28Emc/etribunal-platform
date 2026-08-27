@@ -16,6 +16,11 @@ dependencies {
     implementation(libs.spring.boot.starter.data.redis)
     implementation(libs.spring.boot.starter.mail)
     implementation(libs.spring.kafka)
+
+    // OpenTelemetry tracing
+    implementation(libs.micrometer.tracing.bridge.brave)
+    implementation(libs.zipkin.reporter.brave)
+    implementation(libs.otel.exporter.zipkin)
     implementation(libs.springdoc.openapi.starter.webmvc.ui)
     implementation(libs.flyway.core)
     implementation(libs.flyway.database.postgresql)

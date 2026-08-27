@@ -18,6 +18,11 @@ dependencies {
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.kafka)
+
+    // OpenTelemetry tracing
+    implementation(libs.micrometer.tracing.bridge.brave)
+    implementation(libs.zipkin.reporter.brave)
+    implementation(libs.otel.exporter.zipkin)
     implementation(libs.springdoc.openapi.starter.webmvc.ui)
 
     // Spring AI for Gemini (1.1.8 - compatible with Boot 3.5.x)
