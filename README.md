@@ -160,8 +160,9 @@ Usa tu instancia Floci compartida. Requiere Floci corriendo externamente.
 #### Pasos recurrentes (cada vez que inicies desarrollo)
 
 ```bash
-# 1. Asegurar Floci corriendo
+# 1. Asegurar Floci corriendo y healthy
 docker start floci-shared   # o docker compose -f docker-compose.floci.yml up -d
+# Esperar healthcheck: docker logs -f floci-shared (esperar "Ready.")
 
 # 2. Levantar servicios (4 terminales separadas)
 # Terminal 1: Gateway
@@ -204,6 +205,13 @@ cd etribunal-platform
 # 3. Levantar todo (infra + Floci + 4 servicios Spring)
 FLOCI_MODE=docker docker compose --profile app --profile floci-local up -d
 
+# 4. Aplicar migraciones Flyway (Floci en docker es fresco cada vez)
+./gradlew :services:identity-service:flywayMigrate -Pprofile=local
+./gradlew :services:core-domain-service:flywayMigrate -Pprofile=local
+
+# 5. Crear bucket S3 para media (solo primera vez)
+aws --endpoint-url http://localhost:4566 s3 mb s3://etribunal-media
+
 # Ver logs
 docker compose logs -f gateway-service
 docker compose logs -f identity-service
@@ -212,10 +220,6 @@ docker compose logs -f ai-engine-service
 ```
 
 > **Nota**: Este modo levanta un Floci **temporal** solo para este proyecto (profile `floci-local`). Los datos no persisten entre `docker compose down`.
-```
-
-> **Nota**: Este modo levanta un Floci **temporal** solo para este proyecto (profile `floci-local`). Los datos no persisten entre `docker compose down`.
-
 ```
 
 ---
