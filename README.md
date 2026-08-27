@@ -50,10 +50,11 @@ Backend microservicios de **eTribunal** — Java 21 + Spring Boot 3.5 + Gradle m
 | **JDK 21+** | 21 LTS | Gradle auto-provisiona Temurin 21 vía Foojay si difiere — [Descargar manual](https://adoptium.net/temurin/releases/?version=21) |
 | **Docker Desktop** | 4.x+ | [Windows](https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe) / [macOS](https://desktop.docker.com/mac/main/amd64/Docker.dmg) / [Linux](https://docs.docker.com/engine/install/) |
 | **AWS CLI v2** | 2.x | [Windows](https://awscli.amazonaws.com/AWSCLIV2.msi) / [macOS](https://awscli.amazonaws.com/AWSCLIV2.pkg) / [Linux](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html) |
+| **Floci** | latest | [Docker Hub](https://hub.docker.com/r/floci/floci) — `docker pull floci/floci:latest` |
 | **PostgreSQL** | — | Via Floci (RDS emulator) — **NO** requiere instalación local |
 | **Gradle** | 9.7+ | Wrapper incluido (`./gradlew`) — no requiere instalación |
 
-> **Nota**: JDK 21 y Gradle se auto-gestionan vía el wrapper (`./gradlew`). Solo necesitas instalar **Docker Desktop** y **AWS CLI v2** manualmente.
+> **Nota**: JDK 21 y Gradle se auto-gestionan vía el wrapper (`./gradlew`). Solo necesitas instalar **Docker Desktop**, **AWS CLI v2** y **Floci** manualmente.
 
 ---
 
@@ -61,33 +62,49 @@ Backend microservicios de **eTribunal** — Java 21 + Spring Boot 3.5 + Gradle m
 
 Esta guía cubre desde cero hasta tener los 4 servicios corriendo con health checks verdes.
 
-### Opción A: Modo Desarrollo (`bootRun`) — Recomendado para desarrollo rápido
+> **Modo Floci**: El proyecto usa **Floci compartido (EXTERNAL)** por defecto. Una sola instancia Floci sirve a todos tus proyectos locales. Ver [Instalación y configuración de Floci (solo primera vez)](#instalación-y-configuración-de-floci-solo-primera-vez) para la configuración inicial.
+>
+> **Variable de control**: `FLOCI_MODE` — `EXTERNAL` (default, Floci externo) | `DOCKER` (Floci en docker-compose profile `floci-local`).
 
-Hot reload, logs en consola, reinicio rápido.
+### Instalación y configuración de Floci (solo primera vez)
 
-#### 1. Clonar e instalar
+Floci emula servicios AWS localmente (RDS, S3, Lambda, etc.). Se ejecuta **una sola instancia compartida** para todos tus proyectos.
+
+#### 1. Instalar Floci
 ```bash
-git clone https://github.com/28Emc/etribunal-platform.git
-cd etribunal-platform
-./gradlew build          # Compila todo + corre tests (primera vez)
+# Opción A: Docker (recomendado)
+docker pull floci/floci:latest
+docker run -d --name floci-shared \
+  -p 4566:4566 -p 7001-7099:7001-7099 \
+  floci/floci:latest
+
+# Opción B: Docker Compose (si prefieres)
+cat > docker-compose.floci.yml <<'EOF'
+services:
+  floci:
+    image: floci/floci:latest
+    container_name: floci-shared
+    ports:
+      - "4566:4566"
+      - "7001-7099:7001-7099"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+EOF
+docker compose -f docker-compose.floci.yml up -d
 ```
 
-#### 2. Levantar infraestructura (Floci + Redis)
+#### 2. Verificar que Floci está healthy
 ```bash
-docker compose up -d
+docker logs -f floci-shared
+# Esperar hasta ver: "Ready." o healthcheck passing
 ```
-Esto levanta:
-- **Floci** (LocalStack): `:4566` (S3), `:7002` (identity DB proxy), `:7003` (core DB proxy)
-- **Redis**: `:6379` (password: `eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81`)
 
-> **Espera ~15-30s** a que Floci esté healthy: `docker compose logs -f floci`
-
-#### 3. Crear instancias RDS en Floci (solo primera vez)
-
-> **Requiere AWS CLI v2** — [Instalar](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) si no lo tienes.
-
+#### 3. Crear instancias RDS en Floci (para este proyecto)
 ```bash
-# Identity DB
+# Identity DB (puerto 7002)
 aws --endpoint-url http://localhost:4566 rds create-db-instance \
   --db-instance-identifier etribunal-identity-local \
   --db-name etribunal_identity \
@@ -97,7 +114,7 @@ aws --endpoint-url http://localhost:4566 rds create-db-instance \
   --db-instance-class db.t3.micro \
   --allocated-storage 20
 
-# Core DB
+# Core DB (puerto 7003)
 aws --endpoint-url http://localhost:4566 rds create-db-instance \
   --db-instance-identifier etribunal-core-local \
   --db-name etribunal_core \
@@ -108,24 +125,32 @@ aws --endpoint-url http://localhost:4566 rds create-db-instance \
   --allocated-storage 20
 ```
 
-> Las instancias tardan **~30-60s** en estar disponibles. Los puertos son **7002 (identity)** y **7003 (core)**. Verifica con:
+> **Nota**: Las instancias tardan ~30-60s. Verifica con:
 > ```bash
 > aws --endpoint-url http://localhost:4566 rds describe-db-instances
 > ```
 
 #### 4. Aplicar migraciones Flyway (solo primera vez / tras cambios de schema)
 ```bash
-# Identity (puerto 7002)
 ./gradlew :services:identity-service:flywayMigrate -Pprofile=local
-
-# Core Domain (puerto 7003)
 ./gradlew :services:core-domain-service:flywayMigrate -Pprofile=local
 ```
-> Usa el **wrapper de Gradle** (no requiere Flyway CLI instalado).
 
-#### 5. Levantar servicios (4 terminales separadas)
+> **Esto solo se hace una vez**. En arranques posteriores, Flyway detecta migraciones ya aplicadas y no hace nada.
+
+---
+
+### Opción A: Modo Externo (FLOCI_MODE=EXTERNAL) — **Por defecto**
+
+Usa tu instancia Floci compartida. Requiere Floci corriendo externamente.
+
+#### Pasos recurrentes (cada vez que inicies desarrollo)
 
 ```bash
+# 1. Asegurar Floci corriendo
+docker start floci-shared   # o docker compose -f docker-compose.floci.yml up -d
+
+# 2. Levantar servicios (4 terminales separadas)
 # Terminal 1: Gateway
 ./gradlew :services:gateway-service:bootRun --args='--spring.profiles.active=local'
 
@@ -139,30 +164,37 @@ aws --endpoint-url http://localhost:4566 rds create-db-instance \
 ./gradlew :services:ai-engine-service:bootRun --args='--spring.profiles.active=local'
 ```
 
+> **Variables de entorno** (opcional, si tus puertos difieren):
+> ```bash
+> export FLOCI_MODE=EXTERNAL
+> export FLOCI_HOST=localhost
+> export FLOCI_IDENTITY_PORT=7002
+> export FLOCI_CORE_PORT=7003
+> ```
+
 ---
 
-### Opción B: Modo Contenedor (`docker compose --profile app`) — Testing prod-like
+### Opción B: Modo Docker (FLOCI_MODE=DOCKER) — Fallback / CI / Onboarding
 
-Hot reload **no** disponible. Imagen inmutable, misma config que staging/prod.
+Incluye Floci en docker-compose del proyecto. Útil si no quieres configurar Floci aparte.
 
-#### 1-4. Mismos pasos 1-4 de arriba
-
-#### 5. Construir jars
 ```bash
+# 1-4. Mismos pasos 1-4 de arriba (pero Floci se levanta con docker-compose)
+
+# 5. Construir jars
 ./gradlew bootJar
-```
 
-#### 6. Levantar todo (infra + 4 servicios Spring)
-```bash
-docker compose --profile app up -d
-```
+# 6. Levantar todo (infra + Floci + 4 servicios Spring)
+FLOCI_MODE=docker docker compose --profile app --profile floci-local up -d
 
-#### Ver logs
-```bash
+# Ver logs
 docker compose logs -f gateway-service
 docker compose logs -f identity-service
 docker compose logs -f core-domain-service
 docker compose logs -f ai-engine-service
+```
+
+> **Nota**: Este modo levanta un Floci **temporal** solo para este proyecto (profile `floci-local`). Los datos no persisten entre `docker compose down`.
 ```
 
 ---
@@ -195,11 +227,17 @@ curl http://localhost:8083/actuator/health                    # AI Engine
 ## Docker Compose (referencia rápida)
 
 ```bash
-# Solo infra (Floci + Redis)
+# Solo infra (Redis)
 docker compose up -d
 
-# Infra + 4 servicios Spring (requiere ./gradlew bootJar previo)
+# Infra + Floci (para modo docker)
+docker compose --profile floci-local up -d
+
+# Infra + 4 servicios Spring (modo externo, requiere Floci externo corriendo)
 docker compose --profile app up -d
+
+# Infra + Floci + 4 servicios Spring (modo docker, todo junto)
+docker compose --profile app --profile floci-local up -d
 
 # Infra + Temporal (para AI Engine workflows)
 docker compose --profile temporal up -d

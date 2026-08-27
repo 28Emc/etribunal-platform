@@ -1,14 +1,16 @@
 # eTribunal — Docker Compose completo (v1.1)
 #
 # Servicios incluidos:
-#   - Floci (RDS emulator en :4566, DB proxies en :7001-7099)
+#   - Floci (RDS emulator en :4566, DB proxies en :7001-7099) — profile: floci-local
 #   - Redis standalone (:6379)
 #   - Gateway (:8080) → Identity (:8081), Core (:8082), AI Engine (:8083)
 #
 # Uso rápido:
-#   docker compose up -d                     # solo infra (Floci + Redis)
+#   docker compose up -d                     # solo infra (Redis)
 #   docker compose --profile app up -d       # infra + 4 Spring services
+#   docker compose --profile floci-local up -d  # + Floci (RDS emulator)
 #   docker compose --profile temporal up -d  # + Temporal + UI
+#   docker compose --profile app --profile floci-local up -d  # todo junto (modo docker)
 #
 # Prerequisito: construir jars antes de levantar servicios Spring
 #   cd etribunal-platform && ./gradlew bootJar
@@ -18,6 +20,7 @@ services:
   floci:
     image: floci/floci:latest
     container_name: etribunal-floci
+    profiles: ["floci-local"]
     ports:
       - "4566:4566"
       - "7001-7099:7001-7099"
