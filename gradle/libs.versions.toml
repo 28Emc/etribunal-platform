@@ -4,6 +4,7 @@ springCloud = "2025.0.0"
 springDependencyManagement = "1.1.6"
 testcontainers = "1.19.8"
 nimbusJoseJwt = "10.3"
+awsSdkS3 = "2.31.25"
 
 [libraries]
 # ─── Spring Boot starters (versiones gestionadas por el BOM de Boot) ───
@@ -28,6 +29,9 @@ flyway-core = { module = "org.flywaydb:flyway-core" }
 flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
 postgresql = { module = "org.postgresql:postgresql" }
 hibernate-types-60 = { module = "com.vladmihalcea:hibernate-types-60", version = "2.24.0" }
+
+# ─── AWS ───
+aws-s3 = { module = "software.amazon.awssdk:s3", version.ref = "awsSdkS3" }
 
 # ─── Utilidades (versiones del BOM de Boot) ───
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }
