@@ -20,4 +20,8 @@ public interface SavedCaseRepository extends JpaRepository<SavedCaseEntity, Save
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM SavedCaseEntity s WHERE s.userId = :userId AND s.caseId = :caseId")
     int deleteByUserIdAndCaseId(@Param("userId") UUID userId, @Param("caseId") UUID caseId);
+
+    @Query("SELECT s.caseId FROM SavedCaseEntity s WHERE s.userId = :userId AND s.caseId IN :caseIds")
+    List<UUID> findCaseIdsByUserIdAndCaseIdIn(@Param("userId") UUID userId,
+                                              @Param("caseIds") List<UUID> caseIds);
 }

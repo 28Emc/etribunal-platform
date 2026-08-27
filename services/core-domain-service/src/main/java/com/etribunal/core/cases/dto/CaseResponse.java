@@ -4,9 +4,6 @@ import com.etribunal.core.users.UserSummary;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Contrato heredado de mapCase() del monolito (snake_case).
- */
 public record CaseResponse(
         UUID id,
         String type,
@@ -37,7 +34,8 @@ public record CaseResponse(
         int total_anchors,
         String moderation_status,
         boolean is_saved,
-        boolean is_shared
+        boolean is_shared,
+        String user_reaction
 ) {
 
     public record UserDto(

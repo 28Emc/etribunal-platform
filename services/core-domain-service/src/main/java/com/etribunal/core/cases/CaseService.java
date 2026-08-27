@@ -3,17 +3,28 @@ package com.etribunal.core.cases;
 import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
 import com.etribunal.core.cases.dto.RespondSideBRequest;
+import com.etribunal.core.cases.dto.UpdateCaseRequest;
 import com.etribunal.core.config.FrontendUrlProperties;
+import com.etribunal.core.reactions.Emoji;
+import com.etribunal.core.reactions.ReactionRepository;
+import com.etribunal.core.reactions.ReactionTarget;
+import com.etribunal.core.reports.ReportStatus;
+import com.etribunal.core.saved.CaseShareRepository;
+import com.etribunal.core.saved.SavedCaseRepository;
 import com.etribunal.core.security.CurrentUserResolver;
 import com.etribunal.core.users.InternalUsersClient;
 import com.etribunal.core.users.UserSummary;
+import com.etribunal.core.votes.CaseVoteEntity;
+import com.etribunal.core.votes.VoteRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -35,16 +46,31 @@ public class CaseService {
     private final InternalUsersClient usersClient;
     private final CurrentUserResolver currentUser;
     private final FrontendUrlProperties frontendUrl;
+    private final SavedCaseRepository savedCaseRepository;
+    private final CaseShareRepository caseShareRepository;
+    private final VoteRepository voteRepository;
+    private final ReactionRepository reactionRepository;
 
-    public CaseService(CaseRepository caseRepository,
-                       InternalUsersClient usersClient,
-                       CurrentUserResolver currentUser,
-                       FrontendUrlProperties frontendUrl) {
+    public CaseService(
+            CaseRepository caseRepository,
+            InternalUsersClient usersClient,
+            CurrentUserResolver currentUser,
+            FrontendUrlProperties frontendUrl,
+            SavedCaseRepository savedCaseRepository,
+            CaseShareRepository caseShareRepository,
+            VoteRepository voteRepository,
+            ReactionRepository reactionRepository) {
         this.caseRepository = caseRepository;
         this.usersClient = usersClient;
         this.currentUser = currentUser;
         this.frontendUrl = frontendUrl;
+        this.savedCaseRepository = savedCaseRepository;
+        this.caseShareRepository = caseShareRepository;
+        this.voteRepository = voteRepository;
+        this.reactionRepository = reactionRepository;
     }
+
+    // ──────────────────────── Create ────────────────────────
 
     @Transactional
     public CaseResponse createCase(UUID authorId, CreateCaseRequest dto) {
@@ -83,6 +109,8 @@ public class CaseService {
                 .getFirst();
     }
 
+    // ──────────────────────── Feed ────────────────────────
+
     @Transactional(readOnly = true)
     public List<CaseResponse> getCases(int skip, int take, String feedType,
                                        String category, String q,
@@ -107,6 +135,8 @@ public class CaseService {
                 currentUserId.orElse(null));
     }
 
+    // ──────────────────────── Detail ────────────────────────
+
     @Transactional(readOnly = true)
     public CaseResponse getCase(UUID id, HttpServletRequest request) {
         Optional<UUID> currentUserId = currentUser.currentUserId(request);
@@ -120,9 +150,8 @@ public class CaseService {
                 .getFirst();
     }
 
-    /**
-     * Vista previa del caso WAITING para quien recibe el invite link.
-     */
+    // ──────────────────────── Invite Token ────────────────────────
+
     @Transactional(readOnly = true)
     public CaseResponse getCaseByInviteToken(String token, HttpServletRequest request) {
         Optional<UUID> currentUserId = currentUser.currentUserId(request);
@@ -139,10 +168,8 @@ public class CaseService {
         return toResponse(List.of(entity), currentUserId.orElse(null)).getFirst();
     }
 
-    /**
-     * Reglas heredadas de respondAsSideB: solo el Side B asignado (o cualquiera
-     * si el caso no reservó Side B) puede responder un caso vote en WAITING.
-     */
+    // ──────────────────────── Respond Side B ────────────────────────
+
     @Transactional
     public CaseResponse respondAsSideB(UUID userId, RespondSideBRequest dto) {
         CaseEntity entity = caseRepository
@@ -176,10 +203,8 @@ public class CaseService {
         return toResponse(List.of(entity), userId).getFirst();
     }
 
-    /**
-     * Devuelve el token existente o genera uno nuevo (regla legacy del
-     * getOrRegenerateInviteLink).
-     */
+    // ──────────────────────── Invite Link ────────────────────────
+
     @Transactional
     public InviteLinkResponse getOrRegenerateInviteLink(UUID userId, UUID caseId) {
         CaseEntity entity = caseRepository.findById(caseId)
@@ -206,10 +231,88 @@ public class CaseService {
         return new InviteLinkResponse(caseId.toString(), token, frontendUrl.inviteUrl(token));
     }
 
+    // ──────────────────────── Update Case ────────────────────────
+
+    @Transactional
+    public CaseResponse updateCase(UUID caseId, UUID userId, UpdateCaseRequest dto) {
+        CaseEntity entity = caseRepository.findById(caseId)
+                .filter(c -> c.getDeletedAt() == null)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Caso no encontrado"));
+
+        boolean isSideA = entity.getSideAUserId().equals(userId);
+        boolean isSideB = entity.getSideBUserId() != null
+                && entity.getSideBUserId().equals(userId);
+
+        if (!isSideA && !isSideB) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "No tienes permisos para editar este caso");
+        }
+
+        if (isSideA) {
+            if (dto.title() != null) {
+                entity.setTitle(dto.title().trim());
+            }
+            if (dto.side_a_content() != null) {
+                entity.setSideAContent(dto.side_a_content().trim());
+            }
+            if (dto.side_a_subtitle() != null) {
+                entity.setSideASubtitle(dto.side_a_subtitle());
+            }
+            if (dto.category() != null) {
+                entity.setCategory(dto.category());
+            }
+            if (dto.is_anonymous() != null) {
+                entity.setAnonymous(dto.is_anonymous());
+            }
+            if (dto.both_wrong_subtitle() != null) {
+                entity.setBothWrongSubtitle(dto.both_wrong_subtitle());
+            }
+        }
+
+        if (isSideB) {
+            if (dto.side_b_content() != null) {
+                entity.setSideBContent(dto.side_b_content().trim());
+            }
+            if (dto.side_b_subtitle() != null) {
+                entity.setSideBSubtitle(dto.side_b_subtitle());
+            }
+        }
+
+        return toResponse(List.of(entity), userId).getFirst();
+    }
+
+    // ──────────────────────── Delete Case (Moderator) ────────────────────────
+
+    @Transactional
+    public Map<String, Object> deleteCase(UUID caseId, UUID moderatorId, String reason) {
+        CaseEntity entity = caseRepository.findById(caseId)
+                .filter(c -> c.getDeletedAt() == null)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Caso no encontrado"));
+
+        if (entity.getReportStatus() != ReportStatus.REPORTED
+                || entity.getModerationStatus() != ModerationStatus.FLAGGED) {
+            throw badRequest("Solo se pueden eliminar casos que estén en revisión");
+        }
+
+        entity.setDeletedAt(java.time.Instant.now());
+        caseRepository.save(entity);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("message", "Caso eliminado exitosamente");
+        return result;
+    }
+
+    // ──────────────────────── toResponse with enrichment ────────────────────────
+
     private List<CaseResponse> toResponse(List<CaseEntity> cases, UUID requesterId) {
         LinkedHashSet<UUID> userIds = new LinkedHashSet<>();
+        List<UUID> caseIds = new ArrayList<>(cases.size());
         for (CaseEntity c : cases) {
             userIds.add(c.getSideAUserId());
+            caseIds.add(c.getId());
             if (c.getSideBUserId() != null) {
                 userIds.add(c.getSideBUserId());
             }
@@ -219,6 +322,36 @@ public class CaseService {
         if (!userIds.isEmpty()) {
             summaries.putAll(usersClient.summaries(List.copyOf(userIds)).stream()
                     .collect(Collectors.toMap(UserSummary::id, Function.identity())));
+        }
+
+        // Batch enrich: saved, shared, user_reaction, user_vote
+        Set<UUID> savedIds = Set.of();
+        Set<UUID> sharedIds = Set.of();
+        Map<UUID, String> reactionMap = Map.of();
+        Map<UUID, String> voteMap = Map.of();
+
+        if (requesterId != null && !caseIds.isEmpty()) {
+            savedIds = new HashSet<>(savedCaseRepository
+                    .findCaseIdsByUserIdAndCaseIdIn(requesterId, caseIds));
+            sharedIds = new HashSet<>(caseShareRepository
+                    .findCaseIdsByUserIdAndCaseIdIn(requesterId, caseIds));
+
+            List<Object[]> reactionRows = reactionRepository
+                    .findEmojiByTargetTypeAndTargetIdInAndUserId(
+                            ReactionTarget.CASE, caseIds, requesterId);
+            reactionMap = new HashMap<>();
+            for (Object[] row : reactionRows) {
+                UUID targetId = (UUID) row[0];
+                Emoji emoji = (Emoji) row[1];
+                reactionMap.put(targetId, emoji.name());
+            }
+
+            List<CaseVoteEntity> votes = voteRepository
+                    .findByUserIdAndCaseIdIn(requesterId, caseIds);
+            voteMap = new HashMap<>();
+            for (CaseVoteEntity v : votes) {
+                voteMap.put(v.getCaseId(), v.getVoteType().name());
+            }
         }
 
         List<CaseResponse> responses = new ArrayList<>(cases.size());
@@ -254,8 +387,9 @@ public class CaseService {
                     c.getTotalShares(),
                     c.getTotalAnchors(),
                     c.getModerationStatus().name(),
-                    false,
-                    false));
+                    savedIds.contains(c.getId()),
+                    sharedIds.contains(c.getId()),
+                    reactionMap.get(c.getId())));
         }
         return responses;
     }

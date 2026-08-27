@@ -13,9 +13,14 @@ import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
 import com.etribunal.core.cases.dto.RespondSideBRequest;
 import com.etribunal.core.config.FrontendUrlProperties;
+import com.etribunal.core.reactions.ReactionRepository;
+import com.etribunal.core.reactions.ReactionTarget;
+import com.etribunal.core.saved.CaseShareRepository;
+import com.etribunal.core.saved.SavedCaseRepository;
 import com.etribunal.core.security.CurrentUserResolver;
 import com.etribunal.core.users.InternalUsersClient;
 import com.etribunal.core.users.UserSummary;
+import com.etribunal.core.votes.VoteRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +46,18 @@ class CaseServiceTest {
     @Mock
     private HttpServletRequest request;
 
+    @Mock
+    private SavedCaseRepository savedCaseRepository;
+
+    @Mock
+    private CaseShareRepository caseShareRepository;
+
+    @Mock
+    private VoteRepository voteRepository;
+
+    @Mock
+    private ReactionRepository reactionRepository;
+
     private CaseService caseService;
 
     private final UUID authorId = UUID.randomUUID();
@@ -49,7 +66,8 @@ class CaseServiceTest {
     @BeforeEach
     void setUp() {
         caseService = new CaseService(caseRepository, usersClient, currentUserResolver,
-                new FrontendUrlProperties("http://localhost:3000/"));
+                new FrontendUrlProperties("http://localhost:3000/"),
+                savedCaseRepository, caseShareRepository, voteRepository, reactionRepository);
         lenient().when(currentUserResolver.currentUserId(request))
                 .thenReturn(Optional.of(authorId));
         lenient().when(usersClient.summaries(anyList())).thenAnswer(invocation -> {
@@ -59,6 +77,15 @@ class CaseServiceTest {
                             "https://example.com/a.png", false))
                     .toList();
         });
+        // Batch enrichment mocks
+        lenient().when(savedCaseRepository.findCaseIdsByUserIdAndCaseIdIn(any(), anyList()))
+                .thenReturn(List.of());
+        lenient().when(caseShareRepository.findCaseIdsByUserIdAndCaseIdIn(any(), anyList()))
+                .thenReturn(List.of());
+        lenient().when(voteRepository.findByUserIdAndCaseIdIn(any(), anyList()))
+                .thenReturn(List.of());
+        lenient().when(reactionRepository.findEmojiByTargetTypeAndTargetIdInAndUserId(
+                any(), anyList(), any())).thenReturn(List.of());
     }
 
     @Test

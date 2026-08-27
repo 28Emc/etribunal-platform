@@ -117,7 +117,7 @@ public class SearchService {
                 continue;
             }
 
-            CaseResponse caseResponse = toCaseResponse(c, summaries, requesterId);
+            CaseResponse caseResponse = toCaseResponse(c, summaries, requesterId, null);
             results.add(new SearchResult(caseResponse, rank));
         }
 
@@ -126,7 +126,8 @@ public class SearchService {
 
     private CaseResponse toCaseResponse(CaseEntity c,
                                         Map<UUID, UserSummary> summaries,
-                                        UUID requesterId) {
+                                        UUID requesterId,
+                                        String userReaction) {
         return new CaseResponse(
                 c.getId(),
                 c.getType().name(),
@@ -159,7 +160,8 @@ public class SearchService {
                 c.getTotalAnchors(),
                 c.getModerationStatus().name(),
                 false,
-                false);
+                false,
+                userReaction);
     }
 
     private static CaseResponse.UserDto toMaskedDto(UserSummary summary,

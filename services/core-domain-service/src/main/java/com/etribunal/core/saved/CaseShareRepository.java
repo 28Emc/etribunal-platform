@@ -23,4 +23,8 @@ public interface CaseShareRepository extends JpaRepository<CaseShareEntity, Case
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM CaseShareEntity s WHERE s.userId = :userId AND s.caseId = :caseId")
     int deleteByUserIdAndCaseId(@Param("userId") UUID userId, @Param("caseId") UUID caseId);
+
+    @Query("SELECT s.caseId FROM CaseShareEntity s WHERE s.userId = :userId AND s.caseId IN :caseIds")
+    List<UUID> findCaseIdsByUserIdAndCaseIdIn(@Param("userId") UUID userId,
+                                              @Param("caseIds") List<UUID> caseIds);
 }
