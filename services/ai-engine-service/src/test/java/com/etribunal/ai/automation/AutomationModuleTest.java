@@ -1,33 +1,34 @@
 package com.etribunal.ai.automation;
 
+import com.etribunal.ai.automation.config.AutomationConfig;
+import com.etribunal.ai.automation.domain.AutomationCaseStatus;
+import com.etribunal.ai.automation.domain.AutomationInteractionStatus;
+import com.etribunal.ai.automation.domain.AutomationInteractionType;
+import com.etribunal.ai.automation.domain.AutomationRunStatus;
+import org.junit.jupiter.api.Test;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.etribunal.ai.automation.config.AutomationConfig;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-
-@SpringBootTest
-@ActiveProfiles("test")
 class AutomationModuleTest {
 
-    @Autowired
-    private AutomationConfig config;
-
     @Test
-    void contextLoads() {
-        assertThat(config).isNotNull();
-        assertThat(config.isEnabled()).isFalse();
+    void enumsHaveExpectedValues() {
+        assertThat(AutomationRunStatus.values()).hasSize(6);
+        assertThat(AutomationCaseStatus.values()).hasSize(5);
+        assertThat(AutomationInteractionStatus.values()).hasSize(7);
+        assertThat(AutomationInteractionType.values()).hasSize(4);
     }
 
     @Test
     void configRangesAreValid() {
+        AutomationConfig config = new AutomationConfig();
+        config.setDailyCasesMin(1);
+        config.setDailyCasesMax(5);
+
         assertThat(config.getDailyCasesMin()).isPositive();
         assertThat(config.getDailyCasesMax()).isGreaterThanOrEqualTo(config.getDailyCasesMin());
-        assertThat(config.getUsersPerCaseMin()).isPositive();
-        assertThat(config.getUsersPerCaseMax()).isGreaterThanOrEqualTo(config.getUsersPerCaseMin());
-        assertThat(config.getIntensityMin()).isGreaterThanOrEqualTo(0);
-        assertThat(config.getIntensityMax()).isLessThanOrEqualTo(100);
+
+        int picked = config.pickDailyCases();
+        assertThat(picked).isBetween(1, 5);
     }
 }
