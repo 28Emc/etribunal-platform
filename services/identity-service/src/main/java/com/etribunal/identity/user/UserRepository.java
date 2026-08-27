@@ -21,6 +21,12 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
 
     Optional<UserEntity> findByUsernameAndDeletedAtNull(String username);
 
+    Optional<UserEntity> findByVerificationToken(String token);
+
+    Optional<UserEntity> findByResetToken(String resetToken);
+
+    Optional<UserEntity> findByEmailIgnoreCaseAndDeletedAtNull(String email);
+
     @Query(
             "select u from UserEntity u where lower(u.username) like lower(concat('%', :q, '%'))"
                     + " and u.deletedAt is null order by u.createdAt desc")

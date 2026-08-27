@@ -24,6 +24,11 @@ etribunal:
       - /api/auth/register
       - /api/auth/login
       - /api/auth/refresh
+      - /api/auth/forgot-password
+      - /api/auth/reset-password
+      - /api/auth/verify-email
+      - /api/auth/resend-verification
+      - /api/auth/check-existence
       # Perfiles públicos de users (identity aplica auth opcional; el resto de /users sigue protegido en el edge)
       - /api/users/search
       - /api/users/top-judges
