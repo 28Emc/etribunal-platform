@@ -1,5 +1,5 @@
 [versions]
-springBoot = "3.5.3"
+springBoot = "4.1.1"
 springCloud = "2025.0.0"
 springDependencyManagement = "1.1.6"
 testcontainers = "1.19.8"
