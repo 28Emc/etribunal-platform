@@ -1,5 +1,12 @@
 plugins {
     alias(libs.plugins.spring.boot)
+    alias(libs.plugins.spring.dependency.management)
+}
+
+dependencyManagement {
+    imports {
+        mavenBom("org.springframework.ai:spring-ai-bom:1.1.8")
+    }
 }
 
 dependencies {
@@ -11,6 +18,9 @@ dependencies {
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.kafka)
+
+    // Spring AI for Gemini (1.1.8 - compatible with Boot 3.5.x)
+    implementation("org.springframework.ai:spring-ai-starter-model-vertex-ai-gemini")
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(project(":libs:common-test"))

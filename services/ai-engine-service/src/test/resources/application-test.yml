@@ -21,3 +21,38 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.ai.model.vertexai.autoconfigure.gemini.VertexAiGeminiChatAutoConfiguration
+      - org.springframework.ai.model.chat.client.autoconfigure.ChatClientAutoConfiguration
+      - org.springframework.ai.model.chat.memory.autoconfigure.ChatMemoryAutoConfiguration
+
+etribunal:
+  automation:
+    enabled: false
+    dry-run: true
+    run-hour: 9
+    language: es
+    daily-cases-min: 1
+    daily-cases-max: 5
+    users-per-case-min: 5
+    users-per-case-max: 15
+    max-interactions-per-user-per-case-min: 1
+    max-interactions-per-user-per-case-max: 3
+    intensity-min: 30
+    intensity-max: 70
+    scheduling-interval-min: 30
+    scheduling-interval-max: 180
+    scheduling-window-hours: 24
+    daily-pool-size: 0
+    ai:
+      provider: gemini
+      api-key: test-key
+      model: gemini-2.0-flash
+      temperature: 0.8
+      top-p: 0.95
+      max-output-tokens-case: 1024
+      max-output-tokens-comment: 1024
+      max-output-tokens-reply: 1024
+      max-output-tokens-plan: 8192
+      rpm: 12
+      rpd: 425
+      tpm: 212500
