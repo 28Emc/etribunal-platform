@@ -29,4 +29,10 @@ public interface ReactionRepository extends JpaRepository<ReactionEntity, UUID> 
 
         long getTotal();
     }
+
+    @Query("SELECT r.targetId, r.emoji FROM ReactionEntity r WHERE r.targetType = :targetType AND r.targetId IN :targetIds AND r.userId = :userId")
+    List<Object[]> findEmojiByTargetTypeAndTargetIdInAndUserId(
+            @Param("targetType") ReactionTarget targetType,
+            @Param("targetIds") List<UUID> targetIds,
+            @Param("userId") UUID userId);
 }

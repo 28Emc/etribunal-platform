@@ -4,14 +4,17 @@ import com.etribunal.core.api.ApiResponse;
 import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
 import com.etribunal.core.cases.dto.RespondSideBRequest;
+import com.etribunal.core.cases.dto.UpdateCaseRequest;
 import com.etribunal.core.security.CurrentUserResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -60,6 +63,26 @@ public class CasesController {
             @PathVariable UUID id,
             HttpServletRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(caseService.getCase(id, request)));
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<ApiResponse<CaseResponse>> update(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateCaseRequest dto,
+            HttpServletRequest request) {
+        UUID userId = currentUser.requiredUserId(request);
+        return ResponseEntity.ok(ApiResponse.ok(caseService.updateCase(id, userId, dto)));
+    }
+
+    @PostMapping("/{id}/delete")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> deleteCase(
+            @PathVariable UUID id,
+            @RequestBody Map<String, String> body,
+            HttpServletRequest request) {
+        UUID userId = currentUser.requiredUserId(request);
+        String reason = body.getOrDefault("reason", "");
+        return ResponseEntity.ok(ApiResponse.ok(
+                caseService.deleteCase(id, userId, reason)));
     }
 
     @GetMapping("/invite/{token}")

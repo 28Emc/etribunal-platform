@@ -1,5 +1,6 @@
 package com.etribunal.core.votes;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -10,6 +11,8 @@ import org.springframework.data.repository.query.Param;
 public interface VoteRepository extends JpaRepository<CaseVoteEntity, UUID> {
 
     Optional<CaseVoteEntity> findByCaseIdAndUserId(UUID caseId, UUID userId);
+
+    List<CaseVoteEntity> findByUserIdAndCaseIdIn(UUID userId, List<UUID> caseIds);
 
     /**
      * Ajusta los contadores del caso de forma atómica: decrementa el voto previo,
