@@ -13,6 +13,7 @@ dependencies {
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.data.redis)
     implementation(libs.spring.kafka)
+    implementation(libs.springdoc.openapi.starter.webmvc.ui)
     implementation(libs.flyway.core)
     implementation(libs.flyway.database.postgresql)
     implementation(libs.aws.s3)
