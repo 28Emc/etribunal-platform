@@ -1,0 +1,49 @@
+# ⚠️ PERFIL LOCAL — SOLO DESARROLLO.
+# PostgreSQL vía Floci RDS (instancia etribunal-identity-local, puerto de DescribeDBInstances).
+# Redis standalone :6379. Kafka diferido a Fase 1.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:7002/etribunal_identity
+    username: etribunal_user
+    password: etribunal_pass
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81 # redis standalone del host
+  kafka:
+    # Diferido a Fase 1 — sin broker local por ahora; Spring lo inicializa lazy
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+# DEV ONLY — rotar por variables de entorno en cualquier entorno real
+etribunal:
+  jwt:
+    access-secret: "dev-only-access-secret-0123456789abcdef0123456789abcdef"
+    refresh-secret: "dev-only-refresh-secret-fedcba9876543210fedcba9876543210"
+    issuer: etribunal
+    access-ttl: PT15M
+    refresh-ttl: P7D
+  internal-token: ${INTERNAL_API_KEY:dev-only-internal-token-1234} # igual que core-domain
+
+management:
+  health:
+    kafka:
+      enabled: false # sin broker en Fase 0
+
+logging:
+  level:
+    com.etribunal: DEBUG

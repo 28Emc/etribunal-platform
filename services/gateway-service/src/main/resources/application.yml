@@ -1,0 +1,88 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    gateway:
+      routes: [] # rutas activas solo en perfil local (ver abajo)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+# Sin fallback: en produccion JWT_ACCESS_SECRET debe venir por entorno (fail-fast)
+etribunal:
+  jwt:
+    access-secret: ${JWT_ACCESS_SECRET}
+    issuer: ${JWT_ISSUER:etribunal}
+  gateway:
+    enabled: true
+    public-paths:
+      - /api/auth/register
+      - /api/auth/login
+      - /api/auth/refresh
+      # Perfiles públicos de users (identity aplica auth opcional; el resto de /users sigue protegido en el edge)
+      - /api/users/search
+      - /api/users/top-judges
+      - /api/users/*
+      - /api/users/*/followers
+      - /api/users/*/following
+  migration:
+    enabled: ${MIGRATION_ENABLED:false}
+    nestjs-url: ${NESTJS_URL:http://localhost:3001/api}
+    canary:
+      enabled: ${CANARY_ENABLED:false}
+      default-percentage: ${CANARY_DEFAULT_PCT:0}
+    shadow:
+      enabled: ${SHADOW_ENABLED:false}
+      log-differences: ${SHADOW_LOG_DIFF:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  cloud:
+    gateway:
+      routes:
+        - id: identity
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/auth/**,/api/users/**
+        - id: core-domain
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/cases/**,/api/comments/**,/api/reactions/**,/api/saved-cases/**,/api/notifications/**
+        - id: ai-engine
+          uri: http://localhost:8083
+          predicates:
+            - Path=/api/automation/**
+
+etribunal:
+  jwt:
+    # DEV ONLY - debe coincidir con identity-service (mismos secretos compartidos)
+    access-secret: "dev-only-access-secret-0123456789abcdef0123456789abcdef"
+    issuer: etribunal
+  migration:
+    # Local: deshabilitado por defecto; habilitar con env vars
+    enabled: ${MIGRATION_ENABLED:false}
+    nestjs-url: ${NESTJS_URL:http://localhost:3001/api}
+    canary:
+      enabled: ${CANARY_ENABLED:false}
+      default-percentage: ${CANARY_DEFAULT_PCT:0}
+    shadow:
+      enabled: ${SHADOW_ENABLED:false}
+      log-differences: ${SHADOW_LOG_DIFF:false}
