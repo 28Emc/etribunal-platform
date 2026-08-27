@@ -10,19 +10,19 @@ Backend microservicios de **eTribunal** — Java 21 + Spring Boot 3.5 + Gradle m
                     │  JWT filter │
                     └──────┬──────┘
                            │
-              ┌────────────┼────────────┐
-              │            │            │
-     ┌────────▼───┐ ┌──────▼──────┐ ┌──▼──────────┐
-     │ Identity   │ │ Core Domain │ │  AI Engine   │
-     │ :8081      │ │ :8082       │ │  :8083       │
-     │ Auth/Users │ │ Cases/Votes │ │  Automation  │
-     └─────┬──────┘ └──────┬──────┘ └──────┬──────┘
-           │               │               │
-      ┌────▼────┐    ┌─────▼─────┐    Kafka│
-      │ Redis   │    │ PostgreSQL│    ┌─────▼─────┐
-      │ :6379   │    │ :7002/:3  │    │ Kafka     │
-      └─────────┘    │ (Floci)   │    │ (futuro)  │
-                     └───────────┘    └───────────┘
+               ┌────────────┼────────────┐
+               │            │            │
+      ┌────────▼───┐ ┌──────▼──────┐ ┌──▼──────────┐
+      │ Identity   │ │ Core Domain │ │  AI Engine   │
+      │ :8081      │ │ :8082       │ │  :8083       │
+      │ Auth/Users │ │ Cases/Votes │ │  Automation  │
+      └─────┬──────┘ └──────┬──────┘ └──────┬──────┘
+            │               │               │
+       ┌────▼────┐    ┌─────▼─────┐    Kafka│
+       │ Redis   │    │ PostgreSQL│    ┌─────▼─────┐
+       │ :6379   │    │ :7002/:3  │    │ Kafka     │
+       └─────────┘    │ (Floci)   │    │ (futuro)  │
+                      └───────────┘    └───────────┘
 ```
 
 ### Servicios
@@ -45,42 +45,183 @@ Backend microservicios de **eTribunal** — Java 21 + Spring Boot 3.5 + Gradle m
 
 ## Requisitos
 
-- **JDK 21+** (Gradle auto-provisiona Temurin 21 vía Foojay si difiere)
-- **Docker Desktop** (para Floci y Redis local)
-- **PostgreSQL** via Floci (RDS emulator) — NO requiere instalación local
+| Herramienta | Versión | Enlace de instalación |
+|-------------|---------|----------------------|
+| **JDK 21+** | 21 LTS | Gradle auto-provisiona Temurin 21 vía Foojay si difiere — [Descargar manual](https://adoptium.net/temurin/releases/?version=21) |
+| **Docker Desktop** | 4.x+ | [Windows](https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe) / [macOS](https://desktop.docker.com/mac/main/amd64/Docker.dmg) / [Linux](https://docs.docker.com/engine/install/) |
+| **AWS CLI v2** | 2.x | [Windows](https://awscli.amazonaws.com/AWSCLIV2.msi) / [macOS](https://awscli.amazonaws.com/AWSCLIV2.pkg) / [Linux](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html) |
+| **PostgreSQL** | — | Via Floci (RDS emulator) — **NO** requiere instalación local |
+| **Gradle** | 9.7+ | Wrapper incluido (`./gradlew`) — no requiere instalación |
 
-## Quickstart
+> **Nota**: JDK 21 y Gradle se auto-gestionan vía el wrapper (`./gradlew`). Solo necesitas instalar **Docker Desktop** y **AWS CLI v2** manualmente.
 
+---
+
+## Primer arranque en desarrollo
+
+Esta guía cubre desde cero hasta tener los 4 servicios corriendo con health checks verdes.
+
+### Opción A: Modo Desarrollo (`bootRun`) — Recomendado para desarrollo rápido
+
+Hot reload, logs en consola, reinicio rápido.
+
+#### 1. Clonar e instalar
 ```bash
-# 1. Compilar todo
-./gradlew build
-
-# 2. Infra local
-docker compose up -d                    # Floci + Redis
-
-# 3. Levantar servicios (cada uno en terminal separada)
-./gradlew :services:identity-service:bootRun --args='--spring.profiles.active=local'
-./gradlew :services:core-domain-service:bootRun --args='--spring.profiles.active=local'
-./gradlew :services:gateway-service:bootRun --args='--spring.profiles.active=local'
-
-# 4. Verificar
-curl http://localhost:8080/actuator/health
+git clone https://github.com/28Emc/etribunal-platform.git
+cd etribunal-platform
+./gradlew build          # Compila todo + corre tests (primera vez)
 ```
 
-### Docker Compose (servicios Spring)
-
+#### 2. Levantar infraestructura (Floci + Redis)
 ```bash
-# Construir jars primero
-./gradlew bootJar
-
-# Levantar infra + 4 servicios
-docker compose --profile app up -d
-
-# Solo infra (Floci + Redis)
 docker compose up -d
 ```
+Esto levanta:
+- **Floci** (LocalStack): `:4566` (S3), `:7002` (identity DB proxy), `:7003` (core DB proxy)
+- **Redis**: `:6379` (password: `eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81`)
 
-### Correr tests
+> **Espera ~15-30s** a que Floci esté healthy: `docker compose logs -f floci`
+
+#### 3. Crear instancias RDS en Floci (solo primera vez)
+
+> **Requiere AWS CLI v2** — [Instalar](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) si no lo tienes.
+
+```bash
+# Identity DB
+aws --endpoint-url http://localhost:4566 rds create-db-instance \
+  --db-instance-identifier etribunal-identity-local \
+  --db-name etribunal_identity \
+  --master-username etribunal_user \
+  --master-user-password etribunal_pass \
+  --engine postgres \
+  --db-instance-class db.t3.micro \
+  --allocated-storage 20
+
+# Core DB
+aws --endpoint-url http://localhost:4566 rds create-db-instance \
+  --db-instance-identifier etribunal-core-local \
+  --db-name etribunal_core \
+  --master-username etribunal_user \
+  --master-user-password etribunal_pass \
+  --engine postgres \
+  --db-instance-class db.t3.micro \
+  --allocated-storage 20
+```
+
+> Las instancias tardan **~30-60s** en estar disponibles. Los puertos son **7002 (identity)** y **7003 (core)**. Verifica con:
+> ```bash
+> aws --endpoint-url http://localhost:4566 rds describe-db-instances
+> ```
+
+#### 4. Aplicar migraciones Flyway (solo primera vez / tras cambios de schema)
+```bash
+# Identity (puerto 7002)
+./gradlew :services:identity-service:flywayMigrate -Pprofile=local
+
+# Core Domain (puerto 7003)
+./gradlew :services:core-domain-service:flywayMigrate -Pprofile=local
+```
+> Usa el **wrapper de Gradle** (no requiere Flyway CLI instalado).
+
+#### 5. Levantar servicios (4 terminales separadas)
+
+```bash
+# Terminal 1: Gateway
+./gradlew :services:gateway-service:bootRun --args='--spring.profiles.active=local'
+
+# Terminal 2: Identity
+./gradlew :services:identity-service:bootRun --args='--spring.profiles.active=local'
+
+# Terminal 3: Core Domain
+./gradlew :services:core-domain-service:bootRun --args='--spring.profiles.active=local'
+
+# Terminal 4: AI Engine (opcional)
+./gradlew :services:ai-engine-service:bootRun --args='--spring.profiles.active=local'
+```
+
+---
+
+### Opción B: Modo Contenedor (`docker compose --profile app`) — Testing prod-like
+
+Hot reload **no** disponible. Imagen inmutable, misma config que staging/prod.
+
+#### 1-4. Mismos pasos 1-4 de arriba
+
+#### 5. Construir jars
+```bash
+./gradlew bootJar
+```
+
+#### 6. Levantar todo (infra + 4 servicios Spring)
+```bash
+docker compose --profile app up -d
+```
+
+#### Ver logs
+```bash
+docker compose logs -f gateway-service
+docker compose logs -f identity-service
+docker compose logs -f core-domain-service
+docker compose logs -f ai-engine-service
+```
+
+---
+
+### Verificación común
+
+```bash
+# Health checks
+curl http://localhost:8080/actuator/health                    # Gateway
+curl http://localhost:8081/api/actuator/health                # Identity
+curl http://localhost:8082/api/actuator/health                # Core Domain
+curl http://localhost:8083/actuator/health                    # AI Engine
+```
+
+**Respuesta esperada:** `{"status":"UP",...}`
+
+---
+
+### URLs útiles
+
+| Servicio | Swagger UI | Health |
+|----------|------------|--------|
+| Gateway | — | http://localhost:8080/actuator/health |
+| Identity | http://localhost:8081/api/swagger-ui.html | http://localhost:8081/api/actuator/health |
+| Core Domain | http://localhost:8082/api/swagger-ui.html | http://localhost:8082/api/actuator/health |
+| AI Engine | http://localhost:8083/swagger-ui.html | http://localhost:8083/actuator/health |
+
+---
+
+## Docker Compose (referencia rápida)
+
+```bash
+# Solo infra (Floci + Redis)
+docker compose up -d
+
+# Infra + 4 servicios Spring (requiere ./gradlew bootJar previo)
+docker compose --profile app up -d
+
+# Infra + Temporal (para AI Engine workflows)
+docker compose --profile temporal up -d
+
+# Ver estado
+docker compose ps
+
+# Logs
+docker compose logs -f <service-name>
+
+# Parar todo
+docker compose down
+```
+
+> **Prerequisito**: construir jars antes de levantar servicios Spring
+> ```bash
+> cd etribunal-platform && ./gradlew bootJar
+> ```
+
+---
+
+## Correr tests
 
 ```bash
 # Todos los tests (unit + integration)
@@ -93,7 +234,9 @@ docker compose up -d
 ./gradlew :tests:e2e:test -De2e.enabled=true
 ```
 
-### Swagger UI
+---
+
+## Swagger UI
 
 Disponible en cada servicio (deshabilitable vía `SPRINGDOC_SWAGGER_UI_ENABLED`):
 
@@ -102,6 +245,8 @@ Disponible en cada servicio (deshabilitable vía `SPRINGDOC_SWAGGER_UI_ENABLED`)
 | Identity | http://localhost:8081/api/swagger-ui.html |
 | Core Domain | http://localhost:8082/api/swagger-ui.html |
 | AI Engine | http://localhost:8083/swagger-ui.html |
+
+---
 
 ## Estructura del proyecto
 
@@ -132,6 +277,8 @@ etribunal-platform/
     └── DEPLOY.md                       # CI/CD, Docker, env vars
 ```
 
+---
+
 ## GitFlow
 
 - `main` → producción (tagged: v1.0.0, v1.1.0)
@@ -140,6 +287,8 @@ etribunal-platform/
 - `release/*` → preparación de release
 - `hotfix/*` → fixes urgentes
 
+---
+
 ## Documentación
 
 | Documento | Contenido |
@@ -147,7 +296,7 @@ etribunal-platform/
 | [API Reference](docs/API_REFERENCE.md) | Todos los endpoints por servicio |
 | [Architecture](docs/ARCHITECTURE.md) | Comunicación entre servicios, flujo de datos |
 | [Development](docs/DEVELOPMENT.md) | Setup local, debugging, Floci |
-| [Security](docs/SECURITY.md) | JWT, auth flow, internal tokens |
+| [Security](docs/SECURITY.md) | JWT, auth, rate limiting |
 | [Migration Strategy](docs/MIGRATION_STRATEGY.md) | Strangler Fig, shadow traffic, canary |
 | [Deploy](docs/DEPLOY.md) | CI/CD, Docker, variables de entorno |
 | [ADRs](docs/adr/) | Architecture Decision Records (001-009) |
