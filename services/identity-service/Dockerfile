@@ -9,4 +9,8 @@ COPY services/identity-service/build/libs/*.jar app.jar
 
 USER app
 EXPOSE 8081
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
+
+# Graceful shutdown (Spring Boot 3.2+)
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Dserver.shutdown=graceful -Dspring.lifecycle.timeout-per-shutdown-phase=30s"
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
