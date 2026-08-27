@@ -24,7 +24,7 @@ dependencies {
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(project(":libs:common-test"))
-    testRuntimeOnly("com.h2database:h2:2.2.224")
+    testRuntimeOnly("com.h2database:h2:2.4.240")
 }
 
 // Solo interesa el fat-jar ejecutable (bootJar) — evita *.jar ambiguo en el Dockerfile
