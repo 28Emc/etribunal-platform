@@ -1,0 +1,56 @@
+{
+  "profanity": [
+    "mierda", "joder", "cabrón", "cabron", "gilipollas", "gilipolla", "pendejo", "pendeja",
+    "puta", "puto", "putos", "putas", "putero", "putera", "prostituto", "prostituta",
+    "coño", "cono", "coños", "conos", "carajo", "carajos", "ostia", "ostias",
+    "fuck", "shit", "bitch", "bastard", "asshole", "motherfucker", "damn", "cunt",
+    "polla", "pollas", "verga", "vergas", "pene", "penes", "vagina", "vaginas",
+    "chupa", "chupar", "mamada", "mamadas", "follo", "follar", "follando",
+    "culero", "culera", "culeros", "culeras", "pendejada", "pendejadas"
+  ],
+  "harassment": [
+    "idiota", "idiotas", "estúpido", "estupido", "estupida", "estupidas", "estupidos",
+    "tonto", "tonta", "bobo", "boba", "imbécil", "imbecil", "mongol", "mongola",
+    "retrasado", "retrasada", "subnormal", "subnormales", "tarado", "tarada",
+    "inútil", "inutil", "basura", "escoria", "desgraciado", "desgraciada",
+    "apestas", "apestan", "asqueroso", "asquerosa", "repugnante", "repugnantes",
+    "mátate", "matate", "suicídate", "suicidate", "muerte", "muere", "muere ya",
+    "nadie te quiere", "nadie te quiere", "sobra", "sobras", "molesto", "molesta",
+    "fastidia", "fastidian", "insoportable", "insoportables"
+  ],
+  "hate": [
+    "nazi", "nazis", "hitler", "fascista", "fascistas", "racista", "racistas",
+    "xenófobo", "xenofobo", "homófobo", "homofobo", "transfóbico", "transfobico",
+    "maricón", "maricon", "marica", "maricas", "puto gay", "puta lesbiana",
+    "negro de mierda", "sudaca", "sudacas", "moro", "moros", "gitano", "gitanos",
+    "judío de mierda", "judios de mierda", "exterminar", "exterminio", "limpieza étnica",
+    "supremacía blanca", "supremacia blanca", "kkk", "terrorista", "terroristas",
+    "mata a", "matar a", "asesinar", "genocidio", "holocausto"
+  ],
+  "violence": [
+    "matar", "asesinar", "homicidio", "asesinato", "degollar", "apuñalar", "apunalar",
+    "disparar", "tiroteo", "bombardear", "explotar", "quemar vivo", "torturar",
+    "golpear", "agredir", "violación", "violar", "abuso sexual", "pedofilia",
+    "secuestrar", "secuestro", "amenaza de muerte", "amenazar con matar",
+    "cortar", "desmembrar", "descuartizar", "sangre", "cuerpo", "cadáver",
+    "arma", "pistola", "revólver", "cuchillo", "navaja", "explosivo", "bomba"
+  ],
+  "sexual": [
+    "porno", "pornografía", "pornografia", "xxx", "sexo explícito", "desnudo",
+    "desnudos", "desnuda", "desnudas", "genitales", "órgamos sexuales",
+    "masturbación", "masturbacion", "orgía", "orgia", "trío sexual", "trio sexual",
+    "fetichismo", "bdsm", "sadomasoquismo", "violación", "abuso", "menores",
+    "pedofilia", "pederastia", "incesto", "bestialidad", "zoofilia"
+  ],
+  "spam": [
+    "gana dinero", "dinero fácil", "dinero facil", "rico rápido", "rico rapido",
+    "trabajo desde casa", "inversión segura", "inversion segura", "bitcoin",
+    "criptomoneda", "crypto", "trading", "forex", "casino", "apuestas",
+    "haz clic aquí", "haz click aqui", "click aqui", "clic aquí",
+    "suscríbete", "suscribete", "compra ahora", "oferta limitada",
+    "gratis", "gratis para siempre", "sin costo", "promoción", "promocion",
+    "descuento", "rebaja", "liquidación", "liquidacion", "envío gratis", "envio gratis",
+    "visita mi", "visita nuestro", "mi web", "mi sitio", "mi página", "mi pagina",
+    "link en bio", "enlace en bio", "swipe up", "arrastra arriba"
+  ]
+}

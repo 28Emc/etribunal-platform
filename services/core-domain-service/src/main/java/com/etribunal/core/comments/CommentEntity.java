@@ -123,4 +123,20 @@ public class CommentEntity {
     public Instant getUpdatedAt() {
         return updatedAt;
     }
+
+    public ModerationStatus getModerationStatus() {
+        return moderationStatus;
+    }
+
+    public void setModerationStatus(ModerationStatus moderationStatus) {
+        this.moderationStatus = moderationStatus;
+    }
+
+    public Double getRiskScore() {
+        return riskScore;
+    }
+
+    public void setRiskScore(Double riskScore) {
+        this.riskScore = riskScore;
+    }
 }
