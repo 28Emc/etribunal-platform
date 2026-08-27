@@ -103,9 +103,19 @@ docker logs -f floci-shared
 ```
 
 #### 3. Crear instancias RDS en Floci (para este proyecto)
+
+> **Nota**: AWS CLI requiere `--region` aunque sea Floci. Usa `us-east-1` (cualquier región válida funciona).
+>
+> **Tip**: Para no repetir `--region us-east-1` en cada comando, configúralo una vez:
+> ```bash
+> export AWS_DEFAULT_REGION=us-east-1
+> # o permanentemente:
+> aws configure set default.region us-east-1
+> ```
+
 ```bash
 # Identity DB (puerto 7002)
-aws --endpoint-url http://localhost:4566 rds create-db-instance \
+aws --endpoint-url http://localhost:4566 --region us-east-1 rds create-db-instance \
   --db-instance-identifier etribunal-identity-local \
   --db-name etribunal_identity \
   --master-username etribunal_user \
@@ -115,7 +125,7 @@ aws --endpoint-url http://localhost:4566 rds create-db-instance \
   --allocated-storage 20
 
 # Core DB (puerto 7003)
-aws --endpoint-url http://localhost:4566 rds create-db-instance \
+aws --endpoint-url http://localhost:4566 --region us-east-1 rds create-db-instance \
   --db-instance-identifier etribunal-core-local \
   --db-name etribunal_core \
   --master-username etribunal_user \
@@ -127,7 +137,7 @@ aws --endpoint-url http://localhost:4566 rds create-db-instance \
 
 > **Nota**: Las instancias tardan ~30-60s. Verifica con:
 > ```bash
-> aws --endpoint-url http://localhost:4566 rds describe-db-instances
+> aws --endpoint-url http://localhost:4566 --region us-east-1 rds describe-db-instances
 > ```
 
 #### 4. Aplicar migraciones Flyway (solo primera vez / tras cambios de schema)
