@@ -28,7 +28,7 @@ Backend microservicios de **eTribunal** — Java 21 + Spring Boot 3.5 + Gradle m
 ### Servicios
 
 | Servicio | Puerto | Base de datos | Responsabilidad |
-|----------|--------|---------------|-----------------|
+| ---------- | -------- | --------------- | ----------------- |
 | `gateway-service` | 8080 | Redis (sessions) | API edge, JWT validation, routing, migration filters |
 | `identity-service` | 8081 | PostgreSQL (`etribunal_identity`) | Auth local, users, follows |
 | `core-domain-service` | 8082 | PostgreSQL (`etribunal_core`) | Cases, votes, comments, reactions, media |
@@ -37,7 +37,7 @@ Backend microservicios de **eTribunal** — Java 21 + Spring Boot 3.5 + Gradle m
 ### Libs compartidas
 
 | Lib | Contenido |
-|-----|-----------|
+| ----- | ----------- |
 | `common-domain` | DTOs, eventos de dominio, excepciones, enums |
 | `common-security` | JWT token provider (Nimbus JOSE) |
 | `common-kafka` | Topic constants, serialización JSON |
@@ -46,7 +46,7 @@ Backend microservicios de **eTribunal** — Java 21 + Spring Boot 3.5 + Gradle m
 ## Requisitos
 
 | Herramienta | Versión | Enlace de instalación |
-|-------------|---------|----------------------|
+| ------------- | --------- | ---------------------- |
 | **JDK 21+** | 21 LTS | Gradle auto-provisiona Temurin 21 vía Foojay si difiere — [Descargar manual](https://adoptium.net/temurin/releases/?version=21) |
 | **Docker Desktop** | 4.x+ | [Windows](https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe) / [macOS](https://desktop.docker.com/mac/main/amd64/Docker.dmg) / [Linux](https://docs.docker.com/engine/install/) |
 | **AWS CLI v2** | 2.x | [Windows](https://awscli.amazonaws.com/AWSCLIV2.msi) / [macOS](https://awscli.amazonaws.com/AWSCLIV2.pkg) / [Linux](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html) |
@@ -66,11 +66,20 @@ Esta guía cubre desde cero hasta tener los 4 servicios corriendo con health che
 >
 > **Variable de control**: `FLOCI_MODE` — `EXTERNAL` (default, Floci externo) | `DOCKER` (Floci en docker-compose profile `floci-local`).
 
-### Instalación y configuración de Floci (solo primera vez)
+### Paso 0: Clonar e instalar (aplica a ambos modos)
+
+```bash
+git clone https://github.com/28Emc/etribunal-platform.git
+cd etribunal-platform
+./gradlew build          # Compila todo + corre tests (primera vez)
+```
+
+### Instalación y configuración de Floci (solo primera vez — modo EXTERNAL)
 
 Floci emula servicios AWS localmente (RDS, S3, Lambda, etc.). Se ejecuta **una sola instancia compartida** para todos tus proyectos.
 
 #### 1. Instalar Floci
+
 ```bash
 # Opción A: Docker (recomendado)
 docker pull floci/floci:latest
@@ -97,6 +106,7 @@ docker compose -f docker-compose.floci.yml up -d
 ```
 
 #### 2. Verificar que Floci está healthy
+
 ```bash
 docker logs -f floci-shared
 # Esperar hasta ver: "Ready." o healthcheck passing
@@ -107,6 +117,7 @@ docker logs -f floci-shared
 > **Nota**: AWS CLI requiere `--region` aunque sea Floci. Usa `us-east-1` (cualquier región válida funciona).
 >
 > **Tip**: Para no repetir `--region us-east-1` en cada comando, configúralo una vez:
+>
 > ```bash
 > export AWS_DEFAULT_REGION=us-east-1
 > # o permanentemente:
@@ -114,6 +125,7 @@ docker logs -f floci-shared
 > ```
 >
 > **Credenciales dummy**: Floci no requiere credenciales reales, pero AWS CLI las exige. Configura credenciales dummy:
+>
 > ```bash
 > export AWS_ACCESS_KEY_ID=test
 > export AWS_SECRET_ACCESS_KEY=test
@@ -125,11 +137,13 @@ docker logs -f floci-shared
 > ```
 
 > **Nota**: Las instancias tardan ~30-60s. Verifica con:
+>
 > ```bash
 > aws --endpoint-url http://localhost:4566 rds describe-db-instances
 > ```
 
 #### 4. Aplicar migraciones Flyway (solo primera vez / tras cambios de schema)
+
 ```bash
 ./gradlew :services:identity-service:flywayMigrate -Pprofile=local
 ./gradlew :services:core-domain-service:flywayMigrate -Pprofile=local
@@ -164,6 +178,7 @@ docker start floci-shared   # o docker compose -f docker-compose.floci.yml up -d
 ```
 
 > **Variables de entorno** (opcional, si tus puertos difieren):
+>
 > ```bash
 > export FLOCI_MODE=EXTERNAL
 > export FLOCI_HOST=localhost
@@ -178,12 +193,15 @@ docker start floci-shared   # o docker compose -f docker-compose.floci.yml up -d
 Incluye Floci en docker-compose del proyecto. Útil si no quieres configurar Floci aparte.
 
 ```bash
-# 1-4. Mismos pasos 1-4 de arriba (pero Floci se levanta con docker-compose)
+# 1. Clonar e instalar
+git clone https://github.com/28Emc/etribunal-platform.git
+cd etribunal-platform
+./gradlew build          # Compila todo + corre tests (primera vez)
 
-# 5. Construir jars
+# 2. Construir jars
 ./gradlew bootJar
 
-# 6. Levantar todo (infra + Floci + 4 servicios Spring)
+# 3. Levantar todo (infra + Floci + 4 servicios Spring)
 FLOCI_MODE=docker docker compose --profile app --profile floci-local up -d
 
 # Ver logs
@@ -194,6 +212,10 @@ docker compose logs -f ai-engine-service
 ```
 
 > **Nota**: Este modo levanta un Floci **temporal** solo para este proyecto (profile `floci-local`). Los datos no persisten entre `docker compose down`.
+```
+
+> **Nota**: Este modo levanta un Floci **temporal** solo para este proyecto (profile `floci-local`). Los datos no persisten entre `docker compose down`.
+
 ```
 
 ---
@@ -215,11 +237,11 @@ curl http://localhost:8083/actuator/health                    # AI Engine
 ### URLs útiles
 
 | Servicio | Swagger UI | Health |
-|----------|------------|--------|
-| Gateway | — | http://localhost:8080/actuator/health |
-| Identity | http://localhost:8081/api/swagger-ui.html | http://localhost:8081/api/actuator/health |
-| Core Domain | http://localhost:8082/api/swagger-ui.html | http://localhost:8082/api/actuator/health |
-| AI Engine | http://localhost:8083/swagger-ui.html | http://localhost:8083/actuator/health |
+| ---------- | ------------ | -------- |
+| Gateway | — | <http://localhost:8080/actuator/health> |
+| Identity | <http://localhost:8081/api/swagger-ui.html> | <http://localhost:8081/api/actuator/health> |
+| Core Domain | <http://localhost:8082/api/swagger-ui.html> | <http://localhost:8082/api/actuator/health> |
+| AI Engine | <http://localhost:8083/swagger-ui.html> | <http://localhost:8083/actuator/health> |
 
 ---
 
@@ -252,6 +274,7 @@ docker compose down
 ```
 
 > **Prerequisito**: construir jars antes de levantar servicios Spring
+>
 > ```bash
 > cd etribunal-platform && ./gradlew bootJar
 > ```
@@ -278,10 +301,10 @@ docker compose down
 Disponible en cada servicio (deshabilitable vía `SPRINGDOC_SWAGGER_UI_ENABLED`):
 
 | Servicio | URL |
-|----------|-----|
-| Identity | http://localhost:8081/api/swagger-ui.html |
-| Core Domain | http://localhost:8082/api/swagger-ui.html |
-| AI Engine | http://localhost:8083/swagger-ui.html |
+| ---------- | ----- |
+| Identity | <http://localhost:8081/api/swagger-ui.html> |
+| Core Domain | <http://localhost:8082/api/swagger-ui.html> |
+| AI Engine | <http://localhost:8083/swagger-ui.html> |
 
 ---
 
@@ -329,7 +352,7 @@ etribunal-platform/
 ## Documentación
 
 | Documento | Contenido |
-|-----------|-----------|
+| ----------- | ----------- |
 | [API Reference](docs/API_REFERENCE.md) | Todos los endpoints por servicio |
 | [Architecture](docs/ARCHITECTURE.md) | Comunicación entre servicios, flujo de datos |
 | [Development](docs/DEVELOPMENT.md) | Setup local, debugging, Floci |
