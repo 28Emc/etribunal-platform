@@ -206,6 +206,49 @@ public class AutomationOrchestrator {
         }
     }
 
+    @Transactional
+    public Optional<Map<String, Object>> getRunStatus(String runId) {
+        try {
+            UUID id = UUID.fromString(runId);
+            return runRepository.findById(id).map(run -> {
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("id", run.getId().toString());
+                result.put("status", run.getStatus().name());
+                result.put("dryRun", run.isDryRun());
+                result.put("casesRequested", run.getCasesRequested());
+                result.put("casesCreated", run.getCasesCreated());
+                result.put("casesFailed", run.getCasesFailed());
+                result.put("startedAt", run.getStartedAt() != null ? run.getStartedAt().toString() : null);
+                result.put("finishedAt", run.getFinishedAt() != null ? run.getFinishedAt().toString() : null);
+                result.put("errorMessage", run.getErrorMessage());
+                return result;
+            });
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getQueueStatus() {
+        Instant dayStart = Instant.now().atZone(java.time.ZoneId.systemDefault())
+                .toLocalDate().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+
+        long scheduled = interactionRepository.countByStatusAndScheduledAtLessThanEqual(
+                AutomationInteractionStatus.SCHEDULED, Instant.now());
+        long processing = interactionRepository.countByStatus(AutomationInteractionStatus.PROCESSING);
+        long completed = interactionRepository.countByStatusAndExecutedAtGreaterThanEqual(
+                AutomationInteractionStatus.SUCCESS, dayStart);
+        long failed = interactionRepository.countByStatusAndExecutedAtGreaterThanEqual(
+                AutomationInteractionStatus.FAILED, dayStart);
+
+        return Map.of(
+                "scheduled", scheduled,
+                "processing", processing,
+                "completedToday", completed,
+                "failedToday", failed
+        );
+    }
+
     private List<String> getRecentTopics() {
         try {
             return jdbcTemplate.queryForList(
