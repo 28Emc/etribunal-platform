@@ -13,6 +13,7 @@ import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
 import com.etribunal.core.cases.CaseType;
+import com.etribunal.core.notifications.NotificationService;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +32,9 @@ class VotesServiceTest {
     @Mock
     private CaseRepository caseRepository;
 
+    @Mock
+    private NotificationService notificationService;
+
     private VotesService votesService;
 
     private final UUID caseId = UUID.randomUUID();
@@ -39,7 +43,7 @@ class VotesServiceTest {
 
     @BeforeEach
     void setUp() {
-        votesService = new VotesService(voteRepository, caseRepository);
+        votesService = new VotesService(voteRepository, caseRepository, notificationService);
         lenient().when(caseRepository.findById(caseId))
                 .thenReturn(Optional.of(publicCase()));
     }
@@ -186,6 +190,14 @@ class VotesServiceTest {
         entity.setVotesB(b);
         entity.setVotesBothWrong(both);
         entity.setTotalVotes(a + b + both);
+        // Set ID via reflection for testing
+        try {
+            var field = CaseEntity.class.getDeclaredField("id");
+            field.setAccessible(true);
+            field.set(entity, caseId);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
         return entity;
     }
 }

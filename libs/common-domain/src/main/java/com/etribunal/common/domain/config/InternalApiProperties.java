@@ -1,11 +1,11 @@
-package com.etribunal.core.config;
+package com.etribunal.common.domain.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Credenciales para llamadas internas service-to-service (identity-service).
+ * Credenciales para llamadas internas service-to-service.
  * Compartidas vía variable de entorno INTERNAL_API_KEY en ambos servicios.
  */
 @ConfigurationProperties(prefix = "etribunal.internal")
-public record InternalApiProperties(String identityBaseUrl, String token) {
+public record InternalApiProperties(String identityBaseUrl, String coreBaseUrl, String token) {
 }

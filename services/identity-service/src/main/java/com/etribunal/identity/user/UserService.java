@@ -3,9 +3,11 @@ package com.etribunal.identity.user;
 import com.etribunal.common.domain.exception.BadRequestException;
 import com.etribunal.common.domain.exception.ConflictException;
 import com.etribunal.common.domain.exception.NotFoundException;
+import com.etribunal.common.domain.notification.NotificationType;
 import com.etribunal.identity.follow.FollowEntity;
 import com.etribunal.identity.follow.FollowId;
 import com.etribunal.identity.follow.FollowRepository;
+import com.etribunal.identity.notifications.InternalNotificationsClient;
 import com.etribunal.identity.user.dto.UpdateProfileRequest;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -25,10 +27,14 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final FollowRepository followRepository;
+    private final InternalNotificationsClient notificationsClient;
 
-    public UserService(UserRepository userRepository, FollowRepository followRepository) {
+    public UserService(UserRepository userRepository,
+                       FollowRepository followRepository,
+                       InternalNotificationsClient notificationsClient) {
         this.userRepository = userRepository;
         this.followRepository = followRepository;
+        this.notificationsClient = notificationsClient;
     }
 
     @Transactional(readOnly = true)
@@ -106,6 +112,15 @@ public class UserService {
             return Map.of("following", false);
         }
         followRepository.save(new FollowEntity(follower, target));
+
+        // Notify target user about new follower
+        notificationsClient.createNotification(
+                target.getId(),
+                followerId,
+                NotificationType.NEW_FOLLOWER,
+                Map.of("follower_id", followerId.toString(),
+                       "follower_username", follower.getUsername()));
+
         return Map.of("following", true);
     }
 

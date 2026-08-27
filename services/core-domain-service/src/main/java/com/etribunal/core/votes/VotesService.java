@@ -3,7 +3,10 @@ package com.etribunal.core.votes;
 import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
+import com.etribunal.core.notifications.NotificationService;
+import com.etribunal.common.domain.notification.NotificationType;
 import com.etribunal.core.votes.dto.VoteResponse;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -15,10 +18,14 @@ public class VotesService {
 
     private final VoteRepository voteRepository;
     private final CaseRepository caseRepository;
+    private final NotificationService notificationService;
 
-    public VotesService(VoteRepository voteRepository, CaseRepository caseRepository) {
+    public VotesService(VoteRepository voteRepository,
+                        CaseRepository caseRepository,
+                        NotificationService notificationService) {
         this.voteRepository = voteRepository;
         this.caseRepository = caseRepository;
+        this.notificationService = notificationService;
     }
 
     /**
@@ -36,8 +43,10 @@ public class VotesService {
 
         var existing = voteRepository.findByCaseIdAndUserId(caseId, userId);
 
+        boolean isNewVote = existing.isEmpty();
+        VoteType previous = existing.map(CaseVoteEntity::getVoteType).orElse(null);
+
         if (existing.isPresent()) {
-            VoteType previous = existing.get().getVoteType();
             if (previous == voteType) {
                 voteRepository.delete(existing.get());
                 applyDeltas(caseId, voteType, -1);
@@ -55,6 +64,11 @@ public class VotesService {
         vote.setVoteType(voteType);
         voteRepository.save(vote);
         applyDeltas(caseId, voteType, +1);
+
+        // Notify case author and Side B (if exists) about new vote
+        if (isNewVote) {
+            notifyNewVote(entity, userId, voteType);
+        }
 
         return respond(caseId, voteType);
     }
@@ -116,5 +130,25 @@ public class VotesService {
                 fresh.getVotesA(),
                 fresh.getVotesB(),
                 fresh.getVotesBothWrong());
+    }
+
+    private void notifyNewVote(CaseEntity entity, UUID voterId, VoteType voteType) {
+        UUID sideAId = entity.getSideAUserId();
+        UUID sideBId = entity.getSideBUserId();
+
+        Map<String, Object> payload = Map.of(
+                "case_id", entity.getId().toString(),
+                "vote_type", voteType.name(),
+                "actor_id", voterId.toString());
+
+        // Notify Side A (author)
+        if (!sideAId.equals(voterId)) {
+            notificationService.createNotification(sideAId, voterId, NotificationType.NEW_VOTE, payload);
+        }
+
+        // Notify Side B if exists and not the voter
+        if (sideBId != null && !sideBId.equals(voterId)) {
+            notificationService.createNotification(sideBId, voterId, NotificationType.NEW_VOTE, payload);
+        }
     }
 }

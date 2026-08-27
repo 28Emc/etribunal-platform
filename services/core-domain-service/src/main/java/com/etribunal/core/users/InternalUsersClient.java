@@ -1,6 +1,6 @@
 package com.etribunal.core.users;
 
-import com.etribunal.core.config.InternalApiProperties;
+import com.etribunal.common.domain.config.InternalApiProperties;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;

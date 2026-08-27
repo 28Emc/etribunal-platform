@@ -1,4 +1,4 @@
-package com.etribunal.core.notifications;
+package com.etribunal.common.domain.notification;
 
 public enum NotificationType {
     NEW_COMMENT,

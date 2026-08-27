@@ -5,7 +5,7 @@ import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
 import com.etribunal.core.cases.ModerationStatus;
 import com.etribunal.core.notifications.NotificationService;
-import com.etribunal.core.notifications.NotificationType;
+import com.etribunal.common.domain.notification.NotificationType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;

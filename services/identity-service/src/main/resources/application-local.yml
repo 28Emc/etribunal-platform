@@ -37,7 +37,10 @@ etribunal:
     issuer: etribunal
     access-ttl: PT15M
     refresh-ttl: P7D
-  internal-token: ${INTERNAL_API_KEY:dev-only-internal-token-1234} # igual que core-domain
+  internal:
+    identity-base-url: ${IDENTITY_BASE_URL:http://localhost:8081/api}
+    core-base-url: ${CORE_BASE_URL:http://localhost:8082/api}
+    token: ${INTERNAL_API_KEY:dev-only-internal-token-1234} # igual que core-domain
 
 management:
   health:

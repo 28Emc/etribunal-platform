@@ -14,6 +14,7 @@ import com.etribunal.common.domain.exception.NotFoundException;
 import com.etribunal.identity.follow.FollowEntity;
 import com.etribunal.identity.follow.FollowId;
 import com.etribunal.identity.follow.FollowRepository;
+import com.etribunal.identity.notifications.InternalNotificationsClient;
 import com.etribunal.identity.user.dto.UpdateProfileRequest;
 import java.util.List;
 import java.util.Optional;
@@ -33,6 +34,9 @@ class UserServiceTest {
     @Mock
     FollowRepository followRepository;
 
+    @Mock
+    InternalNotificationsClient notificationsClient;
+
     UserService userService;
 
     UserEntity userA;
@@ -40,7 +44,7 @@ class UserServiceTest {
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository, followRepository);
+        userService = new UserService(userRepository, followRepository, notificationsClient);
 
         userA = user("ana_t", "ana@test.com", false);
         userB = user("beto_j", "beto@test.com", false);

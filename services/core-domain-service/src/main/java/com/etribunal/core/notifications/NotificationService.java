@@ -1,5 +1,6 @@
 package com.etribunal.core.notifications;
 
+import com.etribunal.common.domain.notification.NotificationType;
 import com.etribunal.core.users.InternalUsersClient;
 import com.etribunal.core.users.UserSummary;
 import com.fasterxml.jackson.databind.JsonNode;
