@@ -15,6 +15,7 @@ dependencies {
     implementation(libs.spring.kafka)
     implementation(libs.flyway.core)
     implementation(libs.flyway.database.postgresql)
+    implementation(libs.aws.s3)
 
     runtimeOnly(libs.postgresql)
 
