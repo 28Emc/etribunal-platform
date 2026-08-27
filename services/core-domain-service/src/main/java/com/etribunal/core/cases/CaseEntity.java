@@ -318,6 +318,10 @@ public class CaseEntity {
         return riskScore;
     }
 
+    public void setRiskScore(Double riskScore) {
+        this.riskScore = riskScore;
+    }
+
     public ReportStatus getReportStatus() {
         return reportStatus;
     }

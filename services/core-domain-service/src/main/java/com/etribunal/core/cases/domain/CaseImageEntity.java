@@ -1,5 +1,6 @@
 package com.etribunal.core.cases.domain;
 
+import com.etribunal.core.cases.ModerationStatus;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
@@ -42,8 +43,9 @@ public class CaseImageEntity {
     @Column(name = "order_index", nullable = false)
     private Integer orderIndex = 0;
 
-    @Column(name = "moderation_status", nullable = false, length = 10)
-    private String moderationStatus = "PENDING";
+    @Enumerated(EnumType.STRING)
+    @Column(name = "moderation_status", nullable = false, columnDefinition = "varchar(10)")
+    private ModerationStatus moderationStatus = ModerationStatus.PENDING;
 
     @Column(name = "risk_score")
     private Double riskScore;
@@ -78,8 +80,8 @@ public class CaseImageEntity {
     public void setHeight(Integer height) { this.height = height; }
     public Integer getOrderIndex() { return orderIndex; }
     public void setOrderIndex(Integer orderIndex) { this.orderIndex = orderIndex; }
-    public String getModerationStatus() { return moderationStatus; }
-    public void setModerationStatus(String moderationStatus) { this.moderationStatus = moderationStatus; }
+    public ModerationStatus getModerationStatus() { return moderationStatus; }
+    public void setModerationStatus(ModerationStatus moderationStatus) { this.moderationStatus = moderationStatus; }
     public Double getRiskScore() { return riskScore; }
     public void setRiskScore(Double riskScore) { this.riskScore = riskScore; }
     public Instant getCreatedAt() { return createdAt; }
