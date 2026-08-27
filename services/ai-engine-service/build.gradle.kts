@@ -5,7 +5,7 @@ plugins {
 
 dependencyManagement {
     imports {
-        mavenBom("org.springframework.ai:spring-ai-bom:1.1.8")
+        mavenBom("org.springframework.ai:spring-ai-bom:2.0.1")
     }
 }
 
