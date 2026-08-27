@@ -32,6 +32,17 @@ Esto levanta:
 
 ### 3. Crear instancias RDS en Floci
 
+> **Credenciales dummy**: Floci no requiere credenciales reales, pero AWS CLI las exige. Configura credenciales dummy:
+> ```bash
+> export AWS_ACCESS_KEY_ID=test
+> export AWS_SECRET_ACCESS_KEY=test
+> export AWS_DEFAULT_REGION=us-east-1
+> # O permanentemente:
+> aws configure set aws_access_key_id test
+> aws configure set aws_secret_access_key test
+> aws configure set default.region us-east-1
+> ```
+
 ```bash
 # Identity DB
 aws --endpoint-url http://localhost:4566 rds create-db-instance \

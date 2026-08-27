@@ -112,32 +112,21 @@ docker logs -f floci-shared
 > # o permanentemente:
 > aws configure set default.region us-east-1
 > ```
-
-```bash
-# Identity DB (puerto 7002)
-aws --endpoint-url http://localhost:4566 --region us-east-1 rds create-db-instance \
-  --db-instance-identifier etribunal-identity-local \
-  --db-name etribunal_identity \
-  --master-username etribunal_user \
-  --master-user-password etribunal_pass \
-  --engine postgres \
-  --db-instance-class db.t3.micro \
-  --allocated-storage 20
-
-# Core DB (puerto 7003)
-aws --endpoint-url http://localhost:4566 --region us-east-1 rds create-db-instance \
-  --db-instance-identifier etribunal-core-local \
-  --db-name etribunal_core \
-  --master-username etribunal_user \
-  --master-user-password etribunal_pass \
-  --engine postgres \
-  --db-instance-class db.t3.micro \
-  --allocated-storage 20
-```
+>
+> **Credenciales dummy**: Floci no requiere credenciales reales, pero AWS CLI las exige. Configura credenciales dummy:
+> ```bash
+> export AWS_ACCESS_KEY_ID=test
+> export AWS_SECRET_ACCESS_KEY=test
+> export AWS_DEFAULT_REGION=us-east-1
+> # O permanentemente:
+> aws configure set aws_access_key_id test
+> aws configure set aws_secret_access_key test
+> aws configure set default.region us-east-1
+> ```
 
 > **Nota**: Las instancias tardan ~30-60s. Verifica con:
 > ```bash
-> aws --endpoint-url http://localhost:4566 --region us-east-1 rds describe-db-instances
+> aws --endpoint-url http://localhost:4566 rds describe-db-instances
 > ```
 
 #### 4. Aplicar migraciones Flyway (solo primera vez / tras cambios de schema)
