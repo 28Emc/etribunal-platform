@@ -2,7 +2,7 @@
 
 ## Visión general
 
-eTribunal migra desde un monolito NestJS legacy (**Veridixo**) hacia microservicios Spring Boot usando el patrón **Strangler Fig**. La migración es gradual, reversible, y no interrumpe el servicio.
+eTribunal migra desde un monolito NestJS existente (proyecto en veredixo.com) hacia microservicios Spring Boot usando el patrón **Strangler Fig**. La migración es gradual, reversible, y no interrumpe el servicio.
 
 ```
                     Fase 0-4                    Fase 5-6                  Producción

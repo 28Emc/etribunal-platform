@@ -2,7 +2,7 @@
 
 ## Visión general
 
-eTribunal es una plataforma de debate y votación construida como microservicios con Spring Boot 3.5. La arquitectura sigue el patrón **Strangler Fig** para migrar progresivamente desde un monolito NestJS legacy.
+eTribunal es una plataforma de debate y votación construida como microservicios con Spring Boot 3.5. La arquitectura sigue el patrón **Strangler Fig** para migrar progresivamente desde el proyecto existente en veredixo.com.
 
 ## Diagrama de componentes
 

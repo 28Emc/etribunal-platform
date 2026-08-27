@@ -24,7 +24,6 @@ standalone del host (`:6379`, con `requirepass`); Kafka se difiere a Fase 1.
 
 | Identificador | DB | Puerto | Usuario |
 |---|---|---|---|
-| `app-veredixo` (legacy) | veredixo_db | 7001 | veredixo_user |
 | `etribunal-identity-local` | etribunal_identity | 7002 | etribunal_user |
 | `etribunal-core-local` | etribunal_core | 7003 | etribunal_user |
 

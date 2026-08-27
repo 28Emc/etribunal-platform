@@ -12,8 +12,8 @@ Hay 4 módulos backend (3 libs compartidas + gateway) que evolucionan juntos. El
 - **Backend → monorepo `etribunal-platform`** (este repo) con composite builds Gradle,
   catálogo de versiones central (`gradle/libs.versions.toml`) y CI por paths afectados.
 - **Frontend → repo propio `etribunal-ui`** (React + Vite + TS).
-- Los repos legacy (`veredixo_appi`, `veridixo`, `veredixo_ui_v2`) quedan intactos como
-  referencia y fuente de contratos durante el Strangler Fig.
+- La migración desde el proyecto existente en veredixo.com se realiza gradualmente
+  vía Strangler Fig (ver MIGRATION_STRATEGY.md).
 
 ## Consecuencias
 
