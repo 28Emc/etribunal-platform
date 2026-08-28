@@ -136,6 +136,19 @@ docker logs -f floci-shared
 > aws configure set default.region us-east-1
 > ```
 
+> **Importante**: Si las instancias ya existen (ej. `DBInstanceAlreadyExists`), elimínalas primero o salta este paso:
+> ```bash
+> # Eliminar si existen (opcional, solo si quieres recrear)
+> aws --endpoint-url http://localhost:4566 rds delete-db-instance \
+>   --db-instance-identifier etribunal-identity-local \
+>   --skip-final-snapshot
+> 
+> aws --endpoint-url http://localhost:4566 rds delete-db-instance \
+>   --db-instance-identifier etribunal-core-local \
+>   --skip-final-snapshot
+> # Esperar a que se eliminen antes de volver a crear
+> ```
+
 ```bash
 # Identity DB (puerto 7002)
 aws --endpoint-url http://localhost:4566 rds create-db-instance \
@@ -173,6 +186,11 @@ aws --endpoint-url http://localhost:4566 rds create-db-instance \
 > **Esto solo se hace una vez**. En arranques posteriores, Flyway detecta migraciones ya aplicadas y no hace nada.
 
 #### 6. Crear bucket S3 para media (solo primera vez)
+
+> **Nota**: Si el bucket ya existe (`BucketAlreadyOwnedByYou`), ignora el error o elimínalo primero:
+> ```bash
+> aws --endpoint-url http://localhost:4566 s3 rb s3://etribunal-media --force
+> ```
 
 ```bash
 aws --endpoint-url http://localhost:4566 s3 mb s3://etribunal-media
