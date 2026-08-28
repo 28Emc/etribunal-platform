@@ -35,6 +35,11 @@ etribunal:
       - /api/users/*
       - /api/users/*/followers
       - /api/users/*/following
+      # Búsqueda unificada (dropdown/advanced) permite usuarios anónimos (auth opcional)
+      - /api/search/quick
+      - /api/search/advanced
+      # Analytics admin: protegido por SysadminApiKeyGuard en core (X-Sysadmin-Api-Key), sin JWT edge
+      - /api/analytics/**
   migration:
     enabled: ${MIGRATION_ENABLED:false}
     nestjs-url: ${NESTJS_URL:http://localhost:3001/api}
@@ -72,6 +77,14 @@ spring:
   cloud:
     gateway:
       routes:
+        - id: core-domain-users-me-votes
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/users/me/votes
+        - id: core-domain-analytics
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/analytics/**
         - id: identity
           uri: http://localhost:8081
           predicates:

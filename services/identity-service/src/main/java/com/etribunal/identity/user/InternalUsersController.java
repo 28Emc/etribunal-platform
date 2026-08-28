@@ -25,14 +25,37 @@ public class InternalUsersController {
 
     private final UserRepository userRepository;
     private final FollowRepository followRepository;
+    private final UserService userService;
     private final byte[] internalTokenHash;
 
     public InternalUsersController(UserRepository userRepository,
                                    FollowRepository followRepository,
+                                   UserService userService,
                                    @Value("${etribunal.internal.token}") String internalToken) {
         this.userRepository = userRepository;
         this.followRepository = followRepository;
+        this.userService = userService;
         this.internalTokenHash = sha256(internalToken);
+    }
+
+    @GetMapping("/search")
+    public List<Map<String, Object>> search(
+            @RequestHeader("X-Internal-Token") String token,
+            @RequestParam("q") String q,
+            @RequestParam(name = "take", defaultValue = "8") int take,
+            @RequestParam(name = "skip", defaultValue = "0") int skip,
+            @RequestHeader(name = "X-User-Id", required = false) String requesterIdHeader) {
+        guard(token);
+
+        UUID requesterId = null;
+        if (requesterIdHeader != null && !requesterIdHeader.isBlank()) {
+            try {
+                requesterId = UUID.fromString(requesterIdHeader);
+            } catch (IllegalArgumentException ignored) {
+                // header inválido → tratar como anónimo
+            }
+        }
+        return userService.searchUsers(q, requesterId, take, skip);
     }
 
     @GetMapping("/summaries")

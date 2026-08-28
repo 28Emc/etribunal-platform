@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
 import com.etribunal.core.cases.dto.RespondSideBRequest;
+import com.etribunal.core.analytics.AnalyticsService;
 import com.etribunal.core.config.FrontendUrlProperties;
 import com.etribunal.core.moderation.ModerationService;
 import com.etribunal.core.reactions.ReactionRepository;
@@ -62,6 +63,9 @@ class CaseServiceTest {
     @Mock
     private ModerationService moderationService;
 
+    @Mock
+    private AnalyticsService analyticsService;
+
     private CaseService caseService;
 
     private final UUID authorId = UUID.randomUUID();
@@ -72,7 +76,7 @@ class CaseServiceTest {
         caseService = new CaseService(caseRepository, usersClient, currentUserResolver,
                 new FrontendUrlProperties("http://localhost:3000/"),
                 savedCaseRepository, caseShareRepository, voteRepository, reactionRepository,
-                moderationService);
+                moderationService, analyticsService);
         lenient().when(currentUserResolver.currentUserId(request))
                 .thenReturn(Optional.of(authorId));
         lenient().when(usersClient.summaries(anyList())).thenAnswer(invocation -> {

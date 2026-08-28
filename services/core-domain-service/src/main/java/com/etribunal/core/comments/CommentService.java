@@ -1,5 +1,7 @@
 package com.etribunal.core.comments;
 
+import com.etribunal.core.analytics.AnalyticsService;
+import com.etribunal.core.analytics.InteractionAction;
 import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
@@ -34,19 +36,22 @@ public class CommentService {
     private final com.etribunal.core.users.InternalUsersClient usersClient;
     private final NotificationService notificationService;
     private final ModerationService moderationService;
+    private final AnalyticsService analyticsService;
 
     public CommentService(CommentRepository commentRepository,
                           CaseRepository caseRepository,
                           ReactionRepository reactionRepository,
                           com.etribunal.core.users.InternalUsersClient usersClient,
                           NotificationService notificationService,
-                          ModerationService moderationService) {
+                          ModerationService moderationService,
+                          AnalyticsService analyticsService) {
         this.commentRepository = commentRepository;
         this.caseRepository = caseRepository;
         this.reactionRepository = reactionRepository;
         this.usersClient = usersClient;
         this.notificationService = notificationService;
         this.moderationService = moderationService;
+        this.analyticsService = analyticsService;
     }
 
     /**
@@ -132,6 +137,13 @@ public class CommentService {
 
         caseRepository.adjustCommentCounter(caseId, 1);
 
+        Map<String, Object> metadata = new java.util.HashMap<>();
+        metadata.put("comment_id",
+                saved.getId() != null ? saved.getId().toString() : null);
+        metadata.put("is_reply", parentId != null);
+        analyticsService.log(InteractionAction.COMMENT.name(), caseId, userId,
+                metadata);
+
         // Notificaciones heredadas
         CaseEntity c = requireCase(caseId);
         notifyCommentCreated(c, saved, parentId, userId);
@@ -189,6 +201,24 @@ public class CommentService {
         return replies.stream()
                 .map(r -> buildResponse(r, List.of(), reactionCounts, summaries))
                 .toList();
+    }
+
+    @Transactional
+    public CommentResponse updateComment(UUID commentId, UUID userId, String content) {
+        CommentEntity comment = requireComment(commentId);
+
+        if (!comment.getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "No puedes editar un comentario que no es tuyo");
+        }
+
+        comment.setContent(content.trim());
+        CommentEntity saved = commentRepository.save(comment);
+
+        Map<UUID, com.etribunal.core.users.UserSummary> summaries = fetchSummaries(
+                new LinkedHashSet<>(List.of(saved.getUserId())));
+        Map<UUID, Long> reactions = reactionCountMap(List.of(saved.getId()));
+        return buildResponse(saved, List.of(), reactions, summaries);
     }
 
     @Transactional

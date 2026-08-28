@@ -124,6 +124,58 @@ public class SearchService {
         return results;
     }
 
+    /**
+     * Búsqueda rápida unificada para el dropdown (Usuarios y Casos).
+     * Equivalente legacy: quickSearch(q) = advancedSearch(q, ALL, 0, 5).
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> quickSearch(String query, UUID requesterId) {
+        return advancedSearch(query, "ALL", 0, 5, requesterId);
+    }
+
+    /**
+     * Búsqueda avanzada paginada por tipo.
+     * type: ALL | CASES | USERS. Si el query empieza con '@' se fuerza USERS.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> advancedSearch(String query, String type, int skip,
+                                              int take, UUID requesterId) {
+        int clampedTake = Math.min(Math.max(take, 1), MAX_TAKE);
+        int safeSkip = Math.max(skip, 0);
+
+        String normalized = query == null ? "" : query.trim();
+        String searchType = type == null || type.isBlank() ? "ALL" : type;
+        if (normalized.startsWith("@")) {
+            normalized = normalized.substring(1).trim();
+            searchType = "USERS";
+        }
+        if (normalized.length() < MIN_QUERY_LENGTH) {
+            return Map.of("users", List.of(), "cases", List.of(), "hasMore", false);
+        }
+
+        if ("USERS".equalsIgnoreCase(searchType)) {
+            List<Map<String, Object>> users =
+                    usersClient.searchUsers(normalized, clampedTake, safeSkip, requesterId);
+            return Map.of("users", users, "cases", List.of(),
+                    "hasMore", users.size() == clampedTake);
+        }
+
+        if ("CASES".equalsIgnoreCase(searchType)) {
+            List<CaseResponse> cases = search(normalized, safeSkip, clampedTake, requesterId).stream()
+                    .map(SearchResult::case_data)
+                    .toList();
+            return Map.of("users", List.of(), "cases", cases,
+                    "hasMore", cases.size() == clampedTake);
+        }
+
+        List<Map<String, Object>> users =
+                usersClient.searchUsers(normalized, 5, 0, requesterId);
+        List<CaseResponse> cases = search(normalized, 0, 5, requesterId).stream()
+                .map(SearchResult::case_data)
+                .toList();
+        return Map.of("users", users, "cases", cases, "hasMore", false);
+    }
+
     private CaseResponse toCaseResponse(CaseEntity c,
                                         Map<UUID, UserSummary> summaries,
                                         UUID requesterId,

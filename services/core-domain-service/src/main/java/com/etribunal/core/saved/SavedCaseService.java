@@ -1,5 +1,7 @@
 package com.etribunal.core.saved;
 
+import com.etribunal.core.analytics.AnalyticsService;
+import com.etribunal.core.analytics.InteractionAction;
 import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.users.InternalUsersClient;
@@ -24,15 +26,18 @@ public class SavedCaseService {
     private final CaseShareRepository caseShareRepository;
     private final CaseRepository caseRepository;
     private final InternalUsersClient usersClient;
+    private final AnalyticsService analyticsService;
 
     public SavedCaseService(SavedCaseRepository savedCaseRepository,
                             CaseShareRepository caseShareRepository,
                             CaseRepository caseRepository,
-                            InternalUsersClient usersClient) {
+                            InternalUsersClient usersClient,
+                            AnalyticsService analyticsService) {
         this.savedCaseRepository = savedCaseRepository;
         this.caseShareRepository = caseShareRepository;
         this.caseRepository = caseRepository;
         this.usersClient = usersClient;
+        this.analyticsService = analyticsService;
     }
 
     /**
@@ -59,6 +64,7 @@ public class SavedCaseService {
         saved.setCreatedAt(Instant.now());
         savedCaseRepository.save(saved);
         caseRepository.adjustShareCounter(caseId, 1);
+        analyticsService.log(InteractionAction.SAVE.name(), caseId, userId);
 
         return new SavedToggleResponse(true, toSavedCaseResponse(caseEntity, Instant.now()));
     }
@@ -119,6 +125,7 @@ public class SavedCaseService {
         share.setCreatedAt(Instant.now());
         caseShareRepository.save(share);
         caseRepository.adjustShareCounter(caseId, 1);
+        analyticsService.log(InteractionAction.SHARE.name(), caseId, userId);
 
         return new ShareToggleResponse(true, toShareResponse(caseEntity, Instant.now()));
     }

@@ -297,7 +297,7 @@ curl http://localhost:8083/actuator/health                    # AI Engine
 | Gateway | — | <http://localhost:8080/actuator/health> |
 | Identity | <http://localhost:8081/api/swagger-ui.html> | <http://localhost:8081/api/actuator/health> |
 | Core Domain | <http://localhost:8082/api/swagger-ui.html> | <http://localhost:8082/api/actuator/health> |
-| AI Engine | <http://localhost:8083/swagger-ui.html> | <http://localhost:8083/api/actuator/health> |
+| AI Engine | <http://localhost:8083/swagger-ui.html> | <http://localhost:8083/actuator/health> |
 
 ---
 

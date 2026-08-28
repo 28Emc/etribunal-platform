@@ -4,7 +4,7 @@ import com.etribunal.core.api.ApiResponse;
 import com.etribunal.core.security.CurrentUserResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,5 +37,34 @@ public class SearchController {
         UUID userId = currentUser.requiredUserId(request);
         List<SearchService.SearchResult> results = searchService.search(q, skip, take, userId);
         return ResponseEntity.ok(ApiResponse.ok(results));
+    }
+
+    /**
+     * GET /search/quick?q=... (auth opcional)
+     * Búsqueda rápida unificada para el dropdown (usuarios y casos).
+     * Si q empieza con '@' fuerza búsqueda de usuarios.
+     */
+    @GetMapping("/search/quick")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> quickSearch(
+            @RequestParam String q,
+            HttpServletRequest request) {
+        UUID userId = currentUser.currentUserId(request).orElse(null);
+        return ResponseEntity.ok(ApiResponse.ok(searchService.quickSearch(q, userId)));
+    }
+
+    /**
+     * GET /search/advanced?q=...&type=ALL|CASES|USERS&skip=0&take=10 (auth opcional)
+     * Búsqueda avanzada paginada por tipo.
+     */
+    @GetMapping("/search/advanced")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> advancedSearch(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "ALL") String type,
+            @RequestParam(defaultValue = "0") int skip,
+            @RequestParam(defaultValue = "10") int take,
+            HttpServletRequest request) {
+        UUID userId = currentUser.currentUserId(request).orElse(null);
+        return ResponseEntity.ok(
+                ApiResponse.ok(searchService.advancedSearch(q, type, skip, take, userId)));
     }
 }

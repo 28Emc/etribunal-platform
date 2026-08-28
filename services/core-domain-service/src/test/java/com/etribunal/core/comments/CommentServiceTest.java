@@ -12,6 +12,7 @@ import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
 import com.etribunal.core.cases.CaseType;
+import com.etribunal.core.analytics.AnalyticsService;
 import com.etribunal.core.notifications.NotificationService;
 import com.etribunal.common.domain.notification.NotificationType;
 import com.etribunal.core.moderation.ModerationService;
@@ -49,6 +50,9 @@ class CommentServiceTest {
     @Mock
     private ModerationService moderationService;
 
+    @Mock
+    private AnalyticsService analyticsService;
+
     private CommentService commentService;
 
     private final UUID caseId = UUID.randomUUID();
@@ -58,7 +62,8 @@ class CommentServiceTest {
     @BeforeEach
     void setUp() {
         commentService = new CommentService(commentRepository, caseRepository,
-                reactionRepository, usersClient, notificationService, moderationService);
+                reactionRepository, usersClient, notificationService, moderationService,
+                analyticsService);
         lenient().when(caseRepository.findById(caseId))
                 .thenReturn(Optional.of(publicCase()));
     }

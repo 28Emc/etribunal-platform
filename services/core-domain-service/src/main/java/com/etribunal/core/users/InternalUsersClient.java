@@ -4,6 +4,7 @@ import com.etribunal.common.domain.config.InternalApiProperties;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.core.ParameterizedTypeReference;
@@ -52,5 +53,25 @@ public class InternalUsersClient {
                 .retrieve()
                 .body(UUID[].class);
         return result != null ? Arrays.asList(result) : Collections.emptyList();
+    }
+
+    public List<Map<String, Object>> searchUsers(String query, int take, int skip,
+                                                 UUID requesterId) {
+        if (query == null || query.trim().length() < 2) {
+            return Collections.emptyList();
+        }
+        var request = restClient.get()
+                .uri(uriBuilder -> uriBuilder.path("/users/internal/search")
+                        .queryParam("q", query.trim())
+                        .queryParam("take", take)
+                        .queryParam("skip", skip)
+                        .build());
+        if (requesterId != null) {
+            request = request.header("X-User-Id", requesterId.toString());
+        }
+        List<Map<String, Object>> result = request.retrieve()
+                .body(new ParameterizedTypeReference<List<Map<String, Object>>>() {
+                });
+        return result != null ? result : Collections.emptyList();
     }
 }

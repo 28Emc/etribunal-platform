@@ -2,6 +2,7 @@ package com.etribunal.gateway.security;
 
 import com.etribunal.common.security.JwtTokenProvider;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -44,32 +45,46 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
         }
         ServerHttpRequest request = exchange.getRequest();
         if (isPublic(request.getURI().getPath())) {
-            return chain.filter(exchange);
+            // Auth opcional: anónimo pasa sin headers; con token válido se adjunta la identidad
+            Optional<ServerHttpRequest> mutated = tryAttachIdentity(request);
+            return mutated
+                    .map(m -> chain.filter(exchange.mutate().request(m).build()))
+                    .orElseGet(() -> chain.filter(exchange));
         }
 
-        String authorization = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
+        Optional<ServerHttpRequest> mutated = tryAttachIdentity(request);
+        if (mutated.isEmpty()) {
             return unauthorized(exchange);
         }
+        return chain.filter(exchange.mutate().request(mutated.get()).build());
+    }
 
+    private Optional<ServerHttpRequest> tryAttachIdentity(ServerHttpRequest request) {
+        String authorization = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
+            return Optional.empty();
+        }
         var claims =
                 jwtTokenProvider.parseAccessToken(authorization.substring(BEARER_PREFIX.length()));
         if (claims.isEmpty()) {
-            return unauthorized(exchange);
+            return Optional.empty();
         }
-
         var c = claims.get();
         @SuppressWarnings("unchecked")
-        List<String> roles = (List<String>) c.getClaim(CLAIM_ROLES);
-        ServerHttpRequest mutated =
+        List<String> roles =
+                c.getClaim(CLAIM_ROLES) instanceof List
+                        ? (List<String>) c.getClaim(CLAIM_ROLES)
+                        : List.<String>of();
+        return Optional.of(
                 request.mutate()
                         .header(HEADER_USER_ID, c.getSubject())
                         .header(
                                 HEADER_USERNAME,
                                 String.valueOf(c.getClaim(JwtTokenProvider.CLAIM_USERNAME)))
-                        .header(HEADER_ROLES, roles == null ? "" : String.join(",", roles))
-                        .build();
-        return chain.filter(exchange.mutate().request(mutated).build());
+                        .header(
+                                HEADER_ROLES,
+                                roles.isEmpty() ? "" : String.join(",", roles))
+                        .build());
     }
 
     boolean isPublic(String path) {

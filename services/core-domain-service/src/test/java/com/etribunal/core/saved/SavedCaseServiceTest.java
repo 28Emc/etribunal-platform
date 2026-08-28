@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.etribunal.core.analytics.AnalyticsService;
 import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
@@ -40,6 +41,9 @@ class SavedCaseServiceTest {
     @Mock
     private InternalUsersClient usersClient;
 
+    @Mock
+    private AnalyticsService analyticsService;
+
     private SavedCaseService savedCaseService;
 
     private final UUID caseId = UUID.randomUUID();
@@ -48,7 +52,7 @@ class SavedCaseServiceTest {
     @BeforeEach
     void setUp() {
         savedCaseService = new SavedCaseService(savedCaseRepository, caseShareRepository,
-                caseRepository, usersClient);
+                caseRepository, usersClient, analyticsService);
         lenient().when(caseRepository.findById(caseId))
                 .thenReturn(Optional.of(publicCase()));
     }

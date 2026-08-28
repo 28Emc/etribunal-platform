@@ -185,12 +185,20 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> searchUsers(String query, UUID requesterId, int take) {
+        return searchUsers(query, requesterId, take, 0);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> searchUsers(String query, UUID requesterId,
+                                                 int take, int skip) {
         String normalized = query == null ? "" : query.trim();
         if (normalized.length() < 2) {
             return List.of();
         }
         int clamped = Math.min(Math.max(take, 1), 50);
-        return userRepository.searchByUsername(normalized, PageRequest.of(0, clamped + 1)).stream()
+        int safeSkip = Math.max(skip, 0);
+        int page = safeSkip / clamped;
+        return userRepository.searchByUsername(normalized, PageRequest.of(page, clamped)).stream()
                 .filter(u -> requesterId == null || !requesterId.equals(u.getId()))
                 .limit(clamped)
                 .map(this::searchView)

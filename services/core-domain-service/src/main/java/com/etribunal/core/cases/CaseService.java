@@ -1,5 +1,7 @@
 package com.etribunal.core.cases;
 
+import com.etribunal.core.analytics.AnalyticsService;
+import com.etribunal.core.analytics.InteractionAction;
 import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
 import com.etribunal.core.cases.dto.RespondSideBRequest;
@@ -29,6 +31,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -52,6 +55,7 @@ public class CaseService {
     private final VoteRepository voteRepository;
     private final ReactionRepository reactionRepository;
     private final ModerationService moderationService;
+    private final AnalyticsService analyticsService;
 
     public CaseService(
             CaseRepository caseRepository,
@@ -62,7 +66,8 @@ public class CaseService {
             CaseShareRepository caseShareRepository,
             VoteRepository voteRepository,
             ReactionRepository reactionRepository,
-            ModerationService moderationService) {
+            ModerationService moderationService,
+            AnalyticsService analyticsService) {
         this.caseRepository = caseRepository;
         this.usersClient = usersClient;
         this.currentUser = currentUser;
@@ -72,6 +77,7 @@ public class CaseService {
         this.voteRepository = voteRepository;
         this.reactionRepository = reactionRepository;
         this.moderationService = moderationService;
+        this.analyticsService = analyticsService;
     }
 
     // ──────────────────────── Create ────────────────────────
@@ -152,8 +158,37 @@ public class CaseService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Caso no encontrado"));
 
+        currentUserId.ifPresent(
+                uid -> analyticsService.log(InteractionAction.VIEW.name(), id, uid));
+
         return toResponse(List.of(entity), currentUserId.orElse(null))
                 .getFirst();
+    }
+
+    // ──────────────────────── Votes by user (parity legacy) ────────────────────────
+
+    @Transactional(readOnly = true)
+    public List<CaseResponse> getCasesVotedByUser(UUID userId, int skip, int take) {
+        List<CaseVoteEntity> votes = voteRepository
+                .findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(skip, take));
+        if (votes.isEmpty()) {
+            return List.of();
+        }
+
+        List<UUID> caseIds = votes.stream().map(CaseVoteEntity::getCaseId).toList();
+        Map<UUID, CaseEntity> byId = caseRepository.findAllById(caseIds).stream()
+                .filter(c -> c.getDeletedAt() == null)
+                .collect(Collectors.toMap(CaseEntity::getId, Function.identity()));
+
+        // Preservar el orden del voto (created_at desc del voto, igual que legacy)
+        List<CaseEntity> ordered = new ArrayList<>(votes.size());
+        for (CaseVoteEntity v : votes) {
+            CaseEntity c = byId.get(v.getCaseId());
+            if (c != null) {
+                ordered.add(c);
+            }
+        }
+        return toResponse(ordered, userId);
     }
 
     // ──────────────────────── Invite Token ────────────────────────

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.etribunal.core.analytics.AnalyticsService;
 import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
@@ -35,6 +36,9 @@ class VotesServiceTest {
     @Mock
     private NotificationService notificationService;
 
+    @Mock
+    private AnalyticsService analyticsService;
+
     private VotesService votesService;
 
     private final UUID caseId = UUID.randomUUID();
@@ -43,7 +47,8 @@ class VotesServiceTest {
 
     @BeforeEach
     void setUp() {
-        votesService = new VotesService(voteRepository, caseRepository, notificationService);
+        votesService = new VotesService(voteRepository, caseRepository, notificationService,
+                analyticsService);
         lenient().when(caseRepository.findById(caseId))
                 .thenReturn(Optional.of(publicCase()));
     }

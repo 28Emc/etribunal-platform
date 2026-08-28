@@ -1,9 +1,12 @@
 package com.etribunal.core.reactions;
 
+import com.etribunal.core.analytics.AnalyticsService;
+import com.etribunal.core.analytics.InteractionAction;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.comments.CommentRepository;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -20,13 +23,16 @@ public class ReactionService {
     private final ReactionRepository reactionRepository;
     private final CaseRepository caseRepository;
     private final CommentRepository commentRepository;
+    private final AnalyticsService analyticsService;
 
     public ReactionService(ReactionRepository reactionRepository,
                            CaseRepository caseRepository,
-                           CommentRepository commentRepository) {
+                           CommentRepository commentRepository,
+                           AnalyticsService analyticsService) {
         this.reactionRepository = reactionRepository;
         this.caseRepository = caseRepository;
         this.commentRepository = commentRepository;
+        this.analyticsService = analyticsService;
     }
 
     /**
@@ -61,6 +67,17 @@ public class ReactionService {
             reaction.setCommentId(targetId);
         }
         reactionRepository.save(reaction);
+
+        UUID targetCaseId = targetType == ReactionTarget.CASE ? targetId : null;
+        if (targetType == ReactionTarget.COMMENT) {
+            targetCaseId = commentRepository.findById(targetId)
+                    .map(com.etribunal.core.comments.CommentEntity::getCaseId)
+                    .orElse(null);
+        }
+        if (targetCaseId != null) {
+            analyticsService.log(InteractionAction.REACTION.name(), targetCaseId, userId,
+                    Map.of("emoji", emoji.name(), "target_type", targetType.name()));
+        }
 
         return summary(targetType, targetId, userId);
     }

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.etribunal.core.analytics.AnalyticsService;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.comments.CommentRepository;
 import java.util.List;
@@ -32,6 +33,9 @@ class ReactionServiceTest {
     @Mock
     private CommentRepository commentRepository;
 
+    @Mock
+    private AnalyticsService analyticsService;
+
     private ReactionService reactionService;
 
     private final UUID caseId = UUID.randomUUID();
@@ -40,7 +44,7 @@ class ReactionServiceTest {
     @BeforeEach
     void setUp() {
         reactionService = new ReactionService(reactionRepository, caseRepository,
-                commentRepository);
+                commentRepository, analyticsService);
         lenient().when(caseRepository.existsById(caseId)).thenReturn(true);
     }
 

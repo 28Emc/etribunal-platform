@@ -35,6 +35,8 @@ management:
 etribunal:
   moderation:
     poll-interval-ms: ${MODERATION_POLL_INTERVAL_MS:5000}
+  sysadmin:
+    api-key: ${SYSADMIN_API_KEY:dev-only-sysadmin-key-1234}
   internal:
     identity-base-url: ${IDENTITY_BASE_URL:http://localhost:8081/api}
     core-base-url: ${CORE_BASE_URL:http://localhost:8082/api}

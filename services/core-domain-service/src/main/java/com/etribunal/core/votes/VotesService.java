@@ -1,5 +1,7 @@
 package com.etribunal.core.votes;
 
+import com.etribunal.core.analytics.AnalyticsService;
+import com.etribunal.core.analytics.InteractionAction;
 import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
@@ -19,13 +21,16 @@ public class VotesService {
     private final VoteRepository voteRepository;
     private final CaseRepository caseRepository;
     private final NotificationService notificationService;
+    private final AnalyticsService analyticsService;
 
     public VotesService(VoteRepository voteRepository,
                         CaseRepository caseRepository,
-                        NotificationService notificationService) {
+                        NotificationService notificationService,
+                        AnalyticsService analyticsService) {
         this.voteRepository = voteRepository;
         this.caseRepository = caseRepository;
         this.notificationService = notificationService;
+        this.analyticsService = analyticsService;
     }
 
     /**
@@ -55,6 +60,8 @@ public class VotesService {
             existing.get().setVoteType(voteType);
             applyDeltas(caseId, previous, -1);
             applyDeltas(caseId, voteType, +1);
+            analyticsService.log(InteractionAction.VOTE.name(), caseId, userId,
+                    Map.of("vote_type", voteType.name(), "is_update", true));
             return respond(caseId, voteType);
         }
 
@@ -64,6 +71,8 @@ public class VotesService {
         vote.setVoteType(voteType);
         voteRepository.save(vote);
         applyDeltas(caseId, voteType, +1);
+        analyticsService.log(InteractionAction.VOTE.name(), caseId, userId,
+                Map.of("vote_type", voteType.name(), "is_update", false));
 
         // Notify case author and Side B (if exists) about new vote
         if (isNewVote) {
