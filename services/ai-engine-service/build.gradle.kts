@@ -23,7 +23,7 @@ dependencies {
     implementation(libs.micrometer.tracing.bridge.brave)
     implementation(libs.zipkin.reporter.brave)
     implementation(libs.otel.exporter.zipkin)
-    implementation(libs.springdoc.openapi.starter.webmvc.ui)
+    implementation(libs.springdoc.openapi.starter.webflux.ui)
 
     // Spring AI for Gemini (1.1.8 - compatible with Boot 3.5.x)
     implementation("org.springframework.ai:spring-ai-starter-model-vertex-ai-gemini")

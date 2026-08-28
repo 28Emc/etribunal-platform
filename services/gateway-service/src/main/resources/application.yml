@@ -11,7 +11,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD:} # perfil local → password dev (ver abajo)
 
 # Sin fallback: en produccion JWT_ACCESS_SECRET debe venir por entorno (fail-fast)
 etribunal:
@@ -66,17 +66,20 @@ spring:
   config:
     activate:
       on-profile: local
+  data:
+    redis:
+      password: eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81
   cloud:
     gateway:
       routes:
         - id: identity
           uri: http://localhost:8081
           predicates:
-            - Path=/api/auth/**,/api/users/**
+            - Path=/api/auth/**,/api/users/**,/api/users/*/followers,/api/users/*/following
         - id: core-domain
           uri: http://localhost:8082
           predicates:
-            - Path=/api/cases/**,/api/comments/**,/api/reactions/**,/api/saved-cases/**,/api/notifications/**
+            - Path=/api/cases/**,/api/comments/**,/api/reactions/**,/api/saved-cases/**,/api/notifications/**,/api/search/**,/api/media/**,/api/reports/**,/api/votes/**
         - id: ai-engine
           uri: http://localhost:8083
           predicates:

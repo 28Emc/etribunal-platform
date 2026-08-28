@@ -11,7 +11,6 @@ dependencies {
     implementation(libs.micrometer.tracing.bridge.brave)
     implementation(libs.zipkin.reporter.brave)
     implementation(libs.otel.exporter.zipkin)
-    implementation(libs.springdoc.openapi.starter.webflux.ui)
     implementation(project(":libs:common-security"))
 
     testImplementation(libs.spring.boot.starter.test)
