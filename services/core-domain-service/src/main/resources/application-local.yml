@@ -33,6 +33,8 @@ management:
       enabled: false # sin broker en Fase 0
 
 etribunal:
+  moderation:
+    poll-interval-ms: ${MODERATION_POLL_INTERVAL_MS:5000}
   internal:
     identity-base-url: ${IDENTITY_BASE_URL:http://localhost:8081/api}
     core-base-url: ${CORE_BASE_URL:http://localhost:8082/api}

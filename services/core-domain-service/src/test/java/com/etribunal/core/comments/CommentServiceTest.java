@@ -14,6 +14,7 @@ import com.etribunal.core.cases.CaseStatus;
 import com.etribunal.core.cases.CaseType;
 import com.etribunal.core.notifications.NotificationService;
 import com.etribunal.common.domain.notification.NotificationType;
+import com.etribunal.core.moderation.ModerationService;
 import com.etribunal.core.reactions.ReactionRepository;
 import java.time.Instant;
 import java.util.List;
@@ -45,6 +46,9 @@ class CommentServiceTest {
     @Mock
     private NotificationService notificationService;
 
+    @Mock
+    private ModerationService moderationService;
+
     private CommentService commentService;
 
     private final UUID caseId = UUID.randomUUID();
@@ -54,7 +58,7 @@ class CommentServiceTest {
     @BeforeEach
     void setUp() {
         commentService = new CommentService(commentRepository, caseRepository,
-                reactionRepository, usersClient, notificationService);
+                reactionRepository, usersClient, notificationService, moderationService);
         lenient().when(caseRepository.findById(caseId))
                 .thenReturn(Optional.of(publicCase()));
     }

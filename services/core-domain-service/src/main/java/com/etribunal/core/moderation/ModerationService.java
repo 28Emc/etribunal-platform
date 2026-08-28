@@ -92,6 +92,10 @@ public class ModerationService {
         queue.enqueue(job);
     }
 
+    public int queueSize() {
+        return queue.size();
+    }
+
     @Transactional
     public void processQueuedJobs() {
         ModerationQueue.ModerationJob job;

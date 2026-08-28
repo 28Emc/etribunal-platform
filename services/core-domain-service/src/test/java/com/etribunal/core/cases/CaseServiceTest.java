@@ -13,6 +13,7 @@ import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
 import com.etribunal.core.cases.dto.RespondSideBRequest;
 import com.etribunal.core.config.FrontendUrlProperties;
+import com.etribunal.core.moderation.ModerationService;
 import com.etribunal.core.reactions.ReactionRepository;
 import com.etribunal.core.reactions.ReactionTarget;
 import com.etribunal.core.saved.CaseShareRepository;
@@ -58,6 +59,9 @@ class CaseServiceTest {
     @Mock
     private ReactionRepository reactionRepository;
 
+    @Mock
+    private ModerationService moderationService;
+
     private CaseService caseService;
 
     private final UUID authorId = UUID.randomUUID();
@@ -67,7 +71,8 @@ class CaseServiceTest {
     void setUp() {
         caseService = new CaseService(caseRepository, usersClient, currentUserResolver,
                 new FrontendUrlProperties("http://localhost:3000/"),
-                savedCaseRepository, caseShareRepository, voteRepository, reactionRepository);
+                savedCaseRepository, caseShareRepository, voteRepository, reactionRepository,
+                moderationService);
         lenient().when(currentUserResolver.currentUserId(request))
                 .thenReturn(Optional.of(authorId));
         lenient().when(usersClient.summaries(anyList())).thenAnswer(invocation -> {

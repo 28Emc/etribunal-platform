@@ -5,6 +5,7 @@ import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
 import com.etribunal.core.notifications.NotificationService;
 import com.etribunal.common.domain.notification.NotificationType;
+import com.etribunal.core.moderation.ModerationService;
 import com.etribunal.core.reactions.ReactionRepository;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -32,17 +33,20 @@ public class CommentService {
     private final ReactionRepository reactionRepository;
     private final com.etribunal.core.users.InternalUsersClient usersClient;
     private final NotificationService notificationService;
+    private final ModerationService moderationService;
 
     public CommentService(CommentRepository commentRepository,
                           CaseRepository caseRepository,
                           ReactionRepository reactionRepository,
                           com.etribunal.core.users.InternalUsersClient usersClient,
-                          NotificationService notificationService) {
+                          NotificationService notificationService,
+                          ModerationService moderationService) {
         this.commentRepository = commentRepository;
         this.caseRepository = caseRepository;
         this.reactionRepository = reactionRepository;
         this.usersClient = usersClient;
         this.notificationService = notificationService;
+        this.moderationService = moderationService;
     }
 
     /**
@@ -123,6 +127,8 @@ public class CommentService {
         comment.setParentId(parentId);
         comment.setAnonymous(anonymous);
         CommentEntity saved = commentRepository.save(comment);
+
+        moderationService.moderateCommentAsync(saved.getId(), saved.getContent());
 
         caseRepository.adjustCommentCounter(caseId, 1);
 

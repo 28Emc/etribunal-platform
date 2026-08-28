@@ -5,6 +5,7 @@ import com.etribunal.core.cases.dto.CreateCaseRequest;
 import com.etribunal.core.cases.dto.RespondSideBRequest;
 import com.etribunal.core.cases.dto.UpdateCaseRequest;
 import com.etribunal.core.config.FrontendUrlProperties;
+import com.etribunal.core.moderation.ModerationService;
 import com.etribunal.core.reactions.Emoji;
 import com.etribunal.core.reactions.ReactionRepository;
 import com.etribunal.core.reactions.ReactionTarget;
@@ -50,6 +51,7 @@ public class CaseService {
     private final CaseShareRepository caseShareRepository;
     private final VoteRepository voteRepository;
     private final ReactionRepository reactionRepository;
+    private final ModerationService moderationService;
 
     public CaseService(
             CaseRepository caseRepository,
@@ -59,7 +61,8 @@ public class CaseService {
             SavedCaseRepository savedCaseRepository,
             CaseShareRepository caseShareRepository,
             VoteRepository voteRepository,
-            ReactionRepository reactionRepository) {
+            ReactionRepository reactionRepository,
+            ModerationService moderationService) {
         this.caseRepository = caseRepository;
         this.usersClient = usersClient;
         this.currentUser = currentUser;
@@ -68,6 +71,7 @@ public class CaseService {
         this.caseShareRepository = caseShareRepository;
         this.voteRepository = voteRepository;
         this.reactionRepository = reactionRepository;
+        this.moderationService = moderationService;
     }
 
     // ──────────────────────── Create ────────────────────────
@@ -105,6 +109,8 @@ public class CaseService {
         entity.setBothWrongSubtitle(dto.bothWrongSubtitle());
 
         CaseEntity saved = caseRepository.save(entity);
+        moderationService.moderateCaseContentAsync(
+                saved.getId(), saved.getTitle(), saved.getSideAContent(), saved.getSideBContent());
         return toResponse(List.of(saved), null)
                 .getFirst();
     }
@@ -200,6 +206,9 @@ public class CaseService {
         entity.setInviteToken(null);
         entity.setAnonymous(Boolean.TRUE.equals(dto.is_anonymous()));
 
+        moderationService.moderateCaseContentAsync(
+                entity.getId(), entity.getTitle(), entity.getSideAContent(), entity.getSideBContent());
+
         return toResponse(List.of(entity), userId).getFirst();
     }
 
@@ -278,6 +287,9 @@ public class CaseService {
                 entity.setSideBSubtitle(dto.side_b_subtitle());
             }
         }
+
+        moderationService.moderateCaseContentAsync(
+                entity.getId(), entity.getTitle(), entity.getSideAContent(), entity.getSideBContent());
 
         return toResponse(List.of(entity), userId).getFirst();
     }
