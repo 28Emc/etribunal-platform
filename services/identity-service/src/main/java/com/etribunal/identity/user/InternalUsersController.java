@@ -29,7 +29,7 @@ public class InternalUsersController {
 
     public InternalUsersController(UserRepository userRepository,
                                    FollowRepository followRepository,
-                                   @Value("${etribunal.internal-token}") String internalToken) {
+                                   @Value("${etribunal.internal.token}") String internalToken) {
         this.userRepository = userRepository;
         this.followRepository = followRepository;
         this.internalTokenHash = sha256(internalToken);
