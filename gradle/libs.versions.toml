@@ -60,3 +60,4 @@ testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
 spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
+flyway = { id = "org.flywaydb.flyway", version = "11.8.2" }
