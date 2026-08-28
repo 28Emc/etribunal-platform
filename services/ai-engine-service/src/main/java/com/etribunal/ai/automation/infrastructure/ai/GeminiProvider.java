@@ -7,14 +7,14 @@ import com.etribunal.ai.automation.domain.AiErrorCode;
 import com.etribunal.ai.automation.domain.dtos.*;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 
 @Component
-@ConditionalOnBean(ChatClient.class)
+@ConditionalOnProperty(prefix = "etribunal.automation.ai", name = "provider", havingValue = "gemini")
 public class GeminiProvider implements AIProvider {
 
     private final ChatClient chatClient;

@@ -1,0 +1,92 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: ai-engine-service
+  datasource:
+    url: jdbc:postgresql://${CORE_DB_HOST:localhost}:${CORE_DB_PORT:7003}/${CORE_DB_NAME:etribunal_core}
+    username: ${CORE_DB_USER:etribunal_user}
+    password: ${CORE_DB_PASS:etribunal_pass}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: false
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: ai-engine-service
+      auto-offset-reset: earliest
+  ai:
+    vertex:
+      ai:
+        gemini:
+          project-id: ${VERTEX_AI_PROJECT_ID:dummy-project}
+          location: ${VERTEX_AI_LOCATION:us-central1}
+          api-endpoint: ${VERTEX_AI_ENDPOINT:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  tracing:
+    sampling:
+      probability: ${OTEL_TRACES_SAMPLER_PROBABILITY:1.0}
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}
+
+etribunal:
+  automation:
+    enabled: ${AUTOMATION_ENABLED:false}
+    dry-run: ${AUTOMATION_DRY_RUN:true}
+    run-hour: ${AUTOMATION_RUN_HOUR:9}
+    language: ${AUTOMATION_LANGUAGE:es}
+    daily-cases-min: ${AUTOMATION_DAILY_CASES_MIN:1}
+    daily-cases-max: ${AUTOMATION_DAILY_CASES_MAX:5}
+    users-per-case-min: ${AUTOMATION_USERS_PER_CASE_MIN:5}
+    users-per-case-max: ${AUTOMATION_USERS_PER_CASE_MAX:15}
+    max-interactions-per-user-per-case-min: ${AUTOMATION_MAX_PER_USER_MIN:1}
+    max-interactions-per-user-per-case-max: ${AUTOMATION_MAX_PER_USER_MAX:3}
+    intensity-min: ${AUTOMATION_INTENSITY_MIN:30}
+    intensity-max: ${AUTOMATION_INTENSITY_MAX:70}
+    scheduling-interval-min: ${AUTOMATION_INTERVAL_MIN:30}
+    scheduling-interval-max: ${AUTOMATION_INTERVAL_MAX:180}
+    scheduling-window-hours: ${AUTOMATION_WINDOW_HOURS:24}
+    daily-pool-size: ${AUTOMATION_POOL_SIZE:0}
+    ai:
+      provider: ${AI_PROVIDER:mock}
+      api-key: ${AI_API_KEY:}
+      model: ${AI_MODEL:gemini-2.0-flash}
+      temperature: ${AI_TEMPERATURE:0.8}
+      top-p: ${AI_TOP_P:0.95}
+      max-output-tokens-case: ${AI_MAX_TOKENS_CASE:1024}
+      max-output-tokens-comment: ${AI_MAX_TOKENS_COMMENT:1024}
+      max-output-tokens-reply: ${AI_MAX_TOKENS_REPLY:1024}
+      max-output-tokens-plan: ${AI_MAX_TOKENS_PLAN:8192}
+      rpm: ${AI_RPM:12}
+      rpd: ${AI_RPD:425}
+      tpm: ${AI_TPM:212500}
