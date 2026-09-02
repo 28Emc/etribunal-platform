@@ -6,6 +6,10 @@ server:
 spring:
   application:
     name: core-domain-service
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
 
 management:
   endpoints:
@@ -19,12 +23,13 @@ management:
   tracing:
     sampling:
       probability: ${OTEL_TRACES_SAMPLER_PROBABILITY:1.0}
-  zipkin:
-    tracing:
-      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
 
-springdoc:
-  api-docs:
-    enabled: ${SPRINGDOC_API_DOCS_ENABLED:true}
-  swagger-ui:
-    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  management:
+    zipkin:
+      tracing:
+        endpoint: http://localhost:9411/api/v2/spans

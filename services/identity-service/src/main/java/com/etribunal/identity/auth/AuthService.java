@@ -108,9 +108,8 @@ public class AuthService {
     // ──────────────────────── Login ────────────────────────
 
     public TokenResponse login(LoginRequest request) {
-        String identifier = request.identifier().trim();
-        String normalizedEmail = identifier.toLowerCase();
-        String attemptsKey = ATTEMPTS_PREFIX + normalizedEmail;
+        String email = request.email().trim().toLowerCase();
+        String attemptsKey = ATTEMPTS_PREFIX + email;
 
         String attemptsValue = redis.opsForValue().get(attemptsKey);
         if (attemptsValue != null && Integer.parseInt(attemptsValue) >= MAX_ATTEMPTS) {
@@ -122,8 +121,7 @@ public class AuthService {
 
         UserEntity user =
                 userRepository
-                        .findByEmailIgnoreCaseAndDeletedAtNullOrUsernameIgnoreCaseAndDeletedAtNull(
-                                normalizedEmail, identifier)
+                        .findByEmailIgnoreCaseAndDeletedAtNull(email)
                         .orElseGet(UserEntity::new);
 
         boolean valid =
@@ -152,7 +150,9 @@ public class AuthService {
 
         String userId = claims.getSubject();
         String storedJti = redis.opsForValue().get(SESSION_PREFIX + userId);
+        log.debug("Refresh: userId={}, tokenJti={}, storedJti={}", userId, claims.getJWTID(), storedJti);
         if (storedJti == null || !storedJti.equals(claims.getJWTID())) {
+            log.warn("Refresh rejected: userId={}, tokenJti={}, storedJti={}", userId, claims.getJWTID(), storedJti);
             throw new UnauthorizedException("Sesión revocada");
         }
 

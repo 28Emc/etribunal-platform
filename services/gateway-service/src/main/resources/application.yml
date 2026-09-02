@@ -6,7 +6,9 @@ spring:
     name: gateway-service
   cloud:
     gateway:
-      routes: [] # rutas activas solo en perfil local (ver abajo)
+      server:
+        webflux:
+          routes: [] # rutas activas solo en perfil local (ver abajo)
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -21,6 +23,7 @@ etribunal:
   gateway:
     enabled: true
     public-paths:
+      # Auth (legacy: sin guard o con throttling)
       - /api/auth/register
       - /api/auth/login
       - /api/auth/refresh
@@ -29,15 +32,30 @@ etribunal:
       - /api/auth/verify-email
       - /api/auth/resend-verification
       - /api/auth/check-existence
-      # Perfiles públicos de users (identity aplica auth opcional; el resto de /users sigue protegido en el edge)
+      # Perfiles públicos de users (legacy: OptionalJwtAuthGuard)
       - /api/users/search
       - /api/users/top-judges
       - /api/users/*
       - /api/users/*/followers
       - /api/users/*/following
-      # Búsqueda unificada (dropdown/advanced) permite usuarios anónimos (auth opcional)
+      - /api/users/*/cases
+      - /api/users/*/track-share
+      # Búsqueda unificada (legacy: OptionalJwtAuthGuard)
       - /api/search/quick
       - /api/search/advanced
+      # Trending / Active Users (legacy: OptionalJwtAuthGuard)
+      - /api/cases/trending/top
+      - /api/cases/active-users
+      # Feed de casos y detalle (legacy: OptionalJwtAuthGuard)
+      - /api/cases
+      - /api/cases/*
+      - /api/cases/invite/*
+      - /api/cases/*/track-share
+      # Comentarios (legacy: OptionalJwtAuthGuard en GET, sin guard en /comments/:commentId/replies)
+      - /api/comments/cases/*
+      - /api/comments/comments/*/replies
+      # Saved cases share count (legacy: sin guard en GET /saved-cases/:caseId/shares)
+      - /api/saved-cases/*/shares
       # Analytics admin: protegido por SysadminApiKeyGuard en core (X-Sysadmin-Api-Key), sin JWT edge
       - /api/analytics/**
   migration:
@@ -64,7 +82,7 @@ management:
       probability: ${OTEL_TRACES_SAMPLER_PROBABILITY:1.0}
   zipkin:
     tracing:
-      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+      endpoint: ${ZIPKIN_ENDPOINT:}
 
 ---
 spring:
@@ -76,27 +94,41 @@ spring:
       password: eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81
   cloud:
     gateway:
-      routes:
-        - id: core-domain-users-me-votes
-          uri: http://localhost:8082
-          predicates:
-            - Path=/api/users/me/votes
-        - id: core-domain-analytics
-          uri: http://localhost:8082
-          predicates:
-            - Path=/api/analytics/**
-        - id: identity
-          uri: http://localhost:8081
-          predicates:
-            - Path=/api/auth/**,/api/users/**,/api/users/*/followers,/api/users/*/following
-        - id: core-domain
-          uri: http://localhost:8082
-          predicates:
-            - Path=/api/cases/**,/api/comments/**,/api/reactions/**,/api/saved-cases/**,/api/notifications/**,/api/search/**,/api/media/**,/api/reports/**,/api/votes/**
-        - id: ai-engine
-          uri: http://localhost:8083
-          predicates:
-            - Path=/api/automation/**
+      server:
+        webflux:
+          routes:
+            - id: core-domain-users-me-votes
+              uri: http://localhost:8082
+              predicates:
+                - Path=/api/users/me/votes
+            - id: core-domain-analytics
+              uri: http://localhost:8082
+              predicates:
+                - Path=/api/analytics/**
+            - id: core-domain-user-cases
+              uri: http://localhost:8082
+              predicates:
+                - Path=/api/users/*/cases
+            - id: core-domain-users-track-share
+              uri: http://localhost:8082
+              predicates:
+                - Path=/api/users/*/track-share
+            - id: identity
+              uri: http://localhost:8081
+              predicates:
+                - Path=/api/auth/**,/api/users/**,/api/users/*/followers,/api/users/*/following
+            - id: core-domain
+              uri: http://localhost:8082
+              predicates:
+                - Path=/api/cases/**,/api/comments/**,/api/reactions/**,/api/saved-cases/**,/api/notifications/**,/api/search/**,/api/media/**,/api/reports/**,/api/votes/**,/api/upload/**,/api/translations/**
+            - id: ai-engine
+              uri: http://localhost:8083
+              predicates:
+                - Path=/api/automation/**
+  management:
+    zipkin:
+      tracing:
+        endpoint: ""
 
 etribunal:
   jwt:
@@ -113,3 +145,8 @@ etribunal:
     shadow:
       enabled: ${SHADOW_ENABLED:false}
       log-differences: ${SHADOW_LOG_DIFF:false}
+
+management:
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans

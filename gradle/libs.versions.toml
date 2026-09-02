@@ -22,6 +22,7 @@ spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-star
 
 # ─── Spring Cloud ───
 spring-cloud-starter-gateway = { module = "org.springframework.cloud:spring-cloud-starter-gateway" }
+spring-cloud-starter-gateway-server-webflux = { module = "org.springframework.cloud:spring-cloud-starter-gateway-server-webflux" }
 
 # ─── OpenAPI ───
 springdoc-openapi-starter-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springDoc" }

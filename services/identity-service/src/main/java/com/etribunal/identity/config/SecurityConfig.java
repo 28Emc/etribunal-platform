@@ -25,6 +25,11 @@ public class SecurityConfig {
                                                 "/auth/register",
                                                 "/auth/login",
                                                 "/auth/refresh",
+                                                "/auth/forgot-password",
+                                                "/auth/reset-password",
+                                                "/auth/verify-email",
+                                                "/auth/resend-verification",
+                                                "/auth/check-existence",
                                                 "/users/internal/**",
                                                 "/actuator/**",
                                                 "/v3/api-docs/**",
@@ -37,7 +42,9 @@ public class SecurityConfig {
                                                 "/users",
                                                 "/users/*",
                                                 "/users/*/followers",
-                                                "/users/*/following")
+                                                "/users/*/following",
+                                                "/users/*/cases",
+                                                "/users/*/track-share")
                                         .permitAll()
                                         .anyRequest()
                                         .authenticated())

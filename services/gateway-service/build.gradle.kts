@@ -3,7 +3,7 @@ plugins {
 }
 
 dependencies {
-    implementation(libs.spring.cloud.starter.gateway)
+    implementation(libs.spring.cloud.starter.gateway.server.webflux)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.data.redis)
 

@@ -1,6 +1,7 @@
 package com.etribunal.identity.auth.dto;
 
 import com.etribunal.identity.user.UserEntity;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -8,11 +9,11 @@ public record UserResponse(
         UUID id,
         String email,
         String username,
-        String displayName,
-        String avatarUrl,
+        @JsonProperty("display_name") String displayName,
+        @JsonProperty("avatar_url") String avatarUrl,
         String role,
         String status,
-        Instant createdAt) {
+        @JsonProperty("created_at") Instant createdAt) {
 
     public static UserResponse from(UserEntity u) {
         return new UserResponse(
