@@ -74,4 +74,17 @@ public class InternalUsersClient {
                 });
         return result != null ? result : Collections.emptyList();
     }
+
+    public UserSummary findByUsername(String username) {
+        List<Map<String, Object>> results = searchUsers(username, 1, 0, null);
+        if (results.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> user = results.get(0);
+        return new UserSummary(
+                UUID.fromString((String) user.get("id")),
+                (String) user.get("username"),
+                (String) user.get("avatar_url"),
+                Boolean.TRUE.equals(user.get("is_anonymous")));
+    }
 }

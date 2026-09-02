@@ -1,5 +1,7 @@
 package com.etribunal.core.cases;
 
+import com.etribunal.core.analytics.AnalyticsService;
+import com.etribunal.core.analytics.InteractionAction;
 import com.etribunal.core.api.ApiResponse;
 import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
@@ -28,10 +30,13 @@ public class CasesController {
 
     private final CaseService caseService;
     private final CurrentUserResolver currentUser;
+    private final AnalyticsService analyticsService;
 
-    public CasesController(CaseService caseService, CurrentUserResolver currentUser) {
+    public CasesController(CaseService caseService, CurrentUserResolver currentUser,
+                           AnalyticsService analyticsService) {
         this.caseService = caseService;
         this.currentUser = currentUser;
+        this.analyticsService = analyticsService;
     }
 
     @PostMapping
@@ -108,5 +113,32 @@ public class CasesController {
         return ResponseEntity.ok(ApiResponse.ok(
                 caseService.getOrRegenerateInviteLink(
                         currentUser.requiredUserId(request), id)));
+    }
+
+    // POST /cases/{id}/track-share — visita via share link (público, fire-and-forget)
+    @PostMapping("/{id}/track-share")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> trackShare(
+            @PathVariable UUID id,
+            HttpServletRequest request) {
+        String utmSource = request.getParameter("utm_source");
+        String utmMedium = request.getParameter("utm_medium");
+        analyticsService.log(InteractionAction.VIEW.name(), id, null, Map.of(
+                "source", utmSource != null ? utmSource : "share",
+                "medium", utmMedium != null ? utmMedium : ""));
+        return ResponseEntity.ok(ApiResponse.ok(Map.of("tracked", true)));
+    }
+
+    // ──────────────────────── Public (no auth) ────────────────────────
+
+    @GetMapping("/trending/top")
+    public ResponseEntity<ApiResponse<List<CaseResponse>>> trending(
+            @RequestParam(defaultValue = "10") int limit) {
+        return ResponseEntity.ok(ApiResponse.ok(caseService.getTrendingCases(limit)));
+    }
+
+    @GetMapping("/active-users")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> activeUsers(
+            @RequestParam(defaultValue = "10") int limit) {
+        return ResponseEntity.ok(ApiResponse.ok(caseService.getActiveUsers(limit)));
     }
 }

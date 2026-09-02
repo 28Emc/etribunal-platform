@@ -147,6 +147,29 @@ public class CaseService {
                 currentUserId.orElse(null));
     }
 
+    @Transactional(readOnly = true)
+    public List<CaseResponse> getCasesByUsername(String username, int skip, int take,
+                                                 String filter, HttpServletRequest request) {
+        UserSummary user = usersClient.findByUsername(username);
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Usuario no encontrado");
+        }
+
+        Optional<UUID> currentUserId = currentUser.currentUserId(request);
+        Specification<CaseEntity> spec = CaseSpecifications.feed(
+                null, null, null, user.id(), false);
+
+        if ("private".equalsIgnoreCase(filter)) {
+            spec = spec.and(CaseSpecifications.isPrivate());
+        }
+
+        Pageable pageable = CaseSpecifications.pageable(skip, take, false);
+
+        return toResponse(caseRepository.findAll(spec, pageable).getContent(),
+                currentUserId.orElse(null));
+    }
+
     // ──────────────────────── Detail ────────────────────────
 
     @Transactional(readOnly = true)
@@ -350,6 +373,41 @@ public class CaseService {
         result.put("success", true);
         result.put("message", "Caso eliminado exitosamente");
         return result;
+    }
+
+    // ──────────────────────── Trending / Active Users (public) ────────────────────────
+
+    @Transactional(readOnly = true)
+    public List<CaseResponse> getTrendingCases(int limit) {
+        Pageable pageable = PageRequest.of(0, limit);
+        return caseRepository.findTrendingCases(pageable).getContent().stream()
+                .map(c -> toResponse(List.of(c), null).getFirst())
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getActiveUsers(int limit) {
+        // Usuarios más activos: contar casos creados (sideA) públicos por usuario
+        List<Object[]> results = caseRepository.countCasesBySideAUser(PageRequest.of(0, limit));
+        List<Map<String, Object>> users = new ArrayList<>();
+        for (Object[] row : results) {
+            UUID userId = (UUID) row[0];
+            Long caseCount = (Long) row[1];
+            UserSummary summary = usersClient.summaries(List.of(userId)).stream().findFirst().orElse(null);
+            if (summary != null) {
+                Map<String, Object> u = new HashMap<>();
+                u.put("id", summary.id().toString());
+                u.put("username", summary.username());
+                u.put("avatar_url", summary.avatarUrl());
+                u.put("is_anonymous", summary.anonymous());
+                u.put("case_count", caseCount);
+                users.add(u);
+            }
+        }
+        Map<String, Object> response = new HashMap<>();
+        response.put("users", users);
+        response.put("total", users.size());
+        return response;
     }
 
     // ──────────────────────── toResponse with enrichment ────────────────────────

@@ -5,6 +5,7 @@ import com.etribunal.core.security.CurrentUserResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,6 +32,16 @@ public class SavedCasesController {
         UUID userId = currentUser.requiredUserId(request);
         return ResponseEntity.ok(ApiResponse.ok(
                 savedCaseService.toggleSave(userId, caseId)));
+    }
+
+    // DELETE /saved-cases/{caseId}/save (unsave explícito)
+    @DeleteMapping("/saved-cases/{caseId}/save")
+    public ResponseEntity<ApiResponse<SavedCaseService.SavedToggleResponse>> removeSave(
+            @PathVariable UUID caseId,
+            HttpServletRequest request) {
+        UUID userId = currentUser.requiredUserId(request);
+        return ResponseEntity.ok(ApiResponse.ok(
+                savedCaseService.removeSave(userId, caseId)));
     }
 
     // GET /saved-cases

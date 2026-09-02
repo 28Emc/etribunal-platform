@@ -57,4 +57,8 @@ public final class CaseSpecifications {
                 : Sort.by(Sort.Direction.DESC, "createdAt");
         return new OffsetPageable(Math.max(skip, 0), limit, sort);
     }
+
+    static Specification<CaseEntity> isPrivate() {
+        return (root, query, cb) -> cb.equal(root.get("isPrivate"), true);
+    }
 }

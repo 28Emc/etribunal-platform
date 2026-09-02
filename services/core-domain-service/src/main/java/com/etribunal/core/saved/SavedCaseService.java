@@ -102,6 +102,20 @@ public class SavedCaseService {
     }
 
     /**
+     * Unsave explícito: si existe el guardado lo elimina y ajusta el contador.
+     * Devuelve { saved: false }.
+     */
+    @Transactional
+    public SavedToggleResponse removeSave(UUID userId, UUID caseId) {
+        requireCase(caseId);
+        int deleted = savedCaseRepository.deleteByUserIdAndCaseId(userId, caseId);
+        if (deleted > 0) {
+            caseRepository.adjustShareCounter(caseId, -1);
+        }
+        return new SavedToggleResponse(false, null);
+    }
+
+    /**
      * Toggle share: si ya compartido -> quita; si no -> comparte.
      * Devuelve { shared: true/false, case: CaseShareResponse | null }
      */
