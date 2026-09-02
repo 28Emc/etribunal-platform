@@ -23,7 +23,7 @@ public class InteractionLogEntity {
     @Column(name = "action", nullable = false, length = 20)
     private String action;
 
-    @Column(name = "case_id", nullable = false)
+    @Column(name = "case_id")
     private UUID caseId;
 
     @Column(name = "user_id")
