@@ -23,12 +23,8 @@ kustomize build | kubectl apply -f -
 
 ### 2. Run Database Migrations
 ```bash
-# Option A: Flyway via Kubernetes Job
+# Flyway via Kubernetes Job (vía recomendada para staging)
 kubectl apply -f infra/kubernetes/base/flyway-migration-job.yaml -n staging
-
-# Option B: Local Flyway against staging DB
-export DATABASE_URL="jdbc:postgresql://<staging-db-host>:5432/etribunal_core"
-./gradlew :services:core-domain-service:flywayMigrate -Pprofile=staging
 ```
 
 ### 3. Deploy Services (Rolling Update)
@@ -52,8 +48,8 @@ helm upgrade --install gateway ./infra/helm/gateway-service -n staging -f ./infr
 kubectl get pods -n staging -w
 
 # Check health endpoints
-kubectl exec -n staging deploy/identity-service -- curl -s localhost:8081/actuator/health
-kubectl exec -n staging deploy/core-domain-service -- curl -s localhost:8082/actuator/health
+kubectl exec -n staging deploy/identity-service -- curl -s localhost:8081/api/actuator/health
+kubectl exec -n staging deploy/core-domain-service -- curl -s localhost:8082/api/actuator/health
 kubectl exec -n staging deploy/ai-engine-service -- curl -s localhost:8083/actuator/health
 kubectl exec -n staging deploy/gateway-service -- curl -s localhost:8080/actuator/health
 

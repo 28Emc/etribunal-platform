@@ -2,152 +2,98 @@
 
 Backend de microservicios de **eTribunal** — Java 21 + Spring Boot 3.5 + Gradle monorepo.
 
+| | |
+| --- | --- |
+| Gateway | `:8080` (Spring Cloud Gateway) |
+| Identity | `:8081` (Auth + Users) |
+| Core Domain | `:8082` (Cases + Votes + Comments + Media) |
+| AI Engine | `:8083` (Automation + Moderación) |
+| Explore | [Swagger UI](#swagger-ui) · [Documentación](#documentación) |
+
+---
+
 ## Arquitectura
 
 ```
-                    ┌─────────────┐
-                    │  Gateway    │ :8080 (Spring Cloud Gateway)
-                    │  JWT filter │
-                    └──────┬──────┘
-                           │
-               ┌───────────┼───────────┐
-               │           │           │
-      ┌────────▼───┐ ┌──────▼──────┐ ┌──▼──────────┐
-      │ Identity   │ │ Core Domain │ │  AI Engine  │
-      │ :8081      │ │ :8082       │ │  :8083      │
-      │ Auth/Users │ │ Cases/Votes │ │  Automation │
-      └─────┬──────┘ └──────┬──────┘ └──────┬──────┘
-            │               │               │
-       ┌────▼────┐    ┌─────▼─────┐    Kafka│
-       │ Redis   │    │ PostgreSQL│    ┌─────▼─────┐
-       │ :6379   │    │ :7002/:3  │    │ Kafka     │
-       └─────────┘    │ (Floci)   │    │ (futuro)  │
-                      └───────────┘    └───────────┘
+                              ┌─────────────┐
+                              │   Gateway   │ :8080   (Spring Cloud Gateway, JWT filter)
+                              └──────┬──────┘
+                                     │
+                    ┌────────────────┼────────────────┐
+                    │                │                │
+            ┌───────▼──────┐ ┌───────▼──────┐ ┌──────▼───────┐
+            │   Identity   │ │ Core Domain  │ │  AI Engine   │
+            │    :8081     │ │    :8082     │ │    :8083     │
+            │ Auth / Users │ │ Cases / Votes│ │ Automation / │
+            │ Follows      │ │ Comments /   │ │ Moderación   │
+            │              │ │ Media        │ │              │
+            └──────┬───────┘ └──────┬───────┘ └──────┬───────┘
+                   │                │                │
+         ┌─────────▼────┐   ┌───────▼────────┐   ┌───▼──────────┐
+         │    Redis     │   │ PostgreSQL     │   │    Kafka     │
+         │    :6379     │   │ :7002 / :7003  │   │   :9092      │
+         │  (sesión)    │   │   (Floci RDS)  │   │  (eventos)   │
+         └──────────────┘   └────────────────┘   └──────────────┘
 ```
 
 ### Servicios
 
-| Servicio | Puerto | Base de datos | Responsabilidad |
-|----------|--------|---------------|-----------------|
-| `gateway-service` | 8080 | Redis (sessions) | API edge, validación JWT, routing, filtros de migración |
-| `identity-service` | 8081 | PostgreSQL (`etribunal_identity`) | Auth local, usuarios, follows |
-| `core-domain-service` | 8082 | PostgreSQL (`etribunal_core`) | Casos, votos, comentarios, reacciones, media |
-| `ai-engine-service` | 8083 | PostgreSQL (`etribunal_core`, shared) | Automatización IA, moderación |
+| Servicio | Puerto | Depende de | Responsabilidad |
+| ---------- | -------- | ----------- | ----------------- |
+| `gateway-service` | 8080 | Redis | API edge, validación JWT, routing |
+| `identity-service` | 8081 | PostgreSQL `etribunal_identity`, Redis | Auth local, usuarios, follows |
+| `core-domain-service` | 8082 | PostgreSQL `etribunal_core`, Redis, Kafka*, S3 (Floci) | Casos, votos, comentarios, reacciones, media |
+| `ai-engine-service` | 8083 | PostgreSQL `etribunal_core` (shared), Kafka* | Automatización IA, moderación |
+
+> **\*Kafka es best-effort**: si el broker no está disponible, el sistema sigue funcionando (la producción de eventos no bloquea las requests). Kafka se necesita solo si pruebas flujos de eventos de media (core) o automatización (ai-engine). Ver [Qué se necesita levantar](#qué-se-necesita-levantar).
 
 ### Librerías compartidas
 
 | Lib | Contenido |
-|-----|-----------|
+| ----- | ----------- |
 | `common-domain` | DTOs, eventos de dominio, excepciones, enums |
 | `common-security` | Proveedor de tokens JWT (Nimbus JOSE) |
 | `common-kafka` | Constantes de topics, serialización JSON |
 | `common-test` | Testcontainers (Floci) |
 
+---
+
 ## Requisitos
 
-| Herramienta | Versión | Enlace de instalación |
-|-------------|---------|----------------------|
-| **JDK 21+** | 21 LTS | Gradle auto-provisiona Temurin 21 vía Foojay si difiere — [Descargar manual](https://adoptium.net/temurin/releases/?version=21) |
-| **Docker Desktop** | 4.x+ | [Windows](https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe) / [macOS](https://desktop.docker.com/mac/main/amd64/Docker.dmg) / [Linux](https://docs.docker.com/engine/install/) |
-| **AWS CLI v2** | 2.x | [Windows](https://awscli.amazonaws.com/AWSCLIV2.msi) / [macOS](https://awscli.amazonaws.com/AWSCLIV2.pkg) / [Linux](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html) |
-| **Floci** | latest | [Docker Hub](https://hub.docker.com/r/floci/floci) — `docker pull floci/floci:latest` |
-| **PostgreSQL** | — | Via Floci (emulador RDS) — **NO** requiere instalación local |
-| **Gradle** | 9.7+ | Wrapper incluido (`./gradlew`) — no requiere instalación |
+| Herramienta | Req | Nota |
+| ------------- | ----- | ------ |
+| **JDK 21+** | 21 LTS | Auto-provisionado vía wrapper (Foojay) |
+| **Docker Desktop** | 4.x+ | Necesario para Redis + Floci + Kafka + Zipkin |
+| **AWS CLI v2** | 2.x | Para administrar Floci (RDS, S3) |
+| **Gradle** | 9.7+ | Wrapper incluido (`./gradlew`) |
+| **PostgreSQL** | — | NO local; vía Floci (emulador RDS) |
 
-> **Nota**: JDK 21 y Gradle se auto-gestionan vía el wrapper (`./gradlew`). Solo necesitas instalar **Docker Desktop**, **AWS CLI v2** y **Floci** manualmente.
+> Solo necesitas instalar manualmente **Docker Desktop** y **AWS CLI v2**. JDK/Gradle se auto-gestionan.
 
 ---
 
-## Primer arranque en desarrollo
+## Guía de arranque local (modo externo, recomendado)
 
-Esta guía cubre desde cero hasta tener los 4 servicios corriendo con health checks verdes.
+El flujo de desarrollo se resume en **4 pasos**:
 
-> **Modo Floci**: El proyecto usa **Floci compartido (EXTERNAL)** por defecto. Una sola instancia Floci sirve a todos tus proyectos locales. Ver [Instalación y configuración de Floci (solo primera vez)](#instalación-y-configuración-de-floci-solo-primera-vez) para la configuración inicial.
+1. **Crear las bases RDS en Floci** (una sola vez).
+2. **Levantar la infra** (Redis + Floci + Zipkin + Kafka + S3).
+3. **Aplicar migraciones Flyway** (una sola vez / tras cambios de schema).
+4. **Levantar los 4 servicios** + la UI, y verificar.
+
+Los pasos 2 y 4 están automatizados en scripts; los pasos 1 y 3 son setup inicial.
+
+### Paso 1 — Bases RDS en Floci (solo primera vez)
+
+> Requiere Floci corriendo (ver Paso 2) y credenciales dummy AWS configuradas:
 >
-> **Variable de control**: `FLOCI_MODE` — `EXTERNAL` (default, Floci externo) | `DOCKER` (Floci en docker-compose profile `floci-local`).
-
-### Paso 0: Clonar e instalar (aplica a ambos modos)
-
-```bash
-git clone https://github.com/28Emc/etribunal-platform.git
-cd etribunal-platform
-./gradlew build          # Compila todo + corre tests (primera vez)
-```
-
-### Instalación y configuración de Floci (solo primera vez — modo EXTERNAL)
-
-Floci emula servicios AWS localmente (RDS, S3, Lambda, etc.). Se ejecuta **una sola instancia compartida** para todos tus proyectos.
-
-#### 1. Instalar Floci
-
-```bash
-# Opción A: Docker (recomendado)
-docker pull floci/floci:latest
-docker run -d --name floci-shared \
-  -p 4566:4566 -p 7001-7099:7001-7099 \
-  floci/floci:latest
-
-# Opción B: Docker Compose (si prefieres)
-cat > docker-compose.floci.yml <<'EOF'
-services:
-  floci:
-    image: floci/floci:latest
-    container_name: floci-shared
-    ports:
-      - "4566:4566"
-      - "7001-7099:7001-7099"
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-EOF
-docker compose -f docker-compose.floci.yml up -d
-```
-
-#### 2. Verificar que Floci está healthy
-
-```bash
-docker logs -f floci-shared
-# Esperar hasta ver: "Ready." o healthcheck passing
-```
-
-#### 3. Configurar credenciales dummy AWS (requerido antes de crear RDS)
-
-> **Credenciales dummy**: Floci no requiere credenciales reales, pero AWS CLI las exige. Configura credenciales dummy:
 > ```bash
-> export AWS_ACCESS_KEY_ID=test
-> export AWS_SECRET_ACCESS_KEY=test
-> export AWS_DEFAULT_REGION=us-east-1
-> # O permanentemente:
 > aws configure set aws_access_key_id test
 > aws configure set aws_secret_access_key test
 > aws configure set default.region us-east-1
 > ```
 
-#### 4. Crear instancias RDS en Floci (para este proyecto)
-
-> **Nota**: AWS CLI requiere `--region` aunque sea Floci. Usa `us-east-1` (cualquier región válida funciona).
->
-> **Tip**: Para no repetir `--region us-east-1` en cada comando, configúralo una vez:
-> ```bash
-> export AWS_DEFAULT_REGION=us-east-1
-> # o permanentemente:
-> aws configure set default.region us-east-1
-> ```
-
-> **Importante**: Si las instancias ya existen (ej. `DBInstanceAlreadyExists`), elimínalas primero o salta este paso:
-> ```bash
-> # Eliminar si existen (opcional, solo si quieres recrear)
-> aws --endpoint-url http://localhost:4566 rds delete-db-instance \
->   --db-instance-identifier etribunal-identity-local \
->   --skip-final-snapshot
-> 
-> aws --endpoint-url http://localhost:4566 rds delete-db-instance \
->   --db-instance-identifier etribunal-core-local \
->   --skip-final-snapshot
-> # Esperar a que se eliminen antes de volver a crear
-> ```
+Crea las dos instancias RDS que emulan los PostgreSQL de identity y core:
 
 ```bash
 # Identity DB (puerto 7002)
@@ -171,182 +117,153 @@ aws --endpoint-url http://localhost:4566 rds create-db-instance \
   --allocated-storage 20
 ```
 
-> **Nota**: Las instancias tardan ~30-60s. Verifica con:
-> ```bash
-> aws --endpoint-url http://localhost:4566 rds describe-db-instances
-> ```
+> Las instancias tardan ~30-60s en estar listas. Verifica con `aws --endpoint-url http://localhost:4566 rds describe-db-instances`.
+>
+> Si ya existen (`DBInstanceAlreadyExists`), **salta este paso**. Para recrearlas, bórralas primero:
+> `aws --endpoint-url http://localhost:4566 rds delete-db-instance --db-instance-identifier etribunal-identity-local --skip-final-snapshot` (y análogo para `etribunal-core-local`).
 
-#### 5. Aplicar migraciones Flyway (solo primera vez / tras cambios de schema)
+### Qué se necesita levantar
 
-```bash
-./gradlew :services:identity-service:flywayMigrate -Pprofile=local
-./gradlew :services:core-domain-service:flywayMigrate -Pprofile=local
+| Componente | ¿Necesario? | Puerto | Por qué / Cuándo |
+| ----------- | ------------- | -------- | ------------------ |
+| **Redis** | ✅ **Sí** | `:6379` | Sesiones/caché (gateway, identity, core). **Sin él el login falla.** |
+| **Floci** | ✅ **Sí** | `:4566`, RDS `:7001-7099` | Emula PostgreSQL (identity `:7002`, core `:7003`) y S3. |
+| **Bucket S3 `etribunal-media`** | ✅ Sí* | vía Floci `:4566` | Subida de avatar/imágenes. *Solo si pruebas media* — lo crea el script. |
+| **Zipkin** | ⚠️ Recomendado | `:9411` | Tracing distribuido. Si no está, los servicios reportan best-effort (no rompe). |
+| **Kafka** | ⚠️ Recomendado* | `:9092` | Eventos de media (core) y automatización (ai-engine). Best-effort; *necesario solo si pruebas esos flujos*. |
+| **Temporal** | ❌ Opt-in | `:7233/:8233` | Workflows de IA. Solo si pruebas automatización con Temporal. |
+
+> **Mínimo funcional**: Redis + Floci (+ bucket S3 si pruebas media). El resto mejora observabilidad/casos de uso, pero no es bloqueante para la app base.
+
+### Paso 2 — Levantar la infra
+
+**Windows (script, recomendado)** — levanta Redis + Floci (+RDS/S3) + Zipkin + Kafka:
+
+```bat
+scripts\infra-up.bat            :: Redis + Floci + Zipkin + Kafka + bucket S3
+scripts\infra-up.bat temporal   :: + Temporal (opt-in, workflows de IA)
 ```
 
-> **Esto solo se hace una vez**. En arranques posteriores, Flyway detecta migraciones ya aplicadas y no hace nada.
+El script es **idempotente**: reusa Floci si ya hay una instancia en `:4566`, salta lo que ya corre y asegura el bucket S3.
 
-#### 6. Crear bucket S3 para media (solo primera vez)
-
-> **Nota**: Si el bucket ya existe (`BucketAlreadyOwnedByYou`), ignora el error o elimínalo primero:
-> ```bash
-> aws --endpoint-url http://localhost:4566 s3 rb s3://etribunal-media --force
-> ```
+**Manual (cualquier SO)**:
 
 ```bash
-aws --endpoint-url http://localhost:4566 s3 mb s3://etribunal-media
+# Redis (obligatorio)
+docker compose --profile floci-local up -d    # incluye Floci + floci-init (crea bucket S3)
+docker compose up -d redis
+
+# Infra complementaria
+docker compose --profile zipkin up -d         # Zipkin tracing :9411
+docker compose --profile kafka up -d          # Kafka KRaft :9092
+docker compose --profile temporal up -d       # temporal (opcional)
 ```
 
-> **Esto solo se hace una vez**. El bucket persiste en Floci compartido.
+> Nota: `floci-init` crea el bucket S3 `etribunal-media` automáticamente contra Floci (idempotente). Manual: `aws --endpoint-url http://localhost:4566 s3 mb s3://etribunal-media`.
 
----
-
-### Opción A: Modo Externo (FLOCI_MODE=EXTERNAL) — **Por defecto**
-
-Usa tu instancia Floci compartida. Requiere Floci corriendo externamente.
-
-#### Pasos recurrentes (cada vez que inicies desarrollo)
+### Paso 3 — Aplicar migraciones Flyway (solo primera vez / tras cambios de schema)
 
 ```bash
-# 1. Asegurar Floci corriendo y healthy
-docker start floci-shared   # o docker compose -f docker-compose.floci.yml up -d
-# Esperar healthcheck: docker logs -f floci-shared (esperar "Ready.")
+./gradlew :services:identity-service:flywayMigrate
+./gradlew :services:core-domain-service:flywayMigrate
+```
 
-# 2. Levantar servicios (4 terminales separadas)
-# Terminal 1: Gateway
+> Las tareas apuntan por defecto a `localhost:7002` (identity) y `localhost:7003` (core). Si tus puertos difieren, override con system properties JVM:
+> `./gradlew :services:identity-service:flywayMigrate -DFLOCI_HOST=localhost -DFLOCI_IDENTITY_PORT=7002`
+> En arranques posteriores Flyway detecta lo ya aplicado y no hace nada. (El arranque con perfil `local` también aplica Flyway automáticamente.)
+
+### Paso 4 — Levantar los 4 servicios
+
+**Desde VS Code (tasks)** — ejecuta `Tasks: Run Task`:
+
+- `Start eTribunal infra (Redis + Floci + Zipkin + Kafka + S3)` — Paso 2
+- `Start eTribunal projects` — los 4 servicios + UI
+
+**Windows (scripts, 4 ventanas)**:
+
+```bat
+scripts\start-gateway.bat        :: :8080
+scripts\start-identity.bat       :: :8081
+scripts\start-core.bat           :: :8082
+scripts\start-ai.bat             :: :8083
+```
+
+**Manual (4 terminales)**:
+
+```bash
 ./gradlew :services:gateway-service:bootRun --args='--spring.profiles.active=local'
-
-# Terminal 2: Identity
 ./gradlew :services:identity-service:bootRun --args='--spring.profiles.active=local'
-
-# Terminal 3: Core Domain
 ./gradlew :services:core-domain-service:bootRun --args='--spring.profiles.active=local'
-
-# Terminal 4: AI Engine (opcional)
 ./gradlew :services:ai-engine-service:bootRun --args='--spring.profiles.active=local'
 ```
 
-> **Variables de entorno para AI Engine en modo EXTERNAL** (requerido):
-> ```bash
-> export CORE_DB_HOST=localhost
-> export CORE_DB_PORT=7003
-> ```
-
-> **Variables de entorno** (opcional, si tus puertos difieren):
+> El perfil `local` incluye los secrets de desarrollo y las rutas de gateway (`on-profile: local`).
+>
+> **AI Engine (modo externo)**: por defecto apunta a `localhost:7003`/`localhost:9092`. Si difiere:
 >
 > ```bash
-> export FLOCI_MODE=EXTERNAL
-> export FLOCI_HOST=localhost
-> export FLOCI_IDENTITY_PORT=7002
-> export FLOCI_CORE_PORT=7003
+> export CORE_DB_HOST=localhost ; export CORE_DB_PORT=7003
+> export KAFKA_BOOTSTRAP_SERVERS=localhost:9092
 > ```
 
----
-
-### Opción B: Modo Docker (FLOCI_MODE=DOCKER) — Fallback / CI / Onboarding
-
-Incluye Floci en docker-compose del proyecto. Útil si no quieres configurar Floci aparte.
+### Verificación
 
 ```bash
-# 1. Clonar e instalar
-git clone https://github.com/28Emc/etribunal-platform.git
-cd etribunal-platform
-./gradlew build          # Compila todo + corre tests (primera vez)
-
-# 2. Construir jars
-./gradlew bootJar
-
-# 3. Levantar todo (infra + Floci + 4 servicios Spring)
-FLOCI_MODE=docker docker compose --profile app --profile floci-local up -d
-
-# 4. Aplicar migraciones Flyway (Floci en docker es fresco cada vez)
-./gradlew :services:identity-service:flywayMigrate -Pprofile=local
-./gradlew :services:core-domain-service:flywayMigrate -Pprofile=local
-
-# 4. Crear bucket S3 para media (solo primera vez)
-aws --endpoint-url http://localhost:4566 s3 mb s3://etribunal-media
-
-# Ver logs
-docker compose logs -f gateway-service
-docker compose logs -f identity-service
-docker compose logs -f core-domain-service
-docker compose logs -f ai-engine-service
+curl http://localhost:8080/actuator/health       # Gateway
+curl http://localhost:8081/api/actuator/health   # Identity
+curl http://localhost:8082/api/actuator/health   # Core Domain
+curl http://localhost:8083/actuator/health       # AI Engine
 ```
 
-> **Nota**: Este modo levanta un Floci **temporal** solo para este proyecto (profile `floci-local`). Los datos no persisten entre `docker compose down`.
-
----
-
-### Verificación común
-
-```bash
-# Health checks
-curl http://localhost:8080/actuator/health                    # Gateway
-curl http://localhost:8081/api/actuator/health                # Identity
-curl http://localhost:8082/api/actuator/health                # Core Domain
-curl http://localhost:8083/actuator/health                    # AI Engine
-```
-
-**Respuesta esperada:** `{"status":"UP",...}`
-
----
+Respuesta esperada: `{"status":"UP",...}`.
 
 ### URLs útiles
 
 | Servicio | Swagger UI | Health |
-|----------|------------|--------|
-| Gateway | — | <http://localhost:8080/actuator/health> |
-| Identity | <http://localhost:8081/api/swagger-ui.html> | <http://localhost:8081/api/actuator/health> |
-| Core Domain | <http://localhost:8082/api/swagger-ui.html> | <http://localhost:8082/api/actuator/health> |
-| AI Engine | <http://localhost:8083/swagger-ui.html> | <http://localhost:8083/actuator/health> |
+| ---------- | ------------ | -------- |
+| Gateway | — | `http://localhost:8080/actuator/health` |
+| Identity | `http://localhost:8081/api/swagger-ui.html` | `http://localhost:8081/api/actuator/health` |
+| Core Domain | `http://localhost:8082/api/swagger-ui.html` | `http://localhost:8082/api/actuator/health` |
+| AI Engine | `http://localhost:8083/swagger-ui.html` | `http://localhost:8083/actuator/health` |
+| Zipkin | `http://localhost:9411/zipkin/` | `http://localhost:9411/health` |
 
 ---
 
-## Docker Compose (referencia rápida)
+## Docker Compose completo (modo docker) — fallback / CI
+
+Levanta infra + los 4 servicios Spring **en contenedores** mediante los `docker/Dockerfile`:
 
 ```bash
-# Solo infra (Redis)
-docker compose up -d
+# 1. Clonar e instalar (primera vez)
+git clone https://github.com/28Emc/etribunal-platform.git
+cd etribunal-platform
+./gradlew bootJar                        # construir fat-jars
 
-# Infra + Floci (para modo docker)
-docker compose --profile floci-local up -d
+# 2. Levantar todo (infra + Floci + 4 servicios Spring)
+FLOCI_MODE=docker docker compose --profile app --profile floci-local up -d
 
-# Infra + 4 servicios Spring (modo externo, requiere Floci externo corriendo)
-docker compose --profile app up -d
+# 3. Opcionales
+docker compose --profile zipkin up -d    # Zipkin :9411
+docker compose --profile kafka up -d     # Kafka :9092
 
-# Infra + Floci + 4 servicios Spring (modo docker, todo junto)
-docker compose --profile app --profile floci-local up -d
+# 4. Migraciones Flyway (Floci en docker es fresco cada vez)
+./gradlew :services:identity-service:flywayMigrate
+./gradlew :services:core-domain-service:flywayMigrate
 
-# Infra + Temporal (para AI Engine workflows)
-docker compose --profile temporal up -d
-
-# Ver estado
-docker compose ps
-
-# Logs
+# Ver logs
 docker compose logs -f <service-name>
-
-# Parar todo
-docker compose down
 ```
 
-> **Prerequisito**: construir jars antes de levantar servicios Spring
-> ```bash
-> cd etribunal-platform && ./gradlew bootJar
-> ```
+> **Nota**: este modo levanta un Floci **temporal** solo para este proyecto (profile `floci-local`). Los datos no persisten entre `docker compose down`.
 
 ---
 
 ## Correr tests
 
 ```bash
-# Todos los tests (unit + integration)
-./gradlew test
-
-# Solo un servicio
-./gradlew :services:identity-service:test
-
-# E2E (requiere servicios corriendo)
-./gradlew :tests:e2e:test -De2e.enabled=true
+./gradlew test                              # Todos (unit + integration)
+./gradlew :services:identity-service:test   # Solo un servicio
+./gradlew :tests:e2e:test -De2e.enabled=true   # E2E (requiere servicios corriendo)
 ```
 
 ---
@@ -356,10 +273,10 @@ docker compose down
 Disponible en cada servicio (deshabilitable vía `SPRINGDOC_SWAGGER_UI_ENABLED`):
 
 | Servicio | URL |
-|----------|-----|
-| Identity | <http://localhost:8081/api/swagger-ui.html> |
-| Core Domain | <http://localhost:8082/api/swagger-ui.html> |
-| AI Engine | <http://localhost:8083/swagger-ui.html> |
+| ---------- | ----- |
+| Identity | `http://localhost:8081/api/swagger-ui.html` |
+| Core Domain | `http://localhost:8082/api/swagger-ui.html` |
+| AI Engine | `http://localhost:8083/swagger-ui.html` |
 
 ---
 
@@ -370,6 +287,12 @@ etribunal-platform/
 ├── gradle/libs.versions.toml          # Catálogo central de versiones
 ├── settings.gradle.kts                 # Módulos incluidos
 ├── docker-compose.yml                  # Infra + servicios
+├── scripts/
+│   ├── infra-up.bat                    # Levanta infra (Redis + Floci + Zipkin + Kafka + S3)
+│   ├── start-gateway.bat               # bootRun gateway (:8080)
+│   ├── start-identity.bat              # bootRun identity (:8081)
+│   ├── start-core.bat                  # bootRun core (:8082)
+│   └── start-ai.bat                    # bootRun ai-engine (:8083)
 ├── libs/
 │   ├── common-domain/                  # DTOs, eventos, excepciones
 │   ├── common-security/                # JWT provider
@@ -382,14 +305,7 @@ etribunal-platform/
 │   └── ai-engine-service/              # AI Automation
 ├── tests/
 │   └── e2e/                            # End-to-end tests
-└── docs/
-    ├── adr/                            # Architecture Decision Records
-    ├── API_REFERENCE.md                # Endpoints por servicio
-    ├── ARCHITECTURE.md                 # Comunicación, flujo de datos
-    ├── DEVELOPMENT.md                  # Guía de desarrollo local
-    ├── SECURITY.md                     # JWT, auth, rate limiting
-    ├── MIGRATION_STRATEGY.md           # Strangler Fig, shadow, canary
-    └── DEPLOY.md                       # CI/CD, Docker, env vars
+└── docs/                               # documentación (ver abajo)
 ```
 
 ---
@@ -407,7 +323,7 @@ etribunal-platform/
 ## Documentación
 
 | Documento | Contenido |
-|-----------|-----------|
+| ----------- | ----------- |
 | [API Reference](docs/API_REFERENCE.md) | Todos los endpoints por servicio |
 | [Architecture](docs/ARCHITECTURE.md) | Comunicación entre servicios, flujo de datos |
 | [Development](docs/DEVELOPMENT.md) | Setup local, debugging, Floci |

@@ -22,13 +22,23 @@ cd etribunal-platform
 
 ### 2. Infraestructura local
 
-```bash
-docker compose up -d
+**Windows (script, recomendado)**:
+
+```bat
+scripts\infra-up.bat            :: Redis + Floci + Zipkin + Kafka + bucket S3
+scripts\infra-up.bat temporal   :: + Temporal (opt-in)
 ```
 
-Esto levanta:
-- **Floci** (LocalStack): `:4566` (S3), `:7002` (identity DB), `:7003` (core DB)
-- **Redis**: `:6379` (password: `eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81`)
+**Manual**:
+
+```bash
+docker compose --profile floci-local up -d   # Floci (:4566, RDS :7001-7099) + floci-init (bucket S3)
+docker compose up -d redis                   # Redis :6379
+docker compose --profile zipkin up -d        # Zipkin :9411 (opcional)
+docker compose --profile kafka up -d         # Kafka :9092 (opcional)
+```
+
+> `docker compose up -d` (sin profile) solo levanta **Redis** — Floci está en el profile `floci-local`. El bucket S3 `etribunal-media` lo crea `floci-init` (idempotente).
 
 ### 3. Crear instancias RDS en Floci
 
@@ -69,19 +79,16 @@ aws --endpoint-url http://localhost:4566 rds create-db-instance \
 
 ### 4. Aplicar migraciones
 
-```bash
-# Identity
-cd services/identity-service
-flyway migrate -url=jdbc:postgresql://localhost:7002/etribunal_identity \
-  -user=etribunal_user -password=etribunal_pass \
-  -locations=filesystem:src/main/resources/db/migration
+Usa las tareas Gradle (apuntan por defecto a `localhost:7002`/`localhost:7003`):
 
-# Core
-cd services/core-domain-service
-flyway migrate -url=jdbc:postgresql://localhost:7003/etribunal_core \
-  -user=etribunal_user -password=etribunal_pass \
-  -locations=filesystem:src/main/resources/db/migration
+```bash
+./gradlew :services:identity-service:flywayMigrate
+./gradlew :services:core-domain-service:flywayMigrate
 ```
+
+> Si tus puertos difieren, override con system properties JVM:
+> `./gradlew :services:identity-service:flywayMigrate -DFLOCI_HOST=localhost -DFLOCI_IDENTITY_PORT=7002`
+> El arranque con perfil `local` también aplica Flyway automáticamente.
 
 ### 5. Levantar servicios
 
@@ -105,9 +112,10 @@ Abrir 4 terminales separadas:
 
 ```bash
 # Health checks
-curl http://localhost:8080/actuator/health   # Gateway
-curl http://localhost:8081/actuator/health   # Identity
-curl http://localhost:8082/actuator/health   # Core Domain
+curl http://localhost:8080/actuator/health       # Gateway
+curl http://localhost:8081/api/actuator/health   # Identity
+curl http://localhost:8082/api/actuator/health   # Core Domain
+curl http://localhost:8083/actuator/health       # AI Engine (opcional)
 
 # Registrar usuario
 curl -X POST http://localhost:8080/api/auth/register \
@@ -125,10 +133,13 @@ curl -X POST http://localhost:8080/api/auth/login \
 ### Perfiles
 
 ```bash
-docker compose up -d                           # Solo infra (Floci + Redis)
-docker compose --profile app up -d             # Infra + 4 servicios Spring
-docker compose --profile temporal up -d        # + Temporal + UI
-docker compose --profile app --profile temporal up -d  # Todo
+docker compose up -d                                  # Solo Redis (infra base)
+docker compose --profile floci-local up -d            # + Floci (RDS :7001-7099 + S3)
+docker compose --profile app up -d                    # + 4 servicios Spring
+docker compose --profile zipkin up -d                 # + Zipkin
+docker compose --profile kafka up -d                  # + Kafka
+docker compose --profile temporal up -d               # + Temporal + UI
+docker compose --profile app --profile floci-local up -d  # Todo (modo docker)
 ```
 
 ### Construir servicios

@@ -189,13 +189,13 @@ jobs:
 # Gateway
 curl http://localhost:8080/actuator/health
 
-# Identity
-curl http://localhost:8081/actuator/health
+# Identity (context-path /api)
+curl http://localhost:8081/api/actuator/health
 
-# Core Domain
-curl http://localhost:8082/actuator/health
+# Core Domain (context-path /api)
+curl http://localhost:8082/api/actuator/health
 
-# AI Engine
+# AI Engine (sin context-path)
 curl http://localhost:8083/actuator/health
 ```
 

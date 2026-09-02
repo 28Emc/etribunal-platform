@@ -47,7 +47,7 @@ kubectl get pods -n production -o wide
 kubectl logs -n production -l app=core-domain-service --tail=100 | grep -i error
 
 # 3. Check dependencies
-kubectl exec -n production deploy/core-domain-service -- curl -s localhost:8082/actuator/health
+kubectl exec -n production deploy/core-domain-service -- curl -s localhost:8082/api/actuator/health
 
 # 4. Quick mitigation
 # - Scale up if resource exhaustion
@@ -60,7 +60,7 @@ helm rollback core-domain 1 -n production
 ### High Latency (p99 > 2s)
 ```bash
 # 1. Check DB connections
-kubectl exec -n production deploy/core-domain-service -- curl -s localhost:8082/actuator/metrics/hikaricp.connections.active
+kubectl exec -n production deploy/core-domain-service -- curl -s localhost:8082/api/actuator/metrics/hikaricp.connections.active
 
 # 2. Check Kafka lag
 kubectl exec -n production deploy/ai-engine-service -- curl -s localhost:8083/actuator/metrics/kafka.consumer.lag
@@ -104,7 +104,7 @@ kubectl scale deployment ai-engine-service --replicas=5 -n production
 kubectl top pods -n production
 
 # Check JVM metrics
-kubectl exec -n production deploy/core-domain-service -- curl -s localhost:8082/actuator/metrics/jvm.memory.used
+kubectl exec -n production deploy/core-domain-service -- curl -s localhost:8082/api/actuator/metrics/jvm.memory.used
 
 # Mitigation
 # - Increase heap: -Xmx2g in JAVA_OPTS
