@@ -1,8 +1,6 @@
-# Architecture
+# Arquitectura
 
-## Visión general
-
-eTribunal es una plataforma de debate y votación construida como microservicios con Spring Boot 3.5. La arquitectura sigue el patrón **Strangler Fig** para migrar progresivamente desde el proyecto existente en veredixo.com.
+> **El panorama en 30 segundos:** eTribunal es una plataforma de debate y votación. Su backend son **4 microservicios Spring Boot** detrás de un **gateway** (`:8080`) que es la única puerta de entrada. El gateway valida el JWT, inyecta la identidad del usuario en headers, y reenvía a identity (`:8081`, auth/usuarios), core-domain (`:8082`, el corazón del dominio: casos, votos, comentarios, media) y ai-engine (`:8083`, automatización y moderación). Todos se apoyan en Redis (sesión), PostgreSQL (vía Floci en local) y, opcionalmente, Kafka.
 
 ## Diagrama de componentes
 
@@ -11,14 +9,12 @@ eTribunal es una plataforma de debate y votación construida como microservicios
                          │    Frontend (React)   │
                          │    :3000              │
                          └──────────┬───────────┘
-                                    │ HTTP
+                                    │ HTTP (solo toca el gateway)
                          ┌──────────▼───────────┐
                          │   Gateway Service     │
                          │   :8080               │
                          │                       │
-                         │  ┌─ JWT Filter ────┐  │
-                         │  ├─ Canary Filter  │  │
-                         │  └─ Shadow Filter  │  │
+                         │  ┌─ JWT Filter ────┐  │  ← valida token, inyecta X-User-Id/X-Username/X-Roles
                          └──┬─────┬─────┬─────┘
                             │     │     │
                ┌────────────┘     │     └────────────┐
@@ -27,15 +23,15 @@ eTribunal es una plataforma de debate y votación construida como microservicios
     │ Identity Service │ │ Core Domain Svc │ │  AI Engine Svc  │
     │ :8081            │ │ :8082           │ │  :8083          │
     │                  │ │                 │ │                  │
-    │  AuthController  │ │ CasesController │ │ AutomationCtrl   │
-    │  UserController  │ │ VotesController │ │ CaseGenerator    │
-    │  InternalCtrl    │ │ CommentsCtrl    │ │ InteractionPlan  │
-    │                  │ │ ReactionsCtrl   │ │ InteractionExec  │
-    │  JwtTokenProvider│ │ SavedCasesCtrl  │ │ Scheduler        │
-    │                  │ │ NotificationsCtrl│ │ GeminiProvider   │
-    │                  │ │ ReportsCtrl     │ │ ModerationProd   │
-    │                  │ │ SearchCtrl      │ │ ModerationCons   │
-    │                  │ │ MediaCtrl       │ │                  │
+    │  Auth            │ │ Cases           │ │ Automation        │
+    │  Users           │ │ Votes           │ │ CaseGenerator     │
+    │  Follows         │ │ Comments        │ │ InteractionPlan   │
+    │                  │ │ Reactions       │ │ InteractionExec   │
+    │                  │ │ SavedCases      │ │ Scheduler         │
+    │                  │ │ Notifications   │ │ GeminiProvider    │
+    │                  │ │ Reports         │ │ Moderation        │
+    │                  │ │ Search          │ │                   │
+    │                  │ │ Media           │ │                   │
     └───────┬──────────┘ └────────┬────────┘ └────────┬────────┘
             │                     │                   │
    ┌────────▼────────┐  ┌────────▼────────┐  ┌───────▼───────┐
@@ -46,32 +42,32 @@ eTribunal es una plataforma de debate y votación construida como microservicios
    └─────────────────┘  └─────────────────┘  └───────────────┘
             │
    ┌────────▼────────┐              ┌─────────────────┐
-   │  Redis           │              │  S3 (LocalStack) │
+   │  Redis           │              │  S3 / Floci      │
    │  :6379           │              │  :4566           │
-   │  sessions, rate  │              │  media storage   │
-   │  limits, canary  │              └─────────────────┘
+   │  sesión, rate    │              │  media storage   │
+   │  limits, inval.  │              └─────────────────┘
    └─────────────────┘
 ```
 
 ## Comunicación entre servicios
 
-### Gateway → Services (HTTP)
+### Gateway → Servicios (HTTP)
 
-El gateway valida JWT en el edge e inyecta headers de identidad:
+El gateway es el **único punto de entrada** y confía en el JWT para validar el borde:
 
 ```
 Request → Gateway (:8080)
   ├─ Valida Authorization: Bearer <token>
   ├─ Extrae userId, username, roles
   ├─ Inyecta X-User-Id, X-Username, X-Roles
-  └─ Reenvía al servicio destino
+  └─ Reenvía al servicio destino (sin re-validar JWT)
 ```
 
-Los servicios downstream confían en estos headers (no re-validan JWT).
+Los servicios downstream **confían** en estos headers (no vuelven a validar el token). Por eso el gateway es la pieza de seguridad crítica del edge.
 
 ### Core → Identity (HTTP interno)
 
-Core-domain llama a identity para batch lookups de usuarios:
+Core llama a identity para resolver información de usuarios que no guarda su propia base:
 
 ```
 CoreDomain → IdentityService
@@ -81,31 +77,27 @@ CoreDomain → IdentityService
   Header: X-User-Id: <uuid>
 ```
 
-El token interno usa SHA-256 + `MessageDigest.isEqual()` (timing-safe).
+El token interno usa SHA-256 + `MessageDigest.isEqual()` (comparación timing-safe).
 
-### Eventos (Kafka — diferido)
+### Eventos (Kafka)
 
-Topics definidos en `libs/common-kafka`:
+Kafka está **operativo** (aunque best-effort): si el broker está disponible, los servicios publican/consumen eventos; si no, la request sigue igual.
 
 | Topic | Eventos | Publisher |
 |-------|---------|-----------|
 | `case-events` | CaseCreated, MediaUploaded | core-domain |
-| `user-events` | (futuro) | identity |
-| `vote-events` | (futuro) | core-domain |
-| `comment-events` | (futuro) | core-domain |
 | `moderation-tasks` | ModerationRequest | ai-engine |
-| `notification-tasks` | (futuro) | core-domain |
+| `user-events` / `vote-events` / `comment-events` / `notification-tasks` | (diseñados, futuros) | identity/core |
 
-Kafka está scaffoldeado pero no operativo localmente (ADR-002).
+Los temas "futuros" están pensados pero aún no producen eventos. El detalle de la decisión está en el ADR-002.
 
-## Flujo de datos principal
+## Flujos de datos principales
 
-### Crear caso y votar
+### Crear un caso y votar
 
 ```
 1. POST /api/cases (CoreDomain)
    → Guarda en DB (cases table)
-   → Publica CaseCreatedEvent a Kafka (futuro)
 
 2. POST /api/cases/{id}/votes (CoreDomain)
    → Guarda voto en DB (votes table)
@@ -113,57 +105,40 @@ Kafka está scaffoldeado pero no operativo localmente (ADR-002).
 
 3. GET /api/cases (Feed)
    → Query optimizada con batch groupBy reactions + user reactions
-   → Retorna cases con votos, reacciones, metadata
+   → Retorna casos con votos, reacciones y metadata
 ```
 
-### Upload de imagen
+### Subir una imagen
 
 ```
 1. POST /api/media/cases/{id}/images/upload-url (CoreDomain)
-   → Genera presigned URL (S3/LocalStack)
+   → Genera presigned URL (S3/Floci)
    → Retorna { uploadUrl, storageKey, publicUrl, imageId }
 
 2. Frontend PUT uploadUrl (directo a S3)
-   → Upload binario a S3
+   → Sube el binario
 
 3. POST /api/media/images/{imageId}/confirm (CoreDomain)
-   → Confirma upload, guarda metadata en DB
-   → Publica MediaUploadedEvent a Kafka (futuro)
+   → Confirma el upload, guarda metadata en DB
+   → Publica MediaUploadedEvent a Kafka
 ```
 
-### AI Automation
+### Automatización con IA
 
 ```
 1. POST /api/automation/run (AIEngine) → 202 Accepted (async)
    → Orchestrator startRun() en background
 
 2. Orchestrator:
-   → Selecciona pool de bots del día
+   → Selecciona el pool de bots del día
    → CaseGenerator: genera casos vía Gemini AI
    → InteractionPlanner: planifica interacciones
    → InteractionExecutor: programa interacciones (staggered)
-   → Scheduler: ejecuta interacciones programadas
+   → Scheduler: ejecuta las interacciones programadas
 
 3. GET /api/automation/runs/{id} (polling)
    → Retorna status: RUNNING | COMPLETED | FAILED
 ```
-
-## Migration Strategy (Strangler Fig)
-
-El gateway implementa 3 filtros para migrar progresivamente desde NestJS:
-
-```
-Request → JWT Filter (-10)
-       → Canary Filter (-5)   → decide Spring vs NestJS
-       → Shadow Filter (-3)   → duplica GET a NestJS para comparar
-       → Default Routing (0)  → Spring Cloud Gateway routes
-```
-
-**Canary:** Redirige X% del tráfico a NestJS vs Spring (configurable por servicio/ruta via Redis).
-
-**Shadow:** Envía GETs a ambos backends, compara responses, loguea diferencias.
-
-Ver [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md) para detalles.
 
 ## Bases de datos
 
@@ -192,21 +167,13 @@ Ver [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md) para detalles.
 | `automation_cases` | Casos generados por AI en cada run |
 | `automation_interactions` | Interacciones programadas por AI |
 
-## Libs compartidas
+## Librerías compartidas
 
-### common-domain
-- `DomainEvent` — envelope base para eventos
-- `CaseCreatedEvent` — evento de caso creado
-- Excepciones compartidas (`NotFoundException`, `BadRequestException`)
+Viven en `libs/` y las usan varios servicios:
 
-### common-security
-- `JwtTokenProvider` — genera y valida JWT (HS256, Nimbus JOSE)
-- `AuthenticatedUser` — principal autenticado
-- Dos secrets: `accessSecret` + `refreshSecret` (mínimo 32 bytes cada uno)
-
-### common-kafka
-- `Topics` — constantes de topic names
-- `EventJson` — ObjectMapper compartido con JavaTimeModule
-
-### common-test
-- `FlociContainer` — Testcontainers para LocalStack/Floci (puerto 4566)
+| Lib | Qué contiene |
+|-----|--------------|
+| `common-domain` | DTOs, eventos de dominio (`DomainEvent`, `CaseCreatedEvent`), excepciones compartidas |
+| `common-security` | `JwtTokenProvider` (JWT HS256 via Nimbus), `AuthenticatedUser`, gestión de los dos secrets |
+| `common-kafka` | Constantes de topics (`Topics`), `EventJson` (ObjectMapper con JavaTimeModule) |
+| `common-test` | `FlociContainer` (Testcontainers para Floci, puerto 4566) |

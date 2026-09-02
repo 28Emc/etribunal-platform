@@ -328,6 +328,15 @@ etribunal-platform/
 | [Architecture](docs/ARCHITECTURE.md) | Comunicación entre servicios, flujo de datos |
 | [Development](docs/DEVELOPMENT.md) | Setup local, debugging, Floci |
 | [Security](docs/SECURITY.md) | JWT, auth, rate limiting |
-| [Migration Strategy](docs/MIGRATION_STRATEGY.md) | Strangler Fig, shadow traffic, canary |
-| [Deploy](docs/DEPLOY.md) | CI/CD, Docker, variables de entorno |
+| [Migration Strategy](docs/MIGRATION_STRATEGY.md) | Historia de la migración NestJS→Spring (completada) |
+| [Deploy](docs/DEPLOY.md) | Despliegue real: imágenes, variables de entorno, rollbacks |
 | [ADRs](docs/adr/) | Architecture Decision Records (001-009) |
+
+### Runbooks
+
+| Runbook | Contenido |
+| -------- | ----------- |
+| [Desplegar a staging](docs/runbooks/deploy-staging.md) | Llevar el backend a staging (flujo real) |
+| [Desplegar a producción](docs/runbooks/deploy-production.md) | Llevar el backend a producción + rollback |
+| [Respuesta a incidentes](docs/runbooks/incident-response.md) | Qué hacer ante caídas y degradación |
+| [K8s ruta futura](docs/runbooks/deploy-k8s-future.md) | Plantillas Helm/Kubernetes (⚠️ aún no aplica) |

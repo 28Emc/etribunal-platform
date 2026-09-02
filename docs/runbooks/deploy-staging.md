@@ -1,82 +1,76 @@
-# Runbook: Deploy to Staging
+# Runbook: Despliegue a staging
 
-## Prerequisites
-- Docker images built and pushed to registry
-- `kubectl` configured for staging cluster
-- Helm 3.x installed
-- Access to Floci/Cloud SQL for DB migrations
+> **Qué es esto:** el procedimiento para llevar el backend a un entorno de **staging** (pre-producción) con el flujo real actual (imágenes Docker / JARs + variables de entorno). Si en el futuro adoptamos Kubernetes, el despliegue pasará a [deploy-k8s-future](./deploy-k8s-future.md).
 
-## Pre-deploy Checklist
-- [ ] All CI checks pass (unit, integration, contract tests)
-- [ ] Docker images tagged with `staging-<git-sha>`
-- [ ] Database migration reviewed (Flyway `validate` passes)
-- [ ] Environment variables updated in `values-staging.yaml`
-- [ ] Feature flags configured for canary (if applicable)
+## Requisitos previos
 
-## Deploy Steps
+- El código está en una rama estable (p. ej. `develop` tras mergear features).
+- Las imágenes Docker (o JARs) se pudieron construir localmente con `./gradlew bootJar`.
+- Tienes acceso al host de staging y a su base de datos.
 
-### 1. Deploy Infrastructure (if needed)
+## Checklist previo
+
+- [ ] CI en verde (unit + tests de servicio + e2e si aplica).
+- [ ] Imágenes versionadas con un tag (p. ej. `staging-<git-sha>`).
+- [ ] Migración Flyway revisada.
+- [ ] Variables de entorno de staging preparadas (DB, Redis, S3, secrets).
+
+## Pasos
+
+### 1. Compilar y construir
+
 ```bash
-cd infra/kubernetes/overlays/staging
-kustomize build | kubectl apply -f -
+./gradlew bootJar
+docker build -f services/gateway-service/Dockerfile -t etribunal/gateway-service:staging .
+# ... repetir para identity, core-domain y ai-engine (ver DEPLOY.md)
 ```
 
-### 2. Run Database Migrations
+### 2. Publicar imágenes
+
+Pushea las imágenes a tu registry de staging (ECR, GHCR, etc.) con el tag de la rama.
+
+### 3. Aplicar migraciones
+
 ```bash
-# Flyway via Kubernetes Job (vía recomendada para staging)
-kubectl apply -f infra/kubernetes/base/flyway-migration-job.yaml -n staging
+./gradlew :services:identity-service:flywayMigrate
+./gradlew :services:core-domain-service:flywayMigrate
 ```
 
-### 3. Deploy Services (Rolling Update)
+Apuntándolas a la DB de staging (sobreescribe `SPRING_DATASOURCE_URL` según corresponda).
+
+### 4. Levantar servicios
+
+Levanta cada contenedor en el host de staging con las variables de entorno de staging. El mismo artefacto que corre en local corre aquí: solo cambia lo que le inyectas.
+
+### 5. Verificar
+
 ```bash
-# Identity
-helm upgrade --install identity ./infra/helm/identity-service -n staging -f ./infra/helm/identity-service/values-staging.yaml
-
-# Core Domain
-helm upgrade --install core-domain ./infra/helm/core-domain-service -n staging -f ./infra/helm/core-domain-service/values-staging.yaml
-
-# AI Engine
-helm upgrade --install ai-engine ./infra/helm/ai-engine-service -n staging -f ./infra/helm/ai-engine-service/values-staging.yaml
-
-# Gateway
-helm upgrade --install gateway ./infra/helm/gateway-service -n staging -f ./infra/helm/gateway-service/values-staging.yaml
+curl http://<staging-host>:8080/actuator/health       # Gateway
+curl http://<staging-host>:8081/api/actuator/health   # Identity
+curl http://<staging-host>:8082/api/actuator/health   # Core Domain
+curl http://<staging-host>:8083/actuator/health       # AI Engine
 ```
 
-### 4. Verify Deployment
+### 6. Smoke tests
+
 ```bash
-# Check pod status
-kubectl get pods -n staging -w
-
-# Check health endpoints
-kubectl exec -n staging deploy/identity-service -- curl -s localhost:8081/api/actuator/health
-kubectl exec -n staging deploy/core-domain-service -- curl -s localhost:8082/api/actuator/health
-kubectl exec -n staging deploy/ai-engine-service -- curl -s localhost:8083/actuator/health
-kubectl exec -n staging deploy/gateway-service -- curl -s localhost:8080/actuator/health
-
-# Check logs
-kubectl logs -n staging -l app=identity-service --tail=50
+./gradlew :tests:e2e:test -De2e.enabled=true -Dgateway.url=http://<staging-host>:8080
 ```
 
-### 5. Smoke Tests
+## Rollback
+
+Volver a desplegar la **versión anterior** (mismo tag/JAR previo):
+
 ```bash
-# Run staging smoke tests
-./gradlew :tests:e2e:test -Penvironment=staging
+# Contenedores: reiniciar con el tag anterior
+docker compose up -d --no-deps <servicio>
 ```
 
-## Rollback Procedure
-```bash
-# Quick rollback (Helm)
-helm rollback identity 1 -n staging
-helm rollback core-domain 1 -n staging
-helm rollback ai-engine 1 -n staging
-helm rollback gateway 1 -n staging
-
-# Verify rollback
-kubectl rollout status deployment/identity-service -n staging
-```
+> Las migraciones no se revierten solas: si una causó problemas, restaura el backup de DB antes de re-desplegar.
 
 ## Post-deploy
-- [ ] Update deployment tracker with version
-- [ ] Notify team in #deployments channel
-- [ ] Monitor dashboards for 15 minutes
-- [ ] Run load test if major release
+
+- [ ] Actualizar el tracker de despliegues con la versión.
+- [ ] Avisar al equipo.
+- [ ] Monitorear dashboards 15 minutos.
+- [ ] Correr load test si es un release importante.

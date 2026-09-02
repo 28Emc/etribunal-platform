@@ -1,246 +1,196 @@
-# Deploy Guide
+# Guía de despliegue
 
-## Entornos
+> **En una frase:** el backend sale a producción como contenedores Docker (o JARs sobre una máquina cualquiera). Hoy no hay Kubernetes — el despliegue con Helm que verás en este repo es una **plantilla para el futuro**, documentada aparte en [runbooks/deploy-k8s-future](./runbooks/deploy-k8s-future.md).
 
-| Entorno | Propósito | URL |
-|---------|-----------|-----|
-| Local | Desarrollo | localhost |
-| Staging | Testing pre-producción | (configurar) |
-| Producción | Usuarios reales | (configurar) |
+Esta guía cubre el flujo **real** que se usa hoy en día. Todo depende de variables de entorno: los servicios en sí no llevan credenciales ni datasources hardcodeados, así que el mismo JAR / imagen sirve para local, staging o producción — solo cambia lo que le inyectas.
 
-## Docker
+---
 
-### Construir imágenes
+## El panorama en 30 segundos
+
+Tienes 4 servicios Spring Boot en un monorepo Gradle. Para ponerlos a correr en cualquier entorno:
+
+1. Compilas fat-jars con `./gradlew bootJar`.
+2. (Opcional) Construyes imágenes Docker desde los `Dockerfile` de cada servicio.
+3. Levantas cada uno con las **variables de entorno** correctas (DB, Redis, S3, secrets).
+4. Aplicas migraciones Flyway.
+5. El gateway `:8080` es la única puerta: expone `/api/**` y rutea al resto.
+
+Ningún servicio conoce "dónde vive"; se lo dices tú con el entorno. Eso hace que desplegar sea repetible y predecible.
+
+---
+
+## Qué construye y qué necesita cada servicio
+
+Detalle de variables en las tablas más abajo. En resumen:
+
+| Servicio | DB | Redis | S3 | Kafka* | Otros |
+|----------|----|-------|----|--------|-------|
+| `gateway-service` | — | sí | — | — | — |
+| `identity-service` | `etribunal_identity` | sí | — | no | `INTERNAL_API_KEY` |
+| `core-domain-service` | `etribunal_core` | sí | sí | opcional | `INTERNAL_API_KEY`, `IDENTITY_BASE_URL` |
+| `ai-engine-service` | `etribunal_core` | — | — | opcional | `AI_API_KEY` |
+
+> \*Kafka es **best-effort**: si el broker no está, los servicios siguen funcionando (la producción de eventos no bloquea). Solo activas los flujos de media (core) y automatización (ai-engine) cuando hay broker.
+
+---
+
+## 1. Compilar
 
 ```bash
 # Desde la raíz del monorepo
 ./gradlew bootJar
 
-# Construir imágenes individuales
-docker build -f services/gateway-service/Dockerfile -t etribunal/gateway-service .
-docker build -f services/identity-service/Dockerfile -t etribunal/identity-service .
-docker build -f services/core-domain-service/Dockerfile -t etribunal/core-domain-service .
-docker build -f services/ai-engine-service/Dockerfile -t etribunal/ai-engine-service .
+# Los fat-jars quedan en services/<servicio>/build/libs/*.jar
 ```
 
-### Docker Compose
+Compilar con la toolchain de Gradle se encarga del JDK 21 automáticamente (vía Foojay).
+
+---
+
+## 2. Construir imágenes Docker (opcional)
+
+Cada servicio tiene su propio `Dockerfile` (basado en `eclipse-temurin:21-jre`):
 
 ```bash
-# Desarrollo local
-docker compose up -d                              # Solo infra
-docker compose --profile app up -d                # Infra + servicios
-
-# Producción (ver sección Variables de entorno)
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker build -f services/gateway-service/Dockerfile      -t etribunal/gateway-service .
+docker build -f services/identity-service/Dockerfile     -t etribunal/identity-service .
+docker build -f services/core-domain-service/Dockerfile  -t etribunal/core-domain-service .
+docker build -f services/ai-engine-service/Dockerfile    -t etribunal/ai-engine-service .
 ```
 
-### Dockerfiles
+> El `Dockerfile` solo copia el JAR compilado (no compila dentro). Por eso **siempre** ejecuta `./gradlew bootJar` antes de `docker build`.
 
-Todos los servicios usan la misma estructura:
+---
 
-```dockerfile
-FROM eclipse-temurin:21-jre
-WORKDIR /app
-RUN useradd --system --uid 1001 app
-COPY services/{service}/build/libs/*.jar app.jar
-USER app
-EXPOSE {port}
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
-```
-
-**Optimizaciones para producción:**
-- Multi-stage build (compilar en Gradle, solo copiar JAR)
-- Layers de Docker para cache de dependencias
-- Health checks en Docker Compose
-
-## Variables de entorno
+## 3. Variables de entorno
 
 ### Gateway Service
 
-| Variable | Requerida | Default | Descripción |
-|----------|-----------|---------|-------------|
-| `JWT_ACCESS_SECRET` | Sí | — | Secret para validar access tokens |
-| `JWT_ISSUER` | No | `etribunal` | Issuer claim |
-| `REDIS_HOST` | No | `localhost` | Host de Redis |
-| `REDIS_PORT` | No | `6379` | Puerto de Redis |
-| `REDIS_PASSWORD` | No | (empty) | Password de Redis |
-| `MIGRATION_ENABLED` | No | `false` | Habilitar Strangler Fig |
-| `NESTJS_URL` | No | `http://localhost:3001/api` | URL del backend legacy |
-| `CANARY_ENABLED` | No | `false` | Habilitar canary routing |
-| `CANARY_DEFAULT_PCT` | No | `0` | Porcentaje default canary |
-| `SHADOW_ENABLED` | No | `false` | Habilitar shadow traffic |
+| Variable | Obligatoria | Default | Qué es |
+|----------|-------------|---------|--------|
+| `JWT_ACCESS_SECRET` | Sí | — | Secret para validar los access tokens en el edge |
+| `JWT_ISSUER` | No | `etribunal` | Claim `iss` |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | No | `localhost`/`6379`/— | Redis (sesión/rate-limit) |
+| `CORS_ALLOWED_ORIGINS` | No | `http://localhost:3000` | Orígenes permitidos |
 
 ### Identity Service
 
-| Variable | Requerida | Default | Descripción |
-|----------|-----------|---------|-------------|
-| `JWT_ACCESS_SECRET` | Sí | — | Secret para access tokens |
-| `JWT_REFRESH_SECRET` | Sí | — | Secret para refresh tokens |
-| `JWT_ISSUER` | No | `etribunal` | Issuer claim |
-| `JWT_ACCESS_TTL` | No | `PT15M` | TTL access token |
-| `JWT_REFRESH_TTL` | No | `P7D` | TTL refresh token |
-| `INTERNAL_API_KEY` | Sí | — | Token para comunicación interna |
-| `SPRING_DATASOURCE_URL` | Sí | — | JDBC URL de PostgreSQL |
-| `SPRING_DATASOURCE_USERNAME` | Sí | — | Usuario de DB |
-| `SPRING_DATASOURCE_PASSWORD` | Sí | — | Password de DB |
-| `REDIS_HOST` | No | `localhost` | Host de Redis |
-| `REDIS_PASSWORD` | No | (empty) | Password de Redis |
-| `KAFKA_BOOTSTRAP_SERVERS` | No | `localhost:9092` | Kafka broker |
+| Variable | Obligatoria | Default | Qué es |
+|----------|-------------|---------|--------|
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Sí | — | Firma de tokens (64 bytes hex) |
+| `JWT_ISSUER` | No | `etribunal` | Claim `iss` |
+| `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | No | `PT15M` / `P7D` | Duración de tokens |
+| `INTERNAL_API_KEY` | Sí | — | Secret de comunicación interna (debe coincidir con core) |
+| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | Sí | — | PostgreSQL `etribunal_identity` |
+| `REDIS_HOST` / `REDIS_PASSWORD` | No | `localhost` / — | Redis |
 
 ### Core Domain Service
 
-| Variable | Requerida | Default | Descripción |
-|----------|-----------|---------|-------------|
-| `SPRING_DATASOURCE_URL` | Sí | — | JDBC URL de PostgreSQL |
-| `SPRING_DATASOURCE_USERNAME` | Sí | — | Usuario de DB |
-| `SPRING_DATASOURCE_PASSWORD` | Sí | — | Password de DB |
-| `IDENTITY_BASE_URL` | Sí | — | URL interna de identity-service |
-| `INTERNAL_API_KEY` | Sí | — | Token para comunicación interna |
-| `FRONTEND_URL` | No | `http://localhost:3000` | URL del frontend (invite links) |
-| `S3_ENDPOINT` | Sí | — | URL de S3/LocalStack |
-| `AWS_REGION` | No | `us-east-1` | Región AWS |
-| `AWS_ACCESS_KEY_ID` | Sí | — | Access key de S3 |
-| `AWS_SECRET_ACCESS_KEY` | Sí | — | Secret key de S3 |
-| `S3_BUCKET` | No | `etribunal-media` | Bucket de S3 |
-| `REDIS_HOST` | No | `localhost` | Host de Redis |
-| `KAFKA_BOOTSTRAP_SERVERS` | No | `localhost:9092` | Kafka broker |
+| Variable | Obligatoria | Default | Qué es |
+|----------|-------------|---------|--------|
+| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | Sí | — | PostgreSQL `etribunal_core` |
+| `IDENTITY_BASE_URL` | Sí | — | URL interna de identity (ej. `http://identity-service:8081`) |
+| `INTERNAL_API_KEY` | Sí | — | Debe coincidir con identity |
+| `FRONTEND_URL` | No | `http://localhost:3000` | Usada en invites/links |
+| `S3_ENDPOINT` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | Sí | `us-east-1` | S3 (o LocalStack/Floci) |
+| `S3_BUCKET` | No | `etribunal-media` | Bucket de media |
+| `REDIS_HOST` | No | `localhost` | Redis |
 
 ### AI Engine Service
 
-| Variable | Requerida | Default | Descripción |
-|----------|-----------|---------|-------------|
-| `CORE_DB_HOST` | Sí | — | Host de PostgreSQL |
-| `CORE_DB_PORT` | No | `5432` | Puerto de PostgreSQL |
-| `CORE_DB_NAME` | Sí | — | Nombre de la DB |
-| `CORE_DB_USER` | Sí | — | Usuario de DB |
-| `CORE_DB_PASS` | Sí | — | Password de DB |
-| `AI_API_KEY` | Sí | — | Google AI Studio API key |
+| Variable | Obligatoria | Default | Qué es |
+|----------|-------------|---------|--------|
+| `CORE_DB_HOST` / `CORE_DB_PORT` / `CORE_DB_NAME` / `CORE_DB_USER` / `CORE_DB_PASS` | Sí | `5432` | PostgreSQL compartido `etribunal_core` |
+| `AI_API_KEY` | Sí | — | Google AI Studio key |
 | `AI_MODEL` | No | `gemini-2.0-flash` | Modelo Gemini |
-| `AUTOMATION_ENABLED` | No | `false` | Master switch automatización |
-| `AUTOMATION_DRY_RUN` | No | `true` | Solo planificar, no ejecutar |
-| `KAFKA_BOOTSTRAP_SERVERS` | No | `localhost:9092` | Kafka broker |
+| `AUTOMATION_ENABLED` | No | `false` | Master switch de automatización |
+| `AUTOMATION_DRY_RUN` | No | `true` | `true` = planifica sin ejecutar |
 
-## CI/CD
+> **Regla de oro:** `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` e `INTERNAL_API_KEY` deben **rotarse** respecto a los valores de desarrollo — nunca uses los defaults en producción.
 
-### GitHub Actions (pendiente)
+---
 
-Pipeline sugerido:
+## 4. Aplicar migraciones
 
-```yaml
-name: CI
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-      - run: ./gradlew build
-      - run: ./gradlew test
-
-  docker:
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: ./gradlew bootJar
-      - run: docker compose build
-      # Push a container registry (ECR, GHCR, etc.)
-```
-
-### Build stages
-
-```
-1. Compile     → ./gradlew compileJava
-2. Test        → ./gradlew test
-3. Package     → ./gradlew bootJar
-4. Docker      → docker compose build
-5. Deploy      → docker compose up -d
-```
-
-## Producción
-
-### Checklist pre-deploy
-
-- [ ] Variables de entorno configuradas (secrets, no defaults)
-- [ ] `JWT_ACCESS_SECRET` y `JWT_REFRESH_SECRET` rotados (no defaults de dev)
-- [ ] `INTERNAL_API_KEY` configurado y coincidente en identity + core
-- [ ] PostgreSQL accesible y migraciones aplicadas
-- [ ] Redis accesible
-- [ ] S3 bucket creado y con políticas de acceso
-- [ ] Kafka broker corriendo (si se usa)
-- [ ] CORS configurado para el dominio real
-- [ ] Rate limits ajustados
-- [ ] SpringDoc deshabilitado (`SPRINGDOC_SWAGGER_UI_ENABLED=false`)
-- [ ] Health checks configurados
-
-### Health checks
+Flyway se encarga del schema. Las tareas Gradle apuntan por defecto a los puertos locales de Floci:
 
 ```bash
-# Gateway
-curl http://localhost:8080/actuator/health
-
-# Identity (context-path /api)
-curl http://localhost:8081/api/actuator/health
-
-# Core Domain (context-path /api)
-curl http://localhost:8082/api/actuator/health
-
-# AI Engine (sin context-path)
-curl http://localhost:8083/actuator/health
+./gradlew :services:identity-service:flywayMigrate
+./gradlew :services:core-domain-service:flywayMigrate
 ```
 
-### Monitoreo
+En producción, aplica las migraciones apuntando a tu PostgreSQL real. El propio arranque de cada servicio también ejecuta Flyway automáticamente al iniciar.
 
-| Métrica | Endpoint |
-|---------|----------|
-| Health | `/actuator/health` |
-| Info | `/actuator/info` |
-| Prometheus | `/actuator/prometheus` |
+---
 
-### Rotación de secrets
+## 5. Levantar los servicios
+
+Cada servicio arranca con `java -jar app.jar`, inyectando las variables de entorno correspondientes. Dos formas típicas:
+
+**A) Contenedores**: usando las imágenes del paso 2, con un `docker compose` propio (el `docker-compose.yml` del repo es para desarrollo; en prod defines el tuyo con los envs reales) o directamente `docker run`.
+
+**B) Proceso simple**: en cualquier máquina con JRE 21:
 
 ```bash
-# Generar nuevos secrets
-openssl rand -hex 64   # Para JWT secrets (64 bytes hex)
-openssl rand -hex 32   # Para INTERNAL_API_KEY (32 bytes hex)
-
-# Actualizar en todos los servicios
-export JWT_ACCESS_SECRET="<nuevo>"
-export JWT_REFRESH_SECRET="<nuevo>"
-export INTERNAL_API_KEY="<nuevo>"
+SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/etribunal_core \
+SPRING_DATASOURCE_USERNAME=... SPRING_DATASOURCE_PASSWORD=... \
+java -jar services/core-domain-service/build/libs/core-domain-service.jar
 ```
+
+Repite el patrón para los 4 servicios. El orden típico: identity y core primero (necesitan DB), luego gateway (el borde), y ai-engine opcional al final.
+
+---
+
+## 6. Verificar el desplegable
+
+```bash
+curl http://<host>:8080/actuator/health        # Gateway
+curl http://<host>:8081/api/actuator/health    # Identity (context-path /api)
+curl http://<host>:8082/api/actuator/health    # Core Domain (context-path /api)
+curl http://<host>:8083/actuator/health        # AI Engine
+```
+
+Deberías obtener `{"status":"UP",...}` en todos.
+
+---
+
+## Entornos
+
+| Entorno | Cómo llega | Comentarios |
+|---------|------------|-------------|
+| **Local** | Gradle `bootRun` con perfil `local` (ver README) | Usa Floci + envs de dev |
+| **Staging** | Imágenes Docker con envs de staging | Antes de producción |
+| **Producción** | Imágenes Docker / JARs con envs reales | Secrets rotados |
+
+> Hoy el repo no trae scripts ni composición para staging/producción: se despliega con las variables de entorno elegidas al levantar. En el futuro, cuando llegue Kubernetes, se usará lo de [runbooks/deploy-k8s-future](./runbooks/deploy-k8s-future.md).
+
+---
 
 ## Rollback
 
-```bash
-# Detener servicios
-docker compose --profile app down
+Como compartes el mismo JAR entre entornos y solo cambias el entorno, un rollback es:
 
-# Revertir a versión anterior
-git checkout v1.0.0
-./gradlew bootJar
-docker compose --profile app up -d --build
+```bash
+# Volver a la versión anterior (misma imagen/tag previo reiniciando el contenedor)
+docker compose up -d --no-deps <servicio>   # apuntando al tag anterior
+
+# O, con JARs: restaurar el .jar anterior y reiniciar el proceso
 ```
 
-## Backup de base de datos
+Nada atómico: solo reinicia con el artefacto anterior. Las migraciones Flyway son la parte que no se revierte sola — por eso `pg_dump` antes de una migración de schema.
+
+---
+
+## Backups de base de datos
 
 ```bash
-# Identity DB
-pg_dump -h localhost -p 7002 -U etribunal_user etribunal_identity > identity_backup.sql
+# Identity
+pg_dump -h <host> -p 7002 -U etribunal_user etribunal_identity > identity_backup.sql
 
-# Core DB
-pg_dump -h localhost -p 7003 -U etribunal_user etribunal_core > core_backup.sql
+# Core
+pg_dump -h <host> -p 7003 -U etribunal_user etribunal_core > core_backup.sql
 
 # Restaurar
-psql -h localhost -p 7002 -U etribunal_user etribunal_identity < identity_backup.sql
+psql -h <host> -p 7002 -U etribunal_user etribunal_identity < identity_backup.sql
 ```

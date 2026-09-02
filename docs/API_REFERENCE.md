@@ -71,9 +71,26 @@ Protegidos por header `X-Internal-Token`. No expuestos vía gateway.
 | `POST` | `/cases` | Crear caso | Sí |
 | `GET` | `/cases?skip=0&take=10&feedType=&category=&q=` | Feed de casos | Sí |
 | `GET` | `/cases/{id}` | Detalle de caso | Sí |
+| `PATCH` | `/cases/{id}` | Editar caso (title/content/subtítulos, etc.) | Sí |
+| `POST` | `/cases/{id}/delete` | Soft delete (desactivar) caso | Sí |
 | `GET` | `/cases/invite/{token}` | Caso por invite token | Sí |
-| `POST` | `/cases/respond` | Responder Side B | Sí |
 | `POST` | `/cases/{id}/invite-link` | Generar/regenerar invite link | Sí |
+| `POST` | `/cases/{id}/track-share` | Registrar share de un caso | Sí |
+| `GET` | `/cases/trending/top?limit=10` | Casos trending (feed) | Sí |
+| `GET` | `/cases/active-users?limit=10` | Usuarios activos | Sí |
+
+### Responder Side B / Invite
+
+| Método | Endpoint | Descripción | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/cases/respond` | Responder la Side B del invite | Sí |
+
+### Casos por usuario (UserCases)
+
+| Método | Endpoint | Descripción | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/users/{username}/cases?skip=0&take=10` | Casos de un perfil (created) | Sí |
+| `POST` | `/users/{userId}/track-share` | Registrar share de un perfil | Sí |
 
 **Crear caso:**
 ```json
@@ -95,6 +112,7 @@ Protegidos por header `X-Internal-Token`. No expuestos vía gateway.
 | `POST` | `/cases/{caseId}/votes` | Votar (A, B, o BOTH_WRONG) | Sí |
 | `DELETE` | `/cases/{caseId}/votes` | Quitar voto | Sí |
 | `GET` | `/cases/{caseId}/votes` | Mi voto actual | Sí |
+| `GET` | `/users/me/votes?skip=0&take=10` | Casos que he votado | Sí |
 
 ### Comments
 
@@ -103,6 +121,7 @@ Protegidos por header `X-Internal-Token`. No expuestos vía gateway.
 | `GET` | `/cases/{caseId}/comments?limit=20&before=&after=` | Comentarios (cursor pagination) | Sí |
 | `GET` | `/cases/{caseId}/comments/new?since=...` | Conteo de comentarios nuevos | Sí |
 | `POST` | `/cases/{caseId}/comments` | Crear comentario | Sí |
+| `PUT` | `/comments/{commentId}` | Editar comentario (owner) | Sí |
 | `DELETE` | `/comments/{commentId}` | Eliminar comentario (owner) | Sí |
 | `GET` | `/comments/{commentId}/replies` | Respuestas a un comentario | Sí |
 
@@ -146,7 +165,30 @@ Protegidos por header `X-Internal-Token`. No expuestos vía gateway.
 
 | Método | Endpoint | Descripción | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/cases/search?q=...&skip=0&take=10` | Full-text search (tsvector) | Sí |
+| `GET` | `/cases/search?q=...&skip=0&take=10` | Full-text search de casos (tsvector) | Sí |
+| `GET` | `/search/quick?q=...&take=10` | Búsqueda rápida (sugerencias) | Sí |
+| `GET` | `/search/advanced?q=...&skip=0&take=10` | Búsqueda avanzada con filtros | Sí |
+
+### Translations
+
+| Método | Endpoint | Descripción | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/translations/cases/{caseId}` | Traducir caso a idioma del usuario | Sí |
+| `POST` | `/translations/comments/{commentId}` | Traducir comentario | Sí |
+
+### Uploads
+
+| Método | Endpoint | Descripción | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/upload/image` | Subir imagen (multipart) a S3 | Sí |
+| `POST` | `/upload/avatar` | Subir avatar de usuario a S3 | Sí |
+
+### Analytics
+
+| Método | Endpoint | Descripción | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/analytics/kpis` | KPIs de la plataforma (admin) | Admin |
+| `GET` | `/analytics/cases/{caseId}` | Analítica de un caso concreto | Admin |
 
 ### Media
 
@@ -194,7 +236,12 @@ El gateway no expone endpoints propios. Actúa como reverse proxy:
 /api/reactions/** → core-domain-service:8082
 /api/saved-cases/** → core-domain-service:8082
 /api/notifications/** → core-domain-service:8082
+/api/reports/**  → core-domain-service:8082
+/api/search/**   → core-domain-service:8082
 /api/media/**    → core-domain-service:8082
+/api/upload/**   → core-domain-service:8082
+/api/translations/** → core-domain-service:8082
+/api/analytics/** → core-domain-service:8082
 /api/automation/** → ai-engine-service:8083
 ```
 

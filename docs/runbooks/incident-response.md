@@ -1,190 +1,192 @@
-# Runbook: Incident Response
+# Runbook: Respuesta a incidentes
 
-## Severity Levels
+> **Para qué sirve:** qué hacer cuando algo se cae en eTribunal, ordenado por severidad. Está escrito para el flujo actual (contenedores Docker / JARs + variables de entorno, ver [DEPLOY.md](../DEPLOY.md)). Si algún día hay Kubernetes, lo migraremos para usar `kubectl`/`helm` — hoy no aplica.
 
-| Level | Description | Response Time | Escalation |
-|-------|-------------|---------------|------------|
-| **SEV-1** | Complete outage, data loss, security breach | 15 min | Page on-call + team lead |
-| **SEV-2** | Major degradation, API errors > 5%, latency p99 > 2s | 30 min | Page on-call |
-| **SEV-3** | Minor degradation, non-critical feature broken | 2 hours | Assign to team |
-| **SEV-4** | Low priority, cosmetic, docs | Next sprint | Create ticket |
+## Niveles de severidad
 
-## Incident Response Flow
+| Nivel | Descripción | Tiempo de respuesta | Escalación |
+|-------|-------------|---------------------|------------|
+| **SEV-1** | Caída total, pérdida de datos, brecha de seguridad | 15 min | Alertar on-call + lead |
+| **SEV-2** | Degradación mayor, errores de API > 5%, p99 > 2s | 30 min | Alertar on-call |
+| **SEV-3** | Degradación menor, funcionalidad no crítica rota | 2 horas | Asignar al equipo |
+| **SEV-4** | Baja prioridad, cosmético, docs | Siguiente sprint | Crear ticket |
+
+## Flujo de respuesta
 
 ```
-Alert Triggered
+Alerta disparada
        │
        ▼
-On-call acknowledges (15 min)
+On-call confirma (15 min)
        │
        ▼
-Assess severity (SEV-1/2/3/4)
+Evaluar severidad (SEV-1/2/3/4)
        │
        ▼
-Create incident channel (#incident-<date>-<id>)
+Crear canal de incidente (#incident-<fecha>-<id>)
        │
        ▼
-Communicate status (status page, #incidents)
+Comunicar estado (status page, #incidents)
        │
        ▼
-Investigate & mitigate
+Investigar y mitigar
        │
        ▼
-Resolve & verify
+Resolver y verificar
        │
        ▼
-Close incident + postmortem (if SEV-1/2)
+Cerrar incidente + postmortem (si SEV-1/2)
 ```
 
-## Common Scenarios
+## Escenarios comunes
 
-### High Error Rate (5xx > 1%)
+### Tasa alta de errores (5xx > 1%)
+
 ```bash
-# 1. Check which service
-kubectl get pods -n production -o wide
+# 1. ¿Qué servicio falla? Health checks directos
+curl -s localhost:8080/actuator/health          # Gateway
+curl -s localhost:8081/api/actuator/health      # Identity
+curl -s localhost:8082/api/actuator/health      # Core Domain
+curl -s localhost:8083/actuator/health          # AI Engine
 
-# 2. Check logs
-kubectl logs -n production -l app=core-domain-service --tail=100 | grep -i error
+# 2. Logs del servicio afectado (contenedor o JAR)
+docker logs --tail 200 <servicio-contenedor>
+journalctl -u etribunal-core -n 200 --no-pager   # si corre como systemd
 
-# 3. Check dependencies
-kubectl exec -n production deploy/core-domain-service -- curl -s localhost:8082/api/actuator/health
-
-# 4. Quick mitigation
-# - Scale up if resource exhaustion
-kubectl scale deployment core-domain-service --replicas=5 -n production
-
-# - Rollback if recent deploy
-helm rollback core-domain 1 -n production
+# 3. Mitigación rápida
+# - Reinicio suave si es degradación
+./gradlew :services:core-domain-service:bootRun   # (o reiniciar el contenedor)
+# - Rollback si fue un deploy reciente (ver rollback en DEPLOY.md)
 ```
 
-### High Latency (p99 > 2s)
+### Alta latencia (p99 > 2s)
+
 ```bash
-# 1. Check DB connections
-kubectl exec -n production deploy/core-domain-service -- curl -s localhost:8082/api/actuator/metrics/hikaricp.connections.active
-
-# 2. Check Kafka lag
-kubectl exec -n production deploy/ai-engine-service -- curl -s localhost:8083/actuator/metrics/kafka.consumer.lag
-
-# 3. Check Redis
-kubectl exec -n production deploy/identity-service -- redis-cli info memory
-
-# 4. Mitigation
-# - Increase DB pool size
-# - Scale consumers
-# - Clear cache if stale data
-```
-
-### Database Issues
-```bash
-# Check connections
+# 1. Conexiones de DB en uso
 psql -h <db-host> -U etribunal_user -c "SELECT count(*) FROM pg_stat_activity WHERE state = 'active';"
 
-# Check long-running queries
-psql -h <db-host> -U etribunal_user -c "SELECT pid, now() - pg_stat_activity.query_start AS duration, query FROM pg_stat_activity WHERE state = 'active' ORDER BY duration DESC LIMIT 10;"
+# 2. Memoria Redis
+redis-cli -a <password> --no-auth-warning info memory
 
-# Kill long queries if needed
-psql -h <db-host> -U etribunal_user -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE now() - query_start > interval '5 minutes';"
+# 3. Métricas JVM (si metrics endpoint activo)
+curl -s localhost:8082/api/actuator/metrics/jvm.memory.used
+
+# 4. Mitigación
+# - Aumentar pool de conexiones DB
+# - Limpiar caché si hay datos stale
+# - Escalar horizontalmente (más instancias, mismas env vars)
 ```
 
-### Kafka Consumer Lag
+### Problemas de base de datos
+
 ```bash
-# Check lag
-kubectl exec -n production deploy/ai-engine-service -- curl -s localhost:8083/actuator/metrics/kafka.consumer.lag
+# Conexiones activas
+psql -h <db-host> -U etribunal_user -c "SELECT count(*) FROM pg_stat_activity WHERE state = 'active';"
 
-# Restart consumer group
-kubectl rollout restart deployment/ai-engine-service -n production
+# Queries largas
+psql -h <db-host> -U etribunal_user -c "SELECT pid, now()-pg_stat_activity.query_start AS duration, query FROM pg_stat_activity WHERE state = 'active' ORDER BY duration DESC LIMIT 10;"
 
-# Increase consumer instances
-kubectl scale deployment ai-engine-service --replicas=5 -n production
+# Matar queries largas si es necesario
+psql -h <db-host> -U etribunal_user -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE now()-query_start > interval '5 minutes';"
 ```
 
-### Memory/CPU Exhaustion
+### Consumo de memoria/CPU
+
 ```bash
-# Check resource usage
-kubectl top pods -n production
+# Uso de recursos (Docker)
+docker stats
 
-# Check JVM metrics
-kubectl exec -n production deploy/core-domain-service -- curl -s localhost:8082/api/actuator/metrics/jvm.memory.used
+# Métricas JVM
+curl -s localhost:8082/api/actuator/metrics/jvm.memory.used
 
-# Mitigation
-# - Increase heap: -Xmx2g in JAVA_OPTS
-# - Scale horizontally
-kubectl scale deployment core-domain-service --replicas=6 -n production
-
-# - Restart pods gracefully
-kubectl rollout restart deployment/core-domain-service -n production
+# Mitigación
+# - Aumentar heap: -Xmx1g en JAVA_OPTS (o -XX:MaxRAMPercentage)
+# - Escalar horizontalmente (más instancias)
+# - Reinicio gradual/graceful (server.shutdown=graceful ya está en el Dockerfile)
 ```
 
-## Communication Templates
+### Tasa de error de requests (5xx correlacionada con AI Engine)
 
-### Initial Alert
+```bash
+# Revisar si un run de automatización falló (no bloquea el tráfico normal)
+curl -s -H "x-sysadmin-api-key: <key>" localhost:8083/automation/status
+
+# Si AI Engine está caído, el resto sigue: reintentar o reiniciar el servicio
 ```
-🚨 INCIDENT: <title>
-Severity: SEV-<1-4>
-Service: <affected service>
-Impact: <user-facing impact>
-Status: Investigating
+
+## Plantillas de comunicación
+
+### Alerta inicial
+
+```
+🚨 INCIDENTE: <título>
+Severidad: SEV-<1-4>
+Servicio: <servicio afectado>
+Impacto: <impacto visible al usuario>
+Estado: Investigando
 Lead: @oncall
-Channel: #incident-<date>-<id>
+Canal: #incident-<fecha>-<id>
 ```
 
-### Status Update (every 30 min)
-```
-📊 UPDATE: <title>
-Status: <Investigating/Mitigating/Monitoring/Resolved>
-Progress: <what's been done>
-ETA: <estimated resolution>
-```
+### Actualización de estado (cada 30 min)
 
-### Resolution
 ```
-✅ RESOLVED: <title>
-Root Cause: <brief>
-Fix: <what was done>
-Postmortem: <link> (if SEV-1/2)
+📊 ACTUALIZACIÓN: <título>
+Estado: <Investigando/Mitigando/Monitoreando/Resuelto>
+Progreso: <qué se ha hecho>
+ETA: <resolución estimada>
 ```
 
-## Postmortem Template (SEV-1/2)
+### Resolución
 
-### Incident Summary
-- **Date**: YYYY-MM-DD
-- **Duration**: X hours Y minutes
-- **Severity**: SEV-1/2
-- **Services Affected**: <list>
+```
+✅ RESUELTO: <título>
+Causa raíz: <breve>
+Fix: <qué se hizo>
+Postmortem: <enlace> (si SEV-1/2)
+```
 
-### Timeline
-| Time (UTC) | Event |
-|------------|-------|
-| HH:MM | Alert triggered |
-| HH:MM | On-call acknowledged |
-| HH:MM | Root cause identified |
-| HH:MM | Fix deployed |
-| HH:MM | Verified resolved |
+## Plantilla de postmortem (SEV-1/2)
 
-### Root Cause
-<5 whys analysis>
+### Resumen del incidente
+- **Fecha**: YYYY-MM-DD
+- **Duración**: X horas Y minutos
+- **Severidad**: SEV-1/2
+- **Servicios afectados**: <lista>
 
-### Impact
-- Users affected: <number>
-- Requests failed: <number>
-- Revenue impact: <if applicable>
+### Cronología
+| Hora (UTC) | Evento |
+|------------|--------|
+| HH:MM | Alerta disparada |
+| HH:MM | On-call confirmó |
+| HH:MM | Causa raíz identificada |
+| HH:MM | Fix desplegado |
+| HH:MM | Verificado resuelto |
 
-### Action Items
-| Item | Owner | Due Date | Status |
-|------|-------|----------|--------|
-| Fix root cause | <name> | YYYY-MM-DD | 🔴/🟡/🟢 |
-| Add monitoring | <name> | YYYY-MM-DD | 🔴/🟡/🟢 |
-| Improve runbook | <name> | YYYY-MM-DD | 🔴/🟡/🟢 |
+### Causa raíz
+<análisis de los 5 porqués>
 
-### Lessons Learned
-<what went well, what didn't, what to improve>
+### Impacto
+- Usuarios afectados: <número>
+- Requests fallidos: <número>
+- Impacto en ingresos: <si aplica>
 
-## Contact Escalation
+### Acciones
+| Item | Owner | Fecha límite | Estado |
+|------|-------|--------------|--------|
+| Fix causa raíz | <nombre> | YYYY-MM-DD | 🔴/🟡/🟢 |
+| Añadir monitoreo | <nombre> | YYYY-MM-DD | 🔴/🟡/🟢 |
+| Mejorar runbook | <nombre> | YYYY-MM-DD | 🔴/🟡/🟢 |
 
-| Role | Name | Phone | Slack |
-|------|------|-------|-------|
-| Primary On-call | <name> | <phone> | @user |
-| Secondary On-call | <name> | <phone> | @user |
-| Team Lead | <name> | <phone> | @user |
-| Engineering Manager | <name> | <phone> | @user |
-| DB Admin | <name> | <phone> | @user |
+### Lecciones aprendidas
+<qué salió bien, qué no, qué mejorar>
+
+## Escalación de contacto
+
+| Rol | Nombre | Teléfono | Slack |
+|-----|--------|----------|-------|
+| On-call primario | <nombre> | <teléfono> | @user |
+| On-call secundario | <nombre> | <teléfono> | @user |
+| Team Lead | <nombre> | <teléfono> | @user |
+| Engineering Manager | <nombre> | <teléfono> | @user |
+| DB Admin | <nombre> | <teléfono> | @user |

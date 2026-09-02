@@ -1,127 +1,90 @@
-# Runbook: Deploy to Production
+# Runbook: Despliegue a producción
 
-## Prerequisites
-- Staging validated for 24h+ with zero critical issues
-- Load test passed on staging (k6, 1k DAU scenario)
-- Database backup completed (pg_dump)
-- Team notified in #deployments channel
-- On-call engineer available
+> **Qué es esto:** el procedimiento para llevar el backend a **producción** con el flujo real actual. La orquestación Kubernetes/Helm, si algún día llega, estará en [deploy-k8s-future](./deploy-k8s-future.md).
 
-## Pre-deploy Checklist
-- [ ] Staging stable for 24h+
-- [ ] Load test passed (p99 < 500ms, error rate < 0.1%)
-- [ ] DB backup completed and verified
-- [ ] Rollback plan reviewed with team
-- [ ] Feature flags set to 0% for new features
-- [ ] Security scan passed (Trivy, Snyk)
+## Requisitos previos
 
-## Deploy Steps
+- **Staging validado** durante 24h+ sin issues críticos.
+- Load test aprobado en staging (k6, escenario de 1k DAU).
+- Backup de base de datos **completado y verificado**.
+- Equipo notificado y alguien de guardia disponible.
 
-### 1. Pre-deploy DB Backup
+## Checklist previo
+
+- [ ] Staging estable 24h+.
+- [ ] Load test OK (p99 < 500ms, error rate < 0.1%).
+- [ ] Backup de DB hecho y verificado.
+- [ ] Plan de rollback revisado con el equipo.
+- [ ] Secrets rotados (JWT/INTERNAL_API_KEY no son los de dev).
+- [ ] Scan de seguridad (Trivy, Snyk) sin blockers.
+
+## Pasos
+
+### 1. Backup de DB pre-deploy
+
 ```bash
-# On production DB instance
 pg_dump -h <prod-db-host> -U etribunal_user -d etribunal_core > prod_backup_$(date +%Y%m%d_%H%M%S).sql
-# Verify backup
-pg_restore --list prod_backup_*.sql | head -20
 ```
 
-### 2. Deploy Gateway (First - zero-downtime)
+### 2. Compilar y construir imágenes
+
 ```bash
-helm upgrade --install gateway ./infra/helm/gateway-service -n production -f ./infra/helm/gateway-service/values-prod.yaml \
-  --set image.tag=prod-<git-sha> \
-  --wait --timeout 10m
+./gradlew bootJar
+docker build -f services/gateway-service/Dockerfile -t etribunal/gateway-service:prod-<sha> .
+# ... repetir para identity, core-domain y ai-engine
 ```
 
-### 3. Deploy Identity Service
+### 3. Aplicar migraciones
+
 ```bash
-helm upgrade --install identity ./infra/helm/identity-service -n production -f ./infra/helm/identity-service/values-prod.yaml \
-  --set image.tag=prod-<git-sha> \
-  --wait --timeout 10m
+./gradlew :services:identity-service:flywayMigrate
+./gradlew :services:core-domain-service:flywayMigrate
 ```
 
-### 4. Run DB Migrations (Core Domain)
+### 4. Levantar servicios en orden
+
+Orden recomendado para minimizar impacto:
+
+1. **Core e Identity primero** (necesitan DB y son el dominio).
+2. **Gateway al final** (el borde — acorta la ventana de cambio visto desde fuera).
+3. **AI Engine** opcional al último.
+
+Cada servicio con sus variables de entorno de producción (ver `DEPLOY.md`).
+
+### 5. Validar post-deploy
+
 ```bash
-# Flyway migration via Kubernetes Job
-kubectl apply -f infra/kubernetes/base/flyway-migration-job.yaml -n production
-kubectl wait --for=condition=complete job/flyway-migration -n production --timeout=5m
-
-# Verify migration
-kubectl logs job/flyway-migration -n production
-```
-
-### 5. Deploy Core Domain
-```bash
-helm upgrade --install core-domain ./infra/helm/core-domain-service -n production -f ./infra/helm/core-domain-service/values-prod.yaml \
-  --set image.tag=prod-<git-sha> \
-  --wait --timeout 10m
-```
-
-### 5. Deploy AI Engine
-```bash
-helm upgrade --install ai-engine ./infra/helm/ai-engine-service -n production -f ./infra/helm/ai-engine-service/values-prod.yaml \
-  --set image.tag=prod-<git-sha> \
-  --wait --timeout 10m
-```
-
-### 6. Enable Feature Flags (Gradual)
-```bash
-# Start with 10% canary
-kubectl patch configmap feature-flags -n production -p '{"data":{"NEW_FEATURE_PERCENTAGE":"10"}}'
-
-# Monitor for 30 minutes
-# If OK, increase to 50%
-kubectl patch configmap feature-flags -n production -p '{"data":{"NEW_FEATURE_PERCENTAGE":"50"}}'
-
-# Monitor for 1 hour
-# If OK, increase to 100%
-kubectl patch configmap feature-flags -n production -p '{"data":{"NEW_FEATURE_PERCENTAGE":"100"}}'
-```
-
-### 7. Post-deploy Validation
-```bash
-# Health checks
 curl -s https://api.etribunal.com/actuator/health | jq .
 curl -s https://api.etribunal.com/api/cases?take=1 | jq '.data | length'
 
 # Smoke tests
-./gradlew :tests:e2e:test -Penvironment=production
-
-# Quick load test (5 min)
-k6 run tests/k6/load-test.js -e BASE_URL=https://api.etribunal.com/api
+./gradlew :tests:e2e:test -De2e.enabled=true -Dgateway.url=https://api.etribunal.com
 ```
 
-## Rollback Procedure
+### 6. Feature flags gradual (si aplica)
 
-### Application Rollback (< 5 min)
+Si un release trae features nuevas, se activan progresivamente revisando métricas en cada paso (10% → 50% → 100%).
+
+## Rollback
+
+### Application rollback (< 5 min)
+
+Re-desplegar el **artefacto anterior** (tag/JAR previo) reiniciando contenedores. Como compartes el mismo artefacto entre entornos, es simplemente "volver a correr lo anterior".
+
+### Database rollback (SOLO si la migración causó problemas)
+
 ```bash
-# Rollback all services
-helm rollback gateway 1 -n production
-helm rollback identity 1 -n production
-helm rollback core-domain 1 -n production
-helm rollback ai-engine 1 -n production
-
-# Verify
-kubectl rollout status deployment/gateway -n production
-kubectl rollout status deployment/identity -n production
-```
-
-### Database Rollback (if migration applied)
-```bash
-# ONLY if migration caused issues
-# 1. Scale down services
-kubectl scale deployment core-domain-service --replicas=0 -n production
-
-# 2. Restore DB from backup
+# 1. Parar el servicio afectado
+# 2. Restaurar el backup
 pg_restore -h <prod-db-host> -U etribunal_user -d etribunal_core prod_backup_*.sql
-
-# 3. Scale up
-kubectl scale deployment core-domain-service --replicas=3 -n production
+# 3. Re-desplegar
 ```
 
 ## Post-deploy
-- [ ] Monitor dashboards for 1 hour
-- [ ] Check error rates, latency, throughput
-- [ ] Verify feature flags at 100%
-- [ ] Update deployment tracker
-- [ ] Send deployment notification
-- [ ] Schedule post-deploy retrospective (if issues)
+
+- [ ] Monitorear dashboards 1 hora.
+- [ ] Revisar error rates, latencia, throughput.
+- [ ] Feature flags en 100% (o el objetivo).
+- [ ] Actualizar deployment tracker.
+- [ ] Notificar al equipo.
+- [ ] Retro/postmortem si hubo issues.
