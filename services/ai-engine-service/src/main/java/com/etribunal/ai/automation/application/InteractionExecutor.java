@@ -1,6 +1,8 @@
 package com.etribunal.ai.automation.application;
 
+import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
+import com.etribunal.ai.automation.infrastructure.analytics.ActivityProfileService;
 import com.etribunal.ai.automation.infrastructure.analytics.AnalyticsRecorder;
 import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
 import com.etribunal.ai.automation.repository.AutomationCaseRepository;
@@ -25,19 +27,25 @@ public class InteractionExecutor {
     private final JdbcTemplate jdbcTemplate;
     private final AutomationEventPublisher eventPublisher;
     private final AnalyticsRecorder analyticsRecorder;
+    private final AutomationConfig config;
+    private final ActivityProfileService activityProfileService;
 
     public InteractionExecutor(
             AutomationInteractionRepository interactionRepository,
             AutomationCaseRepository caseRepository,
             JdbcTemplate jdbcTemplate,
             AutomationEventPublisher eventPublisher,
-            AnalyticsRecorder analyticsRecorder
+            AnalyticsRecorder analyticsRecorder,
+            AutomationConfig config,
+            ActivityProfileService activityProfileService
     ) {
         this.interactionRepository = interactionRepository;
         this.caseRepository = caseRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.eventPublisher = eventPublisher;
         this.analyticsRecorder = analyticsRecorder;
+        this.config = config;
+        this.activityProfileService = activityProfileService;
     }
 
     public record ExecuteResult(
@@ -57,17 +65,13 @@ public class InteractionExecutor {
             int windowHours
     ) {
         int totalInteractions = plannedInteractions.size();
-        int windowMinutes = windowHours * 60;
-        int effectiveInterval = Math.max(intervalMin,
-                Math.min(intervalMax, windowMinutes / Math.max(1, totalInteractions)));
+        List<Instant> scheduleTimes = computeSchedule(totalInteractions, baseTime, windowHours, intervalMin, intervalMax);
 
         List<AutomationInteractionEntity> scheduled = new ArrayList<>();
-        Random jitter = new Random();
 
         for (int i = 0; i < totalInteractions; i++) {
             InteractionPlanner.PlannedInteractionWithUser planned = plannedInteractions.get(i);
-            long offsetMinutes = (long) i * effectiveInterval + jitter.nextInt(Math.max(1, effectiveInterval / 3));
-            Instant scheduledAt = baseTime.plusSeconds(offsetMinutes * 60);
+            Instant scheduledAt = scheduleTimes.get(i);
 
             AutomationInteractionEntity entity = new AutomationInteractionEntity();
             entity.setAutomationCase(caseRepository.findById(automationCaseId).orElseThrow());
@@ -89,6 +93,90 @@ public class InteractionExecutor {
         }
 
         return scheduled;
+    }
+
+    /**
+     * Distribuye las interacciones en la ventana. Si el scheduling ponderado está
+     * habilitado, concentra los scheduledAt en las horas pico del perfil de actividad
+     * (con jitter y separación mínima). Si no, usa intervalos uniformes con jitter aleatorio.
+     */
+    List<Instant> computeSchedule(int count, Instant baseTime, int windowHours,
+            int intervalMin, int intervalMax) {
+        if (count <= 0) {
+            return List.of();
+        }
+        AutomationConfig.ActivityConfig a = config.getActivity();
+        if (a.isEnabled() && a.isWeighted()) {
+            return weightedSchedule(count, baseTime, windowHours, intervalMin);
+        }
+        return uniformSchedule(count, baseTime, windowHours, intervalMin, intervalMax);
+    }
+
+    private List<Instant> uniformSchedule(int count, Instant baseTime, int windowHours,
+            int intervalMin, int intervalMax) {
+        int windowMinutes = windowHours * 60;
+        int effectiveInterval = Math.max(intervalMin,
+                Math.min(intervalMax, windowMinutes / Math.max(1, count)));
+        Random jitter = new Random();
+        List<Instant> out = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            long offsetMinutes = (long) i * effectiveInterval + jitter.nextInt(Math.max(1, effectiveInterval / 3));
+            out.add(baseTime.plusSeconds(offsetMinutes * 60));
+        }
+        return out;
+    }
+
+    private List<Instant> weightedSchedule(int count, Instant baseTime, int windowHours, int intervalMin) {
+        int windowMinutes = windowHours * 60;
+        double[] cum = new double[windowMinutes + 1];
+        for (int m = 0; m < windowMinutes; m++) {
+            Instant minuteInstant = baseTime.plusSeconds(m * 60L);
+            int hour = minuteInstant.atZone(java.time.ZoneOffset.UTC).getHour();
+            cum[m + 1] = cum[m] + activityProfileService.weightForHour(hour);
+        }
+        double total = cum[windowMinutes];
+        if (total <= 0) {
+            for (int m = 1; m <= windowMinutes; m++) {
+                cum[m] = m / (double) windowMinutes;
+            }
+            total = 1.0;
+        } else {
+            for (int m = 1; m <= windowMinutes; m++) {
+                cum[m] /= total;
+            }
+        }
+
+        Random jitter = new Random();
+        List<Instant> out = new ArrayList<>(count);
+        long prevMinute = Long.MIN_VALUE;
+        int minGap = Math.max(1, intervalMin);
+        for (int i = 0; i < count; i++) {
+            double target = (i + 0.5) / count;
+            int minute = binarySearch(cum, target);
+            minute = Math.min(minute, windowMinutes - 1);
+            if (prevMinute != Long.MIN_VALUE && minute < prevMinute + minGap) {
+                minute = (int) (prevMinute + minGap);
+            }
+            minute = Math.min(minute, windowMinutes - 1);
+            int jitterMinutes = jitter.nextInt(Math.min(minGap / 2 + 1, 15) + 1);
+            minute = Math.min(minute + jitterMinutes, windowMinutes - 1);
+            prevMinute = minute;
+            out.add(baseTime.plusSeconds(minute * 60L));
+        }
+        return out;
+    }
+
+    private int binarySearch(double[] cum, double target) {
+        int lo = 0, hi = cum.length - 1;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (cum[mid] < target) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
     }
 
     @Transactional

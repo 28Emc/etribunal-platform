@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
+import com.etribunal.ai.automation.infrastructure.analytics.ActivityProfileService;
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
 import com.etribunal.ai.automation.repository.AutomationRunRepository;
@@ -39,6 +40,8 @@ class AutomationSchedulerTest {
     private TaskScheduler taskScheduler;
     @Mock
     private EngagementService engagementService;
+    @Mock
+    private ActivityProfileService activityProfileService;
 
     private AutomationConfig config;
 
@@ -48,13 +51,15 @@ class AutomationSchedulerTest {
     void setUp() {
         config = new AutomationConfig();
         scheduler = new AutomationScheduler(
-                orchestrator, executor, interactionRepository, runRepository, config, taskScheduler, engagementService
+                orchestrator, executor, interactionRepository, runRepository,
+                config, taskScheduler, engagementService, activityProfileService
         );
     }
 
     @AfterEach
     void tearDown() {
-        reset(orchestrator, executor, interactionRepository, runRepository, taskScheduler, engagementService);
+        reset(orchestrator, executor, interactionRepository, runRepository, taskScheduler,
+                engagementService, activityProfileService);
     }
 
     @Test

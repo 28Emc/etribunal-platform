@@ -2,6 +2,7 @@ package com.etribunal.ai.automation.application;
 
 import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
+import com.etribunal.ai.automation.infrastructure.analytics.ActivityProfileService;
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
 import com.etribunal.ai.automation.repository.AutomationRunRepository;
@@ -34,6 +35,7 @@ public class AutomationScheduler {
     private final AutomationConfig config;
     private final TaskScheduler taskScheduler;
     private final EngagementService engagementService;
+    private final ActivityProfileService activityProfileService;
 
     public AutomationScheduler(
             AutomationOrchestrator orchestrator,
@@ -42,7 +44,8 @@ public class AutomationScheduler {
             AutomationRunRepository runRepository,
             AutomationConfig config,
             TaskScheduler taskScheduler,
-            EngagementService engagementService
+            EngagementService engagementService,
+            ActivityProfileService activityProfileService
     ) {
         this.orchestrator = orchestrator;
         this.executor = executor;
@@ -51,6 +54,7 @@ public class AutomationScheduler {
         this.config = config;
         this.taskScheduler = taskScheduler;
         this.engagementService = engagementService;
+        this.activityProfileService = activityProfileService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -71,6 +75,9 @@ public class AutomationScheduler {
             return;
         }
         log.info("Daily automation run triggered");
+        if (config.getActivity().isEnabled()) {
+            activityProfileService.refresh();
+        }
         orchestrator.startRun(false);
         evaluateEngagement();
     }

@@ -73,6 +73,9 @@ public class AutomationConfig {
     // Nested engagement config (feedback loop 2.0)
     private EngagementConfig engagement = new EngagementConfig();
 
+    // Nested activity config (scheduling ponderado 2.0)
+    private ActivityConfig activity = new ActivityConfig();
+
     // Getters and setters
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -127,6 +130,9 @@ public class AutomationConfig {
 
     public EngagementConfig getEngagement() { return engagement; }
     public void setEngagement(EngagementConfig engagement) { this.engagement = engagement; }
+
+    public ActivityConfig getActivity() { return activity; }
+    public void setActivity(ActivityConfig activity) { this.activity = activity; }
 
     // Helper methods for random range picking
     public int pickDailyCases() {
@@ -248,5 +254,29 @@ public class AutomationConfig {
 
         public int getViewsWeight() { return viewsWeight; }
         public void setViewsWeight(int viewsWeight) { this.viewsWeight = viewsWeight; }
+    }
+
+    // Scheduling ponderado por actividad real (Fase 2)
+    public static class ActivityConfig {
+        private boolean weighted = false;
+        private boolean enabled = true;
+        private int minStableSamples = 200;
+        private int minTransitionSamples = 20;
+        private int lookbackDays = 7;
+
+        public boolean isWeighted() { return weighted; }
+        public void setWeighted(boolean weighted) { this.weighted = weighted; }
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+        public int getMinStableSamples() { return minStableSamples; }
+        public void setMinStableSamples(int minStableSamples) { this.minStableSamples = minStableSamples; }
+
+        public int getMinTransitionSamples() { return minTransitionSamples; }
+        public void setMinTransitionSamples(int minTransitionSamples) { this.minTransitionSamples = minTransitionSamples; }
+
+        public int getLookbackDays() { return lookbackDays; }
+        public void setLookbackDays(int lookbackDays) { this.lookbackDays = lookbackDays; }
     }
 }

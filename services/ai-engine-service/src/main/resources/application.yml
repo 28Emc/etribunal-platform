@@ -93,3 +93,9 @@ etribunal:
       shares-weight: ${AUTOMATION_ENGAGEMENT_SHARES_WEIGHT:6}
       saves-weight: ${AUTOMATION_ENGAGEMENT_SAVES_WEIGHT:4}
       views-weight: ${AUTOMATION_ENGAGEMENT_VIEWS_WEIGHT:1}
+    activity:
+      weighted: ${AUTOMATION_SCHEDULING_WEIGHTED:false}
+      enabled: ${AUTOMATION_ACTIVITY_ENABLED:true}
+      min-stable-samples: ${AUTOMATION_ACTIVITY_MIN_STABLE:200}
+      min-transition-samples: ${AUTOMATION_ACTIVITY_MIN_TRANSITION:20}
+      lookback-days: ${AUTOMATION_ACTIVITY_LOOKBACK_DAYS:7}

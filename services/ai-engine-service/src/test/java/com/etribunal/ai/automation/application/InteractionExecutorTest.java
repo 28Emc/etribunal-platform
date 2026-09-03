@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
+import com.etribunal.ai.automation.infrastructure.analytics.ActivityProfileService;
 import com.etribunal.ai.automation.infrastructure.analytics.AnalyticsRecorder;
 import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
 import com.etribunal.ai.automation.repository.AutomationCaseRepository;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -32,6 +35,10 @@ class InteractionExecutorTest {
     private AutomationEventPublisher eventPublisher;
     @Mock
     private AnalyticsRecorder analyticsRecorder;
+    @Mock
+    private ActivityProfileService activityProfileService;
+    @Spy
+    private AutomationConfig config = new AutomationConfig();
 
     @InjectMocks
     private InteractionExecutor executor;
@@ -108,5 +115,47 @@ class InteractionExecutorTest {
         verify(analyticsRecorder).record(
                 eq(AutomationInteractionType.COMMENT), eq("case-123"), eq("user-1"), anyString());
         verify(caseRepository).incrementSuccessfulInteractions(isNull());
+    }
+
+    @Test
+    void computeSchedule_spreadsUniformly_whenWeightedDisabled() {
+        AutomationConfig cfg = new AutomationConfig();
+        cfg.getActivity().setWeighted(false);
+        cfg.getActivity().setEnabled(true);
+        InteractionExecutor ex = new InteractionExecutor(
+                interactionRepository, caseRepository, jdbcTemplate,
+                eventPublisher, analyticsRecorder, cfg, activityProfileService);
+
+        Instant base = Instant.parse("2026-09-03T09:00:00Z");
+        List<Instant> times = ex.computeSchedule(3, base, 24, 30, 180);
+
+        assertThat(times).hasSize(3);
+        assertThat(times.get(0)).isAfterOrEqualTo(base);
+        assertThat(times.get(2)).isBefore(base.plusSeconds(24 * 3600));
+        assertThat(times).isSorted();
+    }
+
+    @Test
+    void computeSchedule_concentratesInPeakHour_whenWeightedEnabled() {
+        AutomationConfig cfg = new AutomationConfig();
+        cfg.getActivity().setWeighted(true);
+        cfg.getActivity().setEnabled(true);
+        InteractionExecutor ex = new InteractionExecutor(
+                interactionRepository, caseRepository, jdbcTemplate,
+                eventPublisher, analyticsRecorder, cfg, activityProfileService);
+
+        // Perfil con pico fuerte a las 20:00 (hora UTC)
+        when(activityProfileService.weightForHour(anyInt())).thenReturn(0.02);
+        when(activityProfileService.weightForHour(eq(20))).thenReturn(0.5);
+
+        Instant base = Instant.parse("2026-09-03T09:00:00Z");
+        List<Instant> times = ex.computeSchedule(4, base, 24, 30, 180);
+
+        assertThat(times).hasSize(4);
+        // La mayoría de las interacciones debe caer cerca del pico (20:00 vs base 09:00 → offset ~11h)
+        long peakProximity = times.stream()
+                .filter(t -> t.atZone(java.time.ZoneOffset.UTC).getHour() == 20)
+                .count();
+        assertThat(peakProximity).isGreaterThan(0);
     }
 }
