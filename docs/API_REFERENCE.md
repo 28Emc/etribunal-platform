@@ -205,22 +205,30 @@ Protegidos por header `X-Internal-Token`. No expuestos vía gateway.
 
 ### Automation
 
+Autorización por **rol** `ADMIN`/`SYSADMIN` (header `X-Roles` inyectado por el gateway), no API key.
+
 | Método | Endpoint | Descripción | Auth |
 |--------|----------|-------------|------|
-| `POST` | `/automation/run` | Trigger manual de run (async) | API Key |
+| `POST` | `/automation/run?dryRun=` | Trigger manual de run (async, 202) | Rol |
+| `GET` | `/automation/runs?limit=` | Historial de runs (1-100) | Rol |
+| `GET` | `/automation/runs/{id}` | Estado de un run específico | Rol |
+| `GET` | `/automation/queue` | Estado de la cola de interacciones | Rol |
+| `GET` | `/automation/settings` | Config de negocio (BD) | Rol |
+| `PUT` | `/automation/settings` | Editar config de negocio (BD) | Rol |
+| `GET` | `/automation/engagement` | Analítica engagement (casos AI vs reales) | Rol |
 | `GET` | `/automation/status` | Health/status del servicio | No |
-| `GET` | `/automation/runs/{id}` | Estado de un run específico | API Key |
-| `GET` | `/automation/queue` | Estado de la cola de interacciones | API Key |
 
 **Run response (202 Accepted):**
 ```json
 {
   "runId": "uuid",
-  "started": "2026-08-26T10:00:00Z",
+  "started": true,
   "status": "RUNNING",
   "pollingUrl": "/automation/runs/uuid"
 }
 ```
+
+Detalle completo: [`AI_ACTIVITY_ENGINE.md`](./AI_ACTIVITY_ENGINE.md).
 
 ---
 

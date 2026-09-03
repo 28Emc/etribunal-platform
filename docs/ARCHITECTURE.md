@@ -85,11 +85,14 @@ Kafka está **operativo** (aunque best-effort): si el broker está disponible, l
 
 | Topic | Eventos | Publisher |
 |-------|---------|-----------|
-| `case-events` | CaseCreated, MediaUploaded | core-domain |
+| `case-events` | CaseCreated (dominio + ai-engine), MediaUploaded | core-domain, ai-engine |
 | `moderation-tasks` | ModerationRequest | ai-engine |
-| `user-events` / `vote-events` / `comment-events` / `notification-tasks` | (diseñados, futuros) | identity/core |
+| `comment-events` / `reaction-events` / `vote-events` | Eventos ligeros de actividad AI (`eventType=automation.*`, `source=ai-engine`) | ai-engine |
+| `user-events` / `notification-tasks` | (diseñados, futuros) | identity/core |
 
-Los temas "futuros" están pensados pero aún no producen eventos. El detalle de la decisión está en el ADR-002.
+Los temas `comment-events`/`reaction-events`/`vote-events` son publicados por el AI Activity
+Engine (best-effort) para que el sistema observe su actividad. El detalle está en el ADR-002 y
+en el ADR-010.
 
 ## Flujos de datos principales
 
@@ -139,6 +142,10 @@ Los temas "futuros" están pensados pero aún no producen eventos. El detalle de
 3. GET /api/automation/runs/{id} (polling)
    → Retorna status: RUNNING | COMPLETED | FAILED
 ```
+
+El motor expone además endpoints de administración (config editable en BD, engagement y cola)
+y un panel frontend en `/admin/motor-ia`. Detalle completo en
+[`AI_ACTIVITY_ENGINE.md`](./AI_ACTIVITY_ENGINE.md).
 
 ## Bases de datos
 
