@@ -330,7 +330,7 @@ etribunal-platform/
 | [Security](docs/SECURITY.md) | JWT, auth, rate limiting |
 | [Migration Strategy](docs/MIGRATION_STRATEGY.md) | Historia de la migración NestJS→Spring (completada) |
 | [Deploy](docs/DEPLOY.md) | Despliegue real: imágenes, variables de entorno, rollbacks |
-| [ADRs](docs/adr/) | Architecture Decision Records (001-009) |
+| [ADRs](docs/adr/) | Architecture Decision Records (001-010) |
 
 ### Runbooks
 

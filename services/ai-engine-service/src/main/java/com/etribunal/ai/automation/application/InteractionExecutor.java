@@ -1,6 +1,8 @@
 package com.etribunal.ai.automation.application;
 
 import com.etribunal.ai.automation.domain.*;
+import com.etribunal.ai.automation.infrastructure.analytics.AnalyticsRecorder;
+import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
 import com.etribunal.ai.automation.repository.AutomationCaseRepository;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
 import org.slf4j.Logger;
@@ -21,15 +23,21 @@ public class InteractionExecutor {
     private final AutomationInteractionRepository interactionRepository;
     private final AutomationCaseRepository caseRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final AutomationEventPublisher eventPublisher;
+    private final AnalyticsRecorder analyticsRecorder;
 
     public InteractionExecutor(
             AutomationInteractionRepository interactionRepository,
             AutomationCaseRepository caseRepository,
-            JdbcTemplate jdbcTemplate
+            JdbcTemplate jdbcTemplate,
+            AutomationEventPublisher eventPublisher,
+            AnalyticsRecorder analyticsRecorder
     ) {
         this.interactionRepository = interactionRepository;
         this.caseRepository = caseRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.eventPublisher = eventPublisher;
+        this.analyticsRecorder = analyticsRecorder;
     }
 
     public record ExecuteResult(
@@ -110,6 +118,9 @@ public class InteractionExecutor {
 
             if (resultId != null) {
                 caseRepository.incrementSuccessfulInteractions(entity.getAutomationCase().getId());
+                String caseId = getCaseIdFromEntity(entity);
+                eventPublisher.publishActivity(entity.getInteractionType(), caseId, entity.getUserId(), resultId);
+                analyticsRecorder.record(entity.getInteractionType(), caseId, entity.getUserId(), resultId);
             }
 
             return new ExecuteResult("SUCCESS", resultId, null, null);

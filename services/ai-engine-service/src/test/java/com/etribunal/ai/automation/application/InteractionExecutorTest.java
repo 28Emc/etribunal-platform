@@ -5,6 +5,8 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.etribunal.ai.automation.domain.*;
+import com.etribunal.ai.automation.infrastructure.analytics.AnalyticsRecorder;
+import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
 import com.etribunal.ai.automation.repository.AutomationCaseRepository;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,10 @@ class InteractionExecutorTest {
     private AutomationCaseRepository caseRepository;
     @Mock
     private JdbcTemplate jdbcTemplate;
+    @Mock
+    private AutomationEventPublisher eventPublisher;
+    @Mock
+    private AnalyticsRecorder analyticsRecorder;
 
     @InjectMocks
     private InteractionExecutor executor;
@@ -76,5 +82,31 @@ class InteractionExecutorTest {
         assertThat(result.get(0).getInteractionType()).isEqualTo(AutomationInteractionType.COMMENT);
         assertThat(result.get(0).getStatus()).isEqualTo(AutomationInteractionStatus.SCHEDULED);
         assertThat(result.get(1).getInteractionType()).isEqualTo(AutomationInteractionType.VOTE);
+    }
+
+    @Test
+    void execute_publishesEventAndAnalytics_onSuccessfulInteraction() {
+        AutomationCaseEntity caseEntity = new AutomationCaseEntity();
+        caseEntity.setCaseId("case-123");
+
+        AutomationInteractionEntity entity = new AutomationInteractionEntity();
+        entity.setAutomationCase(caseEntity);
+        entity.setUserId("user-1");
+        entity.setInteractionType(AutomationInteractionType.COMMENT);
+        entity.setStatus(AutomationInteractionStatus.SCHEDULED);
+        entity.setMetadata(new HashMap<>(Map.of("content", "Hola", "case_id", "case-123")));
+
+        when(interactionRepository.findById(any(UUID.class))).thenReturn(Optional.of(entity));
+        when(interactionRepository.save(any(AutomationInteractionEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
+
+        assertThat(result.status()).isEqualTo("SUCCESS");
+        verify(eventPublisher).publishActivity(
+                eq(AutomationInteractionType.COMMENT), eq("case-123"), eq("user-1"), anyString());
+        verify(analyticsRecorder).record(
+                eq(AutomationInteractionType.COMMENT), eq("case-123"), eq("user-1"), anyString());
+        verify(caseRepository).incrementSuccessfulInteractions(isNull());
     }
 }

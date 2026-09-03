@@ -53,6 +53,11 @@ public class AutomationOrchestrator {
 
     @Transactional
     public RunResult startRun(boolean dryRunOverride) {
+        if (!config.isEnabled()) {
+            log.info("Automation disabled (AI_ENABLED=false), refusing to start run");
+            throw new IllegalStateException("Automation is disabled (AI_ENABLED=false)");
+        }
+
         Instant todayStart = Instant.now().atZone(java.time.ZoneId.systemDefault())
                 .toLocalDate().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
 
@@ -229,8 +234,29 @@ public class AutomationOrchestrator {
     }
 
     @Transactional(readOnly = true)
-    public Map<String, Object> getQueueStatus() {
-        Instant dayStart = Instant.now().atZone(java.time.ZoneId.systemDefault())
+    public List<Map<String, Object>> getRecentRuns(int limit) {
+        List<AutomationRunEntity> runs = runRepository.findRecentRuns();
+        int effectiveLimit = Math.min(Math.max(limit, 1), 100);
+        return runs.stream()
+                .limit(effectiveLimit)
+                .map(run -> {
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("id", run.getId().toString());
+                    result.put("status", run.getStatus().name());
+                    result.put("dryRun", run.isDryRun());
+                    result.put("casesRequested", run.getCasesRequested());
+                    result.put("casesCreated", run.getCasesCreated());
+                    result.put("casesFailed", run.getCasesFailed());
+                    result.put("startedAt", run.getStartedAt() != null ? run.getStartedAt().toString() : null);
+                    result.put("finishedAt", run.getFinishedAt() != null ? run.getFinishedAt().toString() : null);
+                    result.put("errorMessage", run.getErrorMessage());
+                    return result;
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getQueueStatus() {        Instant dayStart = Instant.now().atZone(java.time.ZoneId.systemDefault())
                 .toLocalDate().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
 
         long scheduled = interactionRepository.countByStatusAndScheduledAtLessThanEqual(

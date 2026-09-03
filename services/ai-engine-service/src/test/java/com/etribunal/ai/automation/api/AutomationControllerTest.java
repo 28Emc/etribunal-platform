@@ -37,12 +37,25 @@ class AutomationControllerTest {
                 new AutomationOrchestrator.RunResult(runId, true, "RUNNING", "/automation/runs/" + runId)
         );
 
-        ResponseEntity<Map<String, Object>> response = controller.startRun();
+        ResponseEntity<Map<String, Object>> response = controller.startRun(false);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).containsKey("runId");
         assertThat(response.getBody().get("started")).isEqualTo(true);
         assertThat(response.getBody().get("status")).isEqualTo("RUNNING");
+    }
+
+    @Test
+    void startRun_acceptsDryRunParam() {
+        UUID runId = UUID.randomUUID();
+        when(orchestrator.startRun(true)).thenReturn(
+                new AutomationOrchestrator.RunResult(runId, true, "RUNNING", "/automation/runs/" + runId)
+        );
+
+        ResponseEntity<Map<String, Object>> response = controller.startRun(true);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(response.getBody().get("started")).isEqualTo(true);
     }
 
     @Test

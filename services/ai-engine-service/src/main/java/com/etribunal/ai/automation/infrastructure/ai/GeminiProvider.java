@@ -10,12 +10,16 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.time.Duration;
 
 @Component
 @ConditionalOnProperty(prefix = "etribunal.automation.ai", name = "provider", havingValue = "gemini")
 public class GeminiProvider implements AIProvider {
+
+    private static final int MAX_PROVIDER_RETRIES = 3;
+    private static final Duration RETRY_BASE_DELAY = Duration.ofSeconds(1);
 
     private final ChatClient chatClient;
     private final RateLimiter rateLimiter;
@@ -75,7 +79,7 @@ public class GeminiProvider implements AIProvider {
     }
 
     private <T> Mono<T> callAndParse(String systemPrompt, Class<T> targetType, long timeoutSeconds) {
-        return Mono.fromCallable(() -> {
+        Mono<T> attempt = Mono.fromCallable(() -> {
             ChatResponse response = chatClient.prompt()
                     .system(systemPrompt)
                     .call()
@@ -86,6 +90,10 @@ public class GeminiProvider implements AIProvider {
         .onErrorMap(e -> !(e instanceof AiError),
                 e -> new AiError(AiErrorCode.PROVIDER_ERROR, e.getMessage(), true))
         .timeout(Duration.ofSeconds(timeoutSeconds));
+
+        return attempt.retryWhen(Retry.backoff(MAX_PROVIDER_RETRIES, RETRY_BASE_DELAY)
+                .maxBackoff(Duration.ofSeconds(5))
+                .filter(throwable -> throwable instanceof AiError && ((AiError) throwable).isRetryable()));
     }
 
     private String buildCasePrompt(GenerateCaseInput input) {

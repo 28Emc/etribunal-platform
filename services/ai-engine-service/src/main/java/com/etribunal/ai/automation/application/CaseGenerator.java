@@ -3,6 +3,7 @@ package com.etribunal.ai.automation.application;
 import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
 import com.etribunal.ai.automation.domain.dtos.*;
+import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
 import com.etribunal.ai.automation.repository.AutomationCaseRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,19 +30,22 @@ public class CaseGenerator {
     private final AutomationCaseRepository caseRepository;
     private final JdbcTemplate jdbcTemplate;
     private final UserSelector userSelector;
+    private final AutomationEventPublisher eventPublisher;
 
     public CaseGenerator(
             AIProvider aiProvider,
             AutomationConfig config,
             AutomationCaseRepository caseRepository,
             JdbcTemplate jdbcTemplate,
-            UserSelector userSelector
+            UserSelector userSelector,
+            AutomationEventPublisher eventPublisher
     ) {
         this.aiProvider = aiProvider;
         this.config = config;
         this.caseRepository = caseRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.userSelector = userSelector;
+        this.eventPublisher = eventPublisher;
     }
 
     public record CaseResult(
@@ -108,6 +112,13 @@ public class CaseGenerator {
                             respondAsSideB(caseId, sideBUserId, generated.sideBContent());
                         }
                     }
+
+                    eventPublisher.publishCaseCreated(
+                            UUID.fromString(caseId),
+                            UUID.fromString(authorId),
+                            sideBUserId != null ? UUID.fromString(sideBUserId) : null,
+                            generated.caseType()
+                    );
 
                     AutomationCaseEntity entity = new AutomationCaseEntity();
                     entity.setRun(jdbcTemplate.queryForObject(

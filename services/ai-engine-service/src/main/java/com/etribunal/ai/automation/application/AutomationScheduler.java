@@ -1,11 +1,17 @@
 package com.etribunal.ai.automation.application;
 
+import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
 import com.etribunal.ai.automation.repository.AutomationRunRepository;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,21 +30,42 @@ public class AutomationScheduler {
     private final InteractionExecutor executor;
     private final AutomationInteractionRepository interactionRepository;
     private final AutomationRunRepository runRepository;
+    private final AutomationConfig config;
+    private final TaskScheduler taskScheduler;
 
     public AutomationScheduler(
             AutomationOrchestrator orchestrator,
             InteractionExecutor executor,
             AutomationInteractionRepository interactionRepository,
-            AutomationRunRepository runRepository
+            AutomationRunRepository runRepository,
+            AutomationConfig config,
+            TaskScheduler taskScheduler
     ) {
         this.orchestrator = orchestrator;
         this.executor = executor;
         this.interactionRepository = interactionRepository;
         this.runRepository = runRepository;
+        this.config = config;
+        this.taskScheduler = taskScheduler;
     }
 
-    @Scheduled(cron = "0 0 * * * *")
+    @EventListener(ApplicationReadyEvent.class)
+    public void scheduleDailyRun() {
+        init();
+        if (!config.isEnabled()) {
+            log.info("Automation disabled (AI_ENABLED=false), no daily run scheduled");
+            return;
+        }
+        int hour = Math.max(0, Math.min(23, config.getRunHour()));
+        String cron = "0 0 " + hour + " * * *";
+        taskScheduler.schedule(this::dailyRun, new CronTrigger(cron));
+        log.info("Daily automation run scheduled at {}:00 ({})", hour, cron);
+    }
+
     public void dailyRun() {
+        if (!config.isEnabled()) {
+            return;
+        }
         log.info("Daily automation run triggered");
         orchestrator.startRun(false);
     }
@@ -55,6 +82,10 @@ public class AutomationScheduler {
     }
 
     public void init() {
+        if (!config.isEnabled()) {
+            log.info("AutomationScheduler disabled (AI_ENABLED=false), skipping stale-run resume");
+            return;
+        }
         log.info("AutomationScheduler initializing, resuming stale runs...");
         orchestrator.resumeStaleRuns();
     }

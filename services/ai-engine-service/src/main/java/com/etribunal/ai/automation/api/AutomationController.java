@@ -26,9 +26,10 @@ public class AutomationController {
     }
 
     @PostMapping("/run")
-    public ResponseEntity<Map<String, Object>> startRun() {
-        log.info("Manual run triggered");
-        AutomationOrchestrator.RunResult result = orchestrator.startRun(false);
+    public ResponseEntity<Map<String, Object>> startRun(
+            @RequestParam(defaultValue = "false") boolean dryRun) {
+        log.info("Manual run triggered (dryRun={})", dryRun);
+        AutomationOrchestrator.RunResult result = orchestrator.startRun(dryRun);
         return ResponseEntity.accepted().body(Map.of(
                 "runId", result.runId().toString(),
                 "started", result.started(),
@@ -45,6 +46,12 @@ public class AutomationController {
                 "service", "ai-engine",
                 "uptime", runtime.getUptime()
         ));
+    }
+
+    @GetMapping("/runs")
+    public ResponseEntity<Object> getRuns(
+            @RequestParam(defaultValue = "20") int limit) {
+        return ResponseEntity.ok(orchestrator.getRecentRuns(limit));
     }
 
     @GetMapping("/runs/{id}")
