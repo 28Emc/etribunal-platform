@@ -3,6 +3,7 @@ package com.etribunal.ai.automation.application;
 import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
 import com.etribunal.ai.automation.domain.dtos.*;
+import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
 import com.etribunal.ai.automation.repository.AutomationCaseRepository;
 import org.slf4j.Logger;
@@ -31,6 +32,7 @@ public class CaseGenerator {
     private final JdbcTemplate jdbcTemplate;
     private final UserSelector userSelector;
     private final AutomationEventPublisher eventPublisher;
+    private final EngagementService engagementService;
 
     public CaseGenerator(
             AIProvider aiProvider,
@@ -38,7 +40,8 @@ public class CaseGenerator {
             AutomationCaseRepository caseRepository,
             JdbcTemplate jdbcTemplate,
             UserSelector userSelector,
-            AutomationEventPublisher eventPublisher
+            AutomationEventPublisher eventPublisher,
+            EngagementService engagementService
     ) {
         this.aiProvider = aiProvider;
         this.config = config;
@@ -46,6 +49,7 @@ public class CaseGenerator {
         this.jdbcTemplate = jdbcTemplate;
         this.userSelector = userSelector;
         this.eventPublisher = eventPublisher;
+        this.engagementService = engagementService;
     }
 
     public record CaseResult(
@@ -74,7 +78,7 @@ public class CaseGenerator {
         String language = config.getLanguage();
 
         if (dryRun) {
-            GenerateCaseInput input = new GenerateCaseInput(variationSeed, recentTopics, intensity, language);
+            GenerateCaseInput input = new GenerateCaseInput(variationSeed, recentTopics, intensity, language, loadSuccessExamples());
             return aiProvider.generateCase(input)
                     .map(generated -> {
                         log.info("[DRY-RUN] Case planned: {}", generated.title());
@@ -86,12 +90,27 @@ public class CaseGenerator {
         return generateWithDedup(runId, index, variationSeed, recentTopics, intensity, language, authorId, pool, dryRun);
     }
 
+    private List<String> loadSuccessExamples() {
+        if (!config.getEngagement().isEnabled()) {
+            return List.of();
+        }
+        try {
+            return engagementService.findTopPerformingCases(config.getEngagement().getTopExamples())
+                    .stream()
+                    .map(p -> p.title() + " (score " + p.engagementScore() + ")")
+                    .toList();
+        } catch (Exception e) {
+            log.warn("Could not load success examples: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
     private Mono<CaseResult> generateWithDedup(
             UUID runId, int index, String variationSeed,
             List<String> recentTopics, int intensity, String language,
             String authorId, List<UserSelector.BotUser> pool, boolean dryRun
     ) {
-        GenerateCaseInput input = new GenerateCaseInput(variationSeed, recentTopics, intensity, language);
+        GenerateCaseInput input = new GenerateCaseInput(variationSeed, recentTopics, intensity, language, loadSuccessExamples());
 
         return aiProvider.generateCase(input)
                 .flatMap(generated -> {

@@ -7,5 +7,11 @@ public record GenerateCaseInput(
     String variationSeed,
     List<String> recentTopics,
     int intensity,
-    String language
-) {}
+    String language,
+    List<String> successExamples
+) {
+
+    public GenerateCaseInput {
+        successExamples = successExamples == null ? List.of() : successExamples;
+    }
+}

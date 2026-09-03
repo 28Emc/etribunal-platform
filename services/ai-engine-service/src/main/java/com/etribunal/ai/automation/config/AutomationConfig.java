@@ -70,6 +70,9 @@ public class AutomationConfig {
     // Nested AI config
     private AiConfig ai = new AiConfig();
 
+    // Nested engagement config (feedback loop 2.0)
+    private EngagementConfig engagement = new EngagementConfig();
+
     // Getters and setters
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -121,6 +124,9 @@ public class AutomationConfig {
 
     public AiConfig getAi() { return ai; }
     public void setAi(AiConfig ai) { this.ai = ai; }
+
+    public EngagementConfig getEngagement() { return engagement; }
+    public void setEngagement(EngagementConfig engagement) { this.engagement = engagement; }
 
     // Helper methods for random range picking
     public int pickDailyCases() {
@@ -202,5 +208,45 @@ public class AutomationConfig {
 
         public int getTpm() { return tpm; }
         public void setTpm(int tpm) { this.tpm = tpm; }
+    }
+
+    // Feedback loop 2.0: performance por caso IA (0-100) con pesos configurables
+    public static class EngagementConfig {
+        private boolean enabled = false;
+        private int topExamples = 3;
+        private int evaluationDays = 7;
+        private int votesWeight = 4;
+        private int commentsWeight = 5;
+        private int reactionsWeight = 3;
+        private int sharesWeight = 6;
+        private int savesWeight = 4;
+        private int viewsWeight = 1;
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+        public int getTopExamples() { return topExamples; }
+        public void setTopExamples(int topExamples) { this.topExamples = topExamples; }
+
+        public int getEvaluationDays() { return evaluationDays; }
+        public void setEvaluationDays(int evaluationDays) { this.evaluationDays = evaluationDays; }
+
+        public int getVotesWeight() { return votesWeight; }
+        public void setVotesWeight(int votesWeight) { this.votesWeight = votesWeight; }
+
+        public int getCommentsWeight() { return commentsWeight; }
+        public void setCommentsWeight(int commentsWeight) { this.commentsWeight = commentsWeight; }
+
+        public int getReactionsWeight() { return reactionsWeight; }
+        public void setReactionsWeight(int reactionsWeight) { this.reactionsWeight = reactionsWeight; }
+
+        public int getSharesWeight() { return sharesWeight; }
+        public void setSharesWeight(int sharesWeight) { this.sharesWeight = sharesWeight; }
+
+        public int getSavesWeight() { return savesWeight; }
+        public void setSavesWeight(int savesWeight) { this.savesWeight = savesWeight; }
+
+        public int getViewsWeight() { return viewsWeight; }
+        public void setViewsWeight(int viewsWeight) { this.viewsWeight = viewsWeight; }
     }
 }

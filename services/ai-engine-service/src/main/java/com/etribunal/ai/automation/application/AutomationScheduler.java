@@ -2,6 +2,7 @@ package com.etribunal.ai.automation.application;
 
 import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
+import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
 import com.etribunal.ai.automation.repository.AutomationRunRepository;
 import jakarta.annotation.PostConstruct;
@@ -32,6 +33,7 @@ public class AutomationScheduler {
     private final AutomationRunRepository runRepository;
     private final AutomationConfig config;
     private final TaskScheduler taskScheduler;
+    private final EngagementService engagementService;
 
     public AutomationScheduler(
             AutomationOrchestrator orchestrator,
@@ -39,7 +41,8 @@ public class AutomationScheduler {
             AutomationInteractionRepository interactionRepository,
             AutomationRunRepository runRepository,
             AutomationConfig config,
-            TaskScheduler taskScheduler
+            TaskScheduler taskScheduler,
+            EngagementService engagementService
     ) {
         this.orchestrator = orchestrator;
         this.executor = executor;
@@ -47,6 +50,7 @@ public class AutomationScheduler {
         this.runRepository = runRepository;
         this.config = config;
         this.taskScheduler = taskScheduler;
+        this.engagementService = engagementService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -68,6 +72,15 @@ public class AutomationScheduler {
         }
         log.info("Daily automation run triggered");
         orchestrator.startRun(false);
+        evaluateEngagement();
+    }
+
+    public void evaluateEngagement() {
+        if (!config.getEngagement().isEnabled()) {
+            return;
+        }
+        int evaluated = engagementService.evaluateRecentCases(config.getEngagement().getEvaluationDays());
+        log.info("Engagement evaluation completed for {} cases", evaluated);
     }
 
     @Scheduled(fixedRate = 60_000)

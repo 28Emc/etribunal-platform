@@ -32,11 +32,13 @@ public final class PromptUtils {
             - Tipo: "classic" (solo Side A, debate abierto) o "vote" (tiene Side B, espera respuesta).
             - Subtítulos personalizados para botones de voto (solo si vote): sideASubtitle, sideBSubtitle, bothWrongSubtitle (≤ 30 chars cada uno).
             
+            %s
+            
             Evita duplicados con estos temas recientes: %s
             Semilla de variación: %s
             
             Responde SOLO con JSON válido según el schema proporcionado.
-            """.formatted(language, toneDirective, MODERATION_SAFE_WRITING, "{recentTopics}", "{variationSeed}");
+            """.formatted(language, toneDirective, MODERATION_SAFE_WRITING, "{successExamples}", "{recentTopics}", "{variationSeed}");
     }
 
     public static String interactionPlanningPrompt(String language, int intensity) {

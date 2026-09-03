@@ -100,7 +100,19 @@ public class GeminiProvider implements AIProvider {
         String p = PromptUtils.caseGenerationPrompt(input.language(), input.intensity());
         p = p.replace("{recentTopics}", String.join(", ", input.recentTopics()));
         p = p.replace("{variationSeed}", input.variationSeed());
+        p = p.replace("{successExamples}", buildSuccessExamples(input.successExamples()));
         return p;
+    }
+
+    private String buildSuccessExamples(java.util.List<String> examples) {
+        if (examples == null || examples.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("Ejemplos de casos con buen rendimiento (imita su estilo):\n");
+        for (String ex : examples) {
+            sb.append("• ").append(ex).append("\n");
+        }
+        return sb.toString();
     }
 
     private String buildPlanPrompt(GenerateInteractionPlanInput input) {

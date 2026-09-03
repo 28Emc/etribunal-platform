@@ -83,3 +83,13 @@ etribunal:
       rpm: ${AI_RPM:12}
       rpd: ${AI_RPD:425}
       tpm: ${AI_TPM:212500}
+    engagement:
+      enabled: ${AUTOMATION_ENGAGEMENT_ENABLED:false}
+      top-examples: ${AUTOMATION_ENGAGEMENT_TOP_EXAMPLES:3}
+      evaluation-days: ${AUTOMATION_ENGAGEMENT_EVALUATION_DAYS:7}
+      votes-weight: ${AUTOMATION_ENGAGEMENT_VOTES_WEIGHT:4}
+      comments-weight: ${AUTOMATION_ENGAGEMENT_COMMENTS_WEIGHT:5}
+      reactions-weight: ${AUTOMATION_ENGAGEMENT_REACTIONS_WEIGHT:3}
+      shares-weight: ${AUTOMATION_ENGAGEMENT_SHARES_WEIGHT:6}
+      saves-weight: ${AUTOMATION_ENGAGEMENT_SAVES_WEIGHT:4}
+      views-weight: ${AUTOMATION_ENGAGEMENT_VIEWS_WEIGHT:1}
