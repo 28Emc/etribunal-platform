@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Feedback loop 2.0: mide la performance de los casos generados por IA y expone los
@@ -59,8 +60,7 @@ public class EngagementService {
     }
 
     /** Devuelve los casos generados por IA de mejor score, recientes. Vacío si no hay datos. */
-    public List<CasePerformance> findTopPerformingCases(int topN) {
-        int limit = Math.max(1, Math.min(50, topN));
+    public List<CasePerformance> findTopPerformingCases(int topN) {        int limit = Math.max(1, Math.min(50, topN));
         try {
             return jdbcTemplate.query(
                 """
@@ -165,5 +165,24 @@ public class EngagementService {
             log.warn("Could not evaluate recent cases: {}", e.getMessage());
             return 0;
         }
+    }
+
+    /** Resumen para el panel admin: promedio de score IA, total evaluado y top casos. */
+    public Map<String, Object> getAnalyticsSummary(int topN) {
+        Map<String, Object> summary = new java.util.LinkedHashMap<>();
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM case_performance", Integer.class);
+            Integer avgScore = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(avg(engagement_score), 0) FROM case_performance", Integer.class);
+            summary.put("evaluatedCases", count == null ? 0 : count);
+            summary.put("averageScore", avgScore == null ? 0 : avgScore);
+        } catch (Exception e) {
+            log.warn("Could not build engagement summary: {}", e.getMessage());
+            summary.put("evaluatedCases", 0);
+            summary.put("averageScore", 0);
+        }
+        summary.put("topCases", findTopPerformingCases(topN));
+        return summary;
     }
 }
