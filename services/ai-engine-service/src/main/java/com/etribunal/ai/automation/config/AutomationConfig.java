@@ -7,6 +7,9 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 
+import java.time.Duration;
+import java.util.List;
+
 @Component
 @ConfigurationProperties(prefix = "etribunal.automation")
 @Validated
@@ -76,6 +79,9 @@ public class AutomationConfig {
     // Nested activity config (scheduling ponderado 2.0)
     private ActivityConfig activity = new ActivityConfig();
 
+    // Nested context config (contexto vivo 2.0)
+    private ContextConfig context = new ContextConfig();
+
     // Getters and setters
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -133,6 +139,9 @@ public class AutomationConfig {
 
     public ActivityConfig getActivity() { return activity; }
     public void setActivity(ActivityConfig activity) { this.activity = activity; }
+
+    public ContextConfig getContext() { return context; }
+    public void setContext(ContextConfig context) { this.context = context; }
 
     // Helper methods for random range picking
     public int pickDailyCases() {
@@ -278,5 +287,27 @@ public class AutomationConfig {
 
         public int getLookbackDays() { return lookbackDays; }
         public void setLookbackDays(int lookbackDays) { this.lookbackDays = lookbackDays; }
+    }
+
+    // Contexto vivo 2.0 (Fase 3): fecha/estación/eventos fijos + noticias RSS
+    public static class ContextConfig {
+        private boolean newsEnabled = true;
+        private List<String> rssFeedUrls = new java.util.ArrayList<>();
+        private int maxNewsItems = 5;
+        private Duration newsCacheTtl = Duration.ofMinutes(15);
+
+        public boolean isNewsEnabled() { return newsEnabled; }
+        public void setNewsEnabled(boolean newsEnabled) { this.newsEnabled = newsEnabled; }
+
+        public List<String> getRssFeedUrls() { return rssFeedUrls; }
+        public void setRssFeedUrls(List<String> rssFeedUrls) {
+            this.rssFeedUrls = rssFeedUrls == null ? new java.util.ArrayList<>() : rssFeedUrls;
+        }
+
+        public int getMaxNewsItems() { return maxNewsItems; }
+        public void setMaxNewsItems(int maxNewsItems) { this.maxNewsItems = maxNewsItems; }
+
+        public Duration getNewsCacheTtl() { return newsCacheTtl; }
+        public void setNewsCacheTtl(Duration newsCacheTtl) { this.newsCacheTtl = newsCacheTtl; }
     }
 }

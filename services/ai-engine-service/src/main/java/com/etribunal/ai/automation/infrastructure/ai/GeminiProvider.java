@@ -101,7 +101,15 @@ public class GeminiProvider implements AIProvider {
         p = p.replace("{recentTopics}", String.join(", ", input.recentTopics()));
         p = p.replace("{variationSeed}", input.variationSeed());
         p = p.replace("{successExamples}", buildSuccessExamples(input.successExamples()));
+        p = p.replace("{liveContext}", buildLiveContextBlock(input.liveContext()));
         return p;
+    }
+
+    private String buildLiveContextBlock(String liveContext) {
+        if (liveContext == null || liveContext.isBlank()) {
+            return "";
+        }
+        return "Contexto temporal (fecha/estación/eventos/noticias actuales):\n" + liveContext;
     }
 
     private String buildSuccessExamples(java.util.List<String> examples) {

@@ -99,3 +99,8 @@ etribunal:
       min-stable-samples: ${AUTOMATION_ACTIVITY_MIN_STABLE:200}
       min-transition-samples: ${AUTOMATION_ACTIVITY_MIN_TRANSITION:20}
       lookback-days: ${AUTOMATION_ACTIVITY_LOOKBACK_DAYS:7}
+    context:
+      news-enabled: ${AUTOMATION_CONTEXT_NEWS_ENABLED:true}
+      rss-feed-urls: ${RSS_FEED_URLS:}
+      max-news-items: ${AUTOMATION_CONTEXT_MAX_NEWS:5}
+      news-cache-ttl: ${AUTOMATION_CONTEXT_NEWS_CACHE_TTL:15m}

@@ -33,12 +33,14 @@ public final class PromptUtils {
             - Subtítulos personalizados para botones de voto (solo si vote): sideASubtitle, sideBSubtitle, bothWrongSubtitle (≤ 30 chars cada uno).
             
             %s
-            
+
+            %s
+
             Evita duplicados con estos temas recientes: %s
             Semilla de variación: %s
-            
+
             Responde SOLO con JSON válido según el schema proporcionado.
-            """.formatted(language, toneDirective, MODERATION_SAFE_WRITING, "{successExamples}", "{recentTopics}", "{variationSeed}");
+            """.formatted(language, toneDirective, MODERATION_SAFE_WRITING, "{successExamples}", "{liveContext}", "{recentTopics}", "{variationSeed}");
     }
 
     public static String interactionPlanningPrompt(String language, int intensity) {

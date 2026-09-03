@@ -4,6 +4,7 @@ import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
 import com.etribunal.ai.automation.domain.dtos.*;
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
+import com.etribunal.ai.automation.infrastructure.context.LiveContextService;
 import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
 import com.etribunal.ai.automation.repository.AutomationCaseRepository;
 import org.slf4j.Logger;
@@ -33,6 +34,7 @@ public class CaseGenerator {
     private final UserSelector userSelector;
     private final AutomationEventPublisher eventPublisher;
     private final EngagementService engagementService;
+    private final LiveContextService liveContextService;
 
     public CaseGenerator(
             AIProvider aiProvider,
@@ -41,7 +43,8 @@ public class CaseGenerator {
             JdbcTemplate jdbcTemplate,
             UserSelector userSelector,
             AutomationEventPublisher eventPublisher,
-            EngagementService engagementService
+            EngagementService engagementService,
+            LiveContextService liveContextService
     ) {
         this.aiProvider = aiProvider;
         this.config = config;
@@ -50,6 +53,7 @@ public class CaseGenerator {
         this.userSelector = userSelector;
         this.eventPublisher = eventPublisher;
         this.engagementService = engagementService;
+        this.liveContextService = liveContextService;
     }
 
     public record CaseResult(
@@ -78,7 +82,7 @@ public class CaseGenerator {
         String language = config.getLanguage();
 
         if (dryRun) {
-            GenerateCaseInput input = new GenerateCaseInput(variationSeed, recentTopics, intensity, language, loadSuccessExamples());
+            GenerateCaseInput input = new GenerateCaseInput(variationSeed, recentTopics, intensity, language, loadSuccessExamples(), liveContextService.buildContext());
             return aiProvider.generateCase(input)
                     .map(generated -> {
                         log.info("[DRY-RUN] Case planned: {}", generated.title());
@@ -110,7 +114,7 @@ public class CaseGenerator {
             List<String> recentTopics, int intensity, String language,
             String authorId, List<UserSelector.BotUser> pool, boolean dryRun
     ) {
-        GenerateCaseInput input = new GenerateCaseInput(variationSeed, recentTopics, intensity, language, loadSuccessExamples());
+        GenerateCaseInput input = new GenerateCaseInput(variationSeed, recentTopics, intensity, language, loadSuccessExamples(), liveContextService.buildContext());
 
         return aiProvider.generateCase(input)
                 .flatMap(generated -> {
