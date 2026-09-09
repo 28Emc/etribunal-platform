@@ -16,6 +16,8 @@ public interface CaseRepository
 
     Optional<CaseEntity> findByInviteTokenAndDeletedAtIsNull(String inviteToken);
 
+    Optional<CaseEntity> findBySlugAndDeletedAtIsNull(String slug);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE CaseEntity c SET c.totalComments = c.totalComments + :delta, "
             + "c.updatedAt = CURRENT_TIMESTAMP WHERE c.id = :caseId")

@@ -70,6 +70,14 @@ public class CasesController {
         return ResponseEntity.ok(ApiResponse.ok(caseService.getCase(id, request)));
     }
 
+    @GetMapping("/{username}/{slug}")
+    public ResponseEntity<ApiResponse<CaseResponse>> detailBySlug(
+            @PathVariable String username,
+            @PathVariable String slug,
+            HttpServletRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(caseService.getCaseBySlug(slug, request)));
+    }
+
     @PatchMapping("/{id}")
     public ResponseEntity<ApiResponse<CaseResponse>> update(
             @PathVariable UUID id,

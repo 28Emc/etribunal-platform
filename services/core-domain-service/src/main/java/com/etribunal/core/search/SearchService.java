@@ -186,6 +186,7 @@ public class SearchService {
                 c.getStatus().name(),
                 c.getCategory(),
                 c.getTitle(),
+                c.getSlug(),
                 c.getSideAContent(),
                 c.getSideBContent(),
                 c.getSideASubtitle(),
@@ -213,7 +214,9 @@ public class SearchService {
                 c.getModerationStatus().name(),
                 false,
                 false,
-                userReaction);
+                userReaction,
+                new CaseResponse.ReactionsSummary(
+                        new CaseResponse.ReactionsSummary.Counts(0L, 0L, 0L)));
     }
 
     private static CaseResponse.UserDto toMaskedDto(UserSummary summary,

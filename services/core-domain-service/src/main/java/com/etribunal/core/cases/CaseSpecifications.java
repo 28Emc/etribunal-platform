@@ -29,7 +29,7 @@ public final class CaseSpecifications {
                 predicates.add(cb.or(titleMatches, contentMatches));
             }
 
-            if (category != null && !"All".equalsIgnoreCase(category)) {
+            if (category != null && !category.isBlank() && !"All".equalsIgnoreCase(category)) {
                 predicates.add(cb.equal(root.get("category"), category));
             }
 

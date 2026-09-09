@@ -36,6 +36,9 @@ public class CaseEntity {
     @Column(name = "title", nullable = false, length = 100)
     private String title;
 
+    @Column(name = "slug", length = 100)
+    private String slug;
+
     @Column(name = "side_a_content", nullable = false, columnDefinition = "text")
     private String sideAContent;
 
@@ -168,6 +171,14 @@ public class CaseEntity {
 
     public void setTitle(String title) {
         this.title = title;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public void setSlug(String slug) {
+        this.slug = slug;
     }
 
     public String getSideAContent() {

@@ -10,6 +10,7 @@ public record CaseResponse(
         String status,
         String category,
         String title,
+        String slug,
         String side_a_content,
         String side_b_content,
         String side_a_subtitle,
@@ -35,7 +36,8 @@ public record CaseResponse(
         String moderation_status,
         boolean is_saved,
         boolean is_shared,
-        String user_reaction
+        String user_reaction,
+        ReactionsSummary reactions_summary
 ) {
 
     public record UserDto(
@@ -44,6 +46,11 @@ public record CaseResponse(
             String avatar_url,
             boolean is_anonymous
     ) {
+    }
+
+    public record ReactionsSummary(Counts counts) {
+        public record Counts(long LIKE, long LOVE, long ANGRY) {
+        }
     }
 
     public static UserDto toUserDto(UserSummary summary) {

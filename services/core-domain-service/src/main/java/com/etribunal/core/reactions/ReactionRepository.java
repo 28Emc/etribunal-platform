@@ -35,4 +35,19 @@ public interface ReactionRepository extends JpaRepository<ReactionEntity, UUID> 
             @Param("targetType") ReactionTarget targetType,
             @Param("targetIds") List<UUID> targetIds,
             @Param("userId") UUID userId);
+
+    @Query("select r.targetId as targetId, r.emoji as emoji, count(r) as total "
+            + "from ReactionEntity r where r.targetType = :targetType and r.targetId in :targetIds "
+            + "group by r.targetId, r.emoji")
+    List<CaseReactionCount> countEmojiByTargetTypeAndTargetIdIn(
+            @Param("targetType") ReactionTarget targetType,
+            @Param("targetIds") List<UUID> targetIds);
+
+    interface CaseReactionCount {
+        UUID getTargetId();
+
+        Emoji getEmoji();
+
+        long getTotal();
+    }
 }

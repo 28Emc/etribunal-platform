@@ -99,9 +99,13 @@ public class CaseService {
             }
         }
 
+        String title = dto.title().trim();
+        String slug = generateSlug(title);
+
         CaseEntity entity = new CaseEntity();
         entity.setType(dto.type());
-        entity.setTitle(dto.title().trim());
+        entity.setTitle(title);
+        entity.setSlug(slug);
         entity.setSideAContent(dto.sideAContent().trim());
         entity.setCategory(dto.category() != null && !dto.category().isBlank()
                 ? dto.category() : "Other");
@@ -215,6 +219,21 @@ public class CaseService {
     }
 
     // ──────────────────────── Invite Token ────────────────────────
+
+    @Transactional(readOnly = true)
+    public CaseResponse getCaseBySlug(String slug, HttpServletRequest request) {
+        Optional<UUID> currentUserId = currentUser.currentUserId(request);
+
+        CaseEntity entity = caseRepository.findBySlugAndDeletedAtIsNull(slug)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Caso no encontrado"));
+
+        currentUserId.ifPresent(
+                uid -> analyticsService.log(InteractionAction.VIEW.name(), entity.getId(), uid));
+
+        return toResponse(List.of(entity), currentUserId.orElse(null))
+                .getFirst();
+    }
 
     @Transactional(readOnly = true)
     public CaseResponse getCaseByInviteToken(String token, HttpServletRequest request) {
@@ -434,6 +453,16 @@ public class CaseService {
         Set<UUID> sharedIds = Set.of();
         Map<UUID, String> reactionMap = Map.of();
         Map<UUID, String> voteMap = Map.of();
+        Map<UUID, Map<String, Long>> reactionCounts = new HashMap<>();
+
+        if (!caseIds.isEmpty()) {
+            for (ReactionRepository.CaseReactionCount row : reactionRepository
+                    .countEmojiByTargetTypeAndTargetIdIn(ReactionTarget.CASE, caseIds)) {
+                reactionCounts
+                        .computeIfAbsent(row.getTargetId(), k -> new HashMap<>())
+                        .put(row.getEmoji().name(), row.getTotal());
+            }
+        }
 
         if (requesterId != null && !caseIds.isEmpty()) {
             savedIds = new HashSet<>(savedCaseRepository
@@ -467,6 +496,7 @@ public class CaseService {
                     c.getStatus().name(),
                     c.getCategory(),
                     c.getTitle(),
+                    c.getSlug(),
                     c.getSideAContent(),
                     c.getSideBContent(),
                     c.getSideASubtitle(),
@@ -494,9 +524,22 @@ public class CaseService {
                     c.getModerationStatus().name(),
                     savedIds.contains(c.getId()),
                     sharedIds.contains(c.getId()),
-                    reactionMap.get(c.getId())));
+                    reactionMap.get(c.getId()),
+                    toReactionsSummary(reactionCounts.get(c.getId()))));
         }
         return responses;
+    }
+
+    private static CaseResponse.ReactionsSummary toReactionsSummary(Map<String, Long> counts) {
+        if (counts == null) {
+            return new CaseResponse.ReactionsSummary(
+                    new CaseResponse.ReactionsSummary.Counts(0L, 0L, 0L));
+        }
+        return new CaseResponse.ReactionsSummary(
+                new CaseResponse.ReactionsSummary.Counts(
+                        counts.getOrDefault("LIKE", 0L),
+                        counts.getOrDefault("LOVE", 0L),
+                        counts.getOrDefault("ANGRY", 0L)));
     }
 
     /**
@@ -526,6 +569,19 @@ public class CaseService {
 
     private static ResponseStatusException badRequest(String message) {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+    }
+
+    /**
+     * Genera un slug SEO-friendly a partir de un título.
+     * Coincide con la implementación del frontend (createSlug en helpers.ts).
+     */
+    private static String generateSlug(String title) {
+        String slug = title.toLowerCase()
+                .replaceAll("[^a-z0-9\\s-]", "")  // remover caracteres especiales
+                .replaceAll("\\s+", "-")          // espacios a guiones
+                .replaceAll("-+", "-")            // múltiples guiones a uno
+                .replaceAll("^-|-$", "");         // quitar guiones al inicio/final
+        return slug.length() > 100 ? slug.substring(0, 100) : slug;
     }
 
     public record InviteLinkResponse(String case_id, String invite_token,
