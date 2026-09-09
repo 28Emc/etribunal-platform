@@ -98,31 +98,31 @@ spring:
         webflux:
           routes:
             - id: core-domain-users-me-votes
-              uri: http://localhost:8082
+              uri: ${CORE_URL:http://localhost:8082}
               predicates:
                 - Path=/api/users/me/votes
             - id: core-domain-analytics
-              uri: http://localhost:8082
+              uri: ${CORE_URL:http://localhost:8082}
               predicates:
                 - Path=/api/analytics/**
             - id: core-domain-user-cases
-              uri: http://localhost:8082
+              uri: ${CORE_URL:http://localhost:8082}
               predicates:
                 - Path=/api/users/*/cases
             - id: core-domain-users-track-share
-              uri: http://localhost:8082
+              uri: ${CORE_URL:http://localhost:8082}
               predicates:
                 - Path=/api/users/*/track-share
             - id: identity
-              uri: http://localhost:8081
+              uri: ${IDENTITY_URL:http://localhost:8081}
               predicates:
                 - Path=/api/auth/**,/api/users/**,/api/users/*/followers,/api/users/*/following
             - id: core-domain
-              uri: http://localhost:8082
+              uri: ${CORE_URL:http://localhost:8082}
               predicates:
                 - Path=/api/cases/**,/api/comments/**,/api/reactions/**,/api/saved-cases/**,/api/notifications/**,/api/search/**,/api/media/**,/api/reports/**,/api/votes/**,/api/upload/**,/api/translations/**
             - id: ai-engine
-              uri: http://localhost:8083
+              uri: ${AI_URL:http://localhost:8083}
               predicates:
                 - Path=/api/automation/**
   management:

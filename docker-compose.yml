@@ -7,12 +7,14 @@
 #
 # Uso rápido:
 #   docker compose up -d                     # solo infra (Redis)
-#   docker compose --profile app up -d       # infra + 4 Spring services
-#   docker compose --profile floci-local up -d  # + Floci (RDS emulator)
+#   docker compose --profile app up -d       # infra + Kafka + 4 Spring services + UI
+#   docker compose --profile app --profile floci-local up -d  # todo junto (modo docker recomendado)
 #   docker compose --profile zipkin up -d    # + Zipkin (tracing)
 #   docker compose --profile temporal up -d  # + Temporal + UI
-#   docker compose --profile app --profile floci-local up -d  # todo junto (modo docker)
-#   docker compose --profile kafka up -d     # + Kafka KRaft single-node (opcional)
+#
+# Kafka: single-node KRaft, siempre activo en profile app (el ai-engine lo usa
+# como broker de eventos). Imagen apache/kafka:3.9.0 (404MB vs 849MB de cp-kafka).
+#   docker compose --profile kafka up -d     # (legacy — ya no necesario; kafka vive en app)
 #
 # Prerequisito: construir jars antes de levantar servicios Spring
 #   cd etribunal-platform && ./gradlew bootJar
@@ -20,12 +22,28 @@
 services:
   # ─────────────── Infra ───────────────
   floci:
-    image: floci/floci:latest
+    image: floci/floci:1.6.0
     container_name: etribunal-floci
     profiles: ["floci-local"]
+    # RDS necesita lanzar contenedores PostgreSQL hermanos via el socket Docker.
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - floci-data:/app/data
     ports:
       - "4566:4566"
       - "7001-7099:7001-7099"
+    environment:
+      FLOCI_HOSTNAME: floci
+      FLOCI_SERVICES_DOCKER_NETWORK: etribunal-net
+      # Persistencia: hybrid guarda la metadata en /app/data (volumen floci-data).
+      # Sin esto, Floci vive en memoria y al reiniciar pierde las instancias RDS,
+      # recreándolas con volumeIds nuevos (bases vacías) en cada `up`.
+      FLOCI_STORAGE_MODE: hybrid
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+      # Rango de proxies RDS arrancando en 7002 para que identity→7002 y core→7003
+      # (primer instancia creada = 7002, segunda = 7003).
+      FLOCI_SERVICES_RDS_PROXY_BASE_PORT: "7002"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
       interval: 5s
@@ -44,8 +62,9 @@ services:
       timeout: 3s
       retries: 5
 
-  # Crea el bucket S3 una sola vez al levantar Floci (idempotente).
-  # Media uploads (casos) usan presigned URLs contra etribunal-media.
+  # One-shot al levantar Floci: crea el bucket S3 y las 2 instancias RDS
+  # (identity :7002, core :7003). Idempotente: si ya existen (persistencia
+  # activa via floci-data), create-db-instance es un no-op.
   floci-init:
     image: amazon/aws-cli:latest
     container_name: etribunal-floci-init
@@ -57,26 +76,56 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        aws --endpoint-url http://floci:4566 s3 mb s3://etribunal-media 2>/dev/null
-        aws --endpoint-url http://floci:4566 s3 ls
+        echo "==> Creando bucket S3 etribunal-media"
+        aws --endpoint-url http://floci:4566 s3 mb s3://etribunal-media 2>/dev/null || true
+        echo "==> Instancias RDS (idempotente)"
+        aws --endpoint-url http://floci:4566 rds create-db-instance \
+          --db-instance-identifier etribunal-identity-local \
+          --db-name etribunal_identity \
+          --master-username etribunal_user \
+          --master-user-password etribunal_pass \
+          --engine postgres \
+          --db-instance-class db.t3.micro \
+          --allocated-storage 20 2>/dev/null || true
+        aws --endpoint-url http://floci:4566 rds create-db-instance \
+          --db-instance-identifier etribunal-core-local \
+          --db-name etribunal_core \
+          --master-username etribunal_user \
+          --master-user-password etribunal_pass \
+          --engine postgres \
+          --db-instance-class db.t3.micro \
+          --allocated-storage 20 2>/dev/null || true
+        echo "==> Esperando que las instancias RDS esten available (~60s max)"
+        for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+          n=$$(aws --endpoint-url http://floci:4566 rds describe-db-instances \
+              --query "DBInstances[?DBInstanceIdentifier=='etribunal-identity-local' && DBInstanceStatus=='available'] | length(@)" \
+              --output text 2>/dev/null || echo 0)
+          m=$$(aws --endpoint-url http://floci:4566 rds describe-db-instances \
+              --query "DBInstances[?DBInstanceIdentifier=='etribunal-core-local' && DBInstanceStatus=='available'] | length(@)" \
+              --output text 2>/dev/null || echo 0)
+          echo "    identity=$$n core=$$m"
+          [ "$$n" = "1" ] && [ "$$m" = "1" ] && { echo "==> RDS listas"; aws --endpoint-url http://floci:4566 s3 ls; exit 0; }
+          sleep 5
+        done
+        echo "WARN: RDS no disponibles a tiempo; los servicios reintentaran conexion."
     depends_on:
       floci:
         condition: service_healthy
     restart: "no"
 
-  # Kafka single-node (KRaft) — opt-in. No requerido para arrancar:
-  # producción de eventos es best-effort (sin broker el sistema sigue andando).
+  # Kafka single-node (KRaft). Se levanta con el profile app (el ai-engine lo
+  # usa como broker de eventos); se puede omitir con el profile contrario.
   kafka:
-    image: confluentinc/cp-kafka:7.5.0
+    image: apache/kafka:3.9.0
     container_name: etribunal-kafka
-    profiles: ["kafka"]
+    profiles: ["app"]
     ports:
       - "9092:9092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_PROCESS_ROLES: broker,controller
@@ -87,7 +136,7 @@ services:
       KAFKA_LOG_DIRS: /var/lib/kafka/data
       CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
     healthcheck:
-      test: ["CMD-SHELL", "/etc/confluent/docker/kafka-topics --bootstrap-server localhost:9092 --list"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -108,6 +157,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: "eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81"
+      IDENTITY_URL: http://identity-service:8081
+      CORE_URL: http://core-domain-service:8082
+      AI_URL: http://ai-engine-service:8083
     depends_on:
       redis:
         condition: service_healthy
@@ -123,18 +175,19 @@ services:
       - "8081:8081"
     environment:
       SPRING_PROFILES_ACTIVE: local
-      SPRING_DATASOURCE_URL: jdbc:postgresql://host.docker.internal:7002/etribunal_identity
+      SPRING_DATASOURCE_URL: jdbc:postgresql://floci:7002/etribunal_identity
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
       SPRING_DATA_REDIS_PASSWORD: "eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       JWT_ACCESS_SECRET: "dev-only-access-secret-0123456789abcdef0123456789abcdef"
       JWT_REFRESH_SECRET: "dev-only-refresh-secret-fedcba9876543210fedcba9876543210"
       INTERNAL_API_KEY: "dev-only-internal-token-1234"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
+      floci-init:
+        condition: service_completed_successfully
 
   core-domain-service:
     build:
@@ -147,21 +200,23 @@ services:
       - "8082:8082"
     environment:
       SPRING_PROFILES_ACTIVE: local
-      SPRING_DATASOURCE_URL: jdbc:postgresql://host.docker.internal:7003/etribunal_core
+      SPRING_DATASOURCE_URL: jdbc:postgresql://floci:7003/etribunal_core
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
       SPRING_DATA_REDIS_PASSWORD: "eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       INTERNAL_API_KEY: "dev-only-internal-token-1234"
       IDENTITY_BASE_URL: http://identity-service:8081/api
-      S3_ENDPOINT: http://host.docker.internal:4566
+      S3_ENDPOINT: http://floci:4566
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       S3_BUCKET: etribunal-media
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     depends_on:
       redis:
         condition: service_healthy
+      floci-init:
+        condition: service_completed_successfully
 
   ai-engine-service:
     build:
@@ -173,13 +228,65 @@ services:
     ports:
       - "8083:8083"
     environment:
-      CORE_DB_HOST: host.docker.internal
+      CORE_DB_HOST: floci
       CORE_DB_PORT: "7003"
       CORE_DB_NAME: etribunal_core
       CORE_DB_USER: etribunal_user
       CORE_DB_PASS: etribunal_pass
-      KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:9092
+      IDENTITY_DB_URL: jdbc:postgresql://floci:7002/etribunal_identity
+      IDENTITY_DB_USER: etribunal_user
+      IDENTITY_DB_PASS: etribunal_pass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      JWT_ACCESS_SECRET: "dev-only-access-secret-0123456789abcdef0123456789abcdef"
+      JWT_REFRESH_SECRET: "dev-only-refresh-secret-fedcba9876543210fedcba9876543210"
+      JWT_ISSUER: etribunal
       AI_API_KEY: ${AI_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      AI_MODEL: ${AI_MODEL:-gemini-3.5-flash-lite}
+      AI_TEMPERATURE: ${AI_TEMPERATURE:-0.8}
+      AI_TOP_P: ${AI_TOP_P:-0.95}
+      AUTOMATION_ENABLED: ${AUTOMATION_ENABLED:-false}
+      AUTOMATION_DRY_RUN: ${AUTOMATION_DRY_RUN:-true}
+      AUTOMATION_RUN_HOUR: ${AUTOMATION_RUN_HOUR:-9}
+      AUTOMATION_LANGUAGE: ${AUTOMATION_LANGUAGE:-es}
+      AUTOMATION_DAILY_CASES_MIN: ${AUTOMATION_DAILY_CASES_MIN:-1}
+      AUTOMATION_DAILY_CASES_MAX: ${AUTOMATION_DAILY_CASES_MAX:-5}
+      AUTOMATION_USERS_PER_CASE_MIN: ${AUTOMATION_USERS_PER_CASE_MIN:-5}
+      AUTOMATION_USERS_PER_CASE_MAX: ${AUTOMATION_USERS_PER_CASE_MAX:-15}
+      AUTOMATION_MAX_PER_USER_MIN: ${AUTOMATION_MAX_PER_USER_MIN:-1}
+      AUTOMATION_MAX_PER_USER_MAX: ${AUTOMATION_MAX_PER_USER_MAX:-3}
+      AUTOMATION_INTENSITY_MIN: ${AUTOMATION_INTENSITY_MIN:-30}
+      AUTOMATION_INTENSITY_MAX: ${AUTOMATION_INTENSITY_MAX:-70}
+      AUTOMATION_INTERVAL_MIN: ${AUTOMATION_INTERVAL_MIN:-30}
+      AUTOMATION_INTERVAL_MAX: ${AUTOMATION_INTERVAL_MAX:-180}
+      AUTOMATION_WINDOW_HOURS: ${AUTOMATION_WINDOW_HOURS:-24}
+      AUTOMATION_POOL_SIZE: ${AUTOMATION_POOL_SIZE:-0}
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      floci-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_started
+
+  # ─────────────── Frontend (etribunal-ui) ───────────────
+  etribunal-ui:
+    build:
+      context: ../etribunal-ui
+      dockerfile: Dockerfile
+    image: etribunal/ui
+    container_name: etribunal-ui
+    profiles: ["app"]
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://localhost:8080/api
+      VITE_WS_URL: http://localhost:8083/ws/automation
+      VITE_APP_URL: http://localhost:3000
+      VITE_APP_NAME: eTribunal
+      VITE_ENABLE_TRANSLATIONS: "false"
+    depends_on:
+      gateway-service:
+        condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -203,12 +310,10 @@ services:
     profiles: ["temporal"]
     environment:
       DB: postgres12
-      POSTGRES_SEEDS: host.docker.internal
+      POSTGRES_SEEDS: floci
       POSTGRES_PORT: "7002"
       POSTGRES_USER: etribunal_user
       POSTGRES_PWD: etribunal_pass
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "7233:7233"
 
@@ -217,10 +322,18 @@ services:
     container_name: etribunal-temporal-ui
     profiles: ["temporal"]
     environment:
-      TEMPORAL_ADDRESS: host.docker.internal:7233
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      TEMPORAL_ADDRESS: temporal:7233
     ports:
       - "8233:8080"
     depends_on:
       - temporal
+
+networks:
+  default:
+    name: etribunal-net
+
+# Persistencia de Floci: /app/data guarda la metadata (instancias RDS, buckets,
+# etc.). Los volúmenes floci-rds-* de cada PostgreSQL hermano persisten y se
+# reutilizan al restaurar la metadata en arranques siguientes.
+volumes:
+  floci-data:

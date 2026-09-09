@@ -1,9 +1,9 @@
 # Imagen construida desde la raíz del monorepo:
 #   docker build -f services/core-domain-service/Dockerfile -t etribunal/core-domain-service .
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
-RUN useradd --system --uid 1001 app
+RUN adduser -S -D -u 1001 app
 
 COPY services/core-domain-service/build/libs/*.jar app.jar
 
