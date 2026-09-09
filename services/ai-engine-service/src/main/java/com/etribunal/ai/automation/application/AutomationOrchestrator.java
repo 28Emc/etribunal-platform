@@ -1,5 +1,6 @@
 package com.etribunal.ai.automation.application;
 
+import com.etribunal.ai.automation.api.AutomationWebSocketController;
 import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
 import com.etribunal.ai.automation.repository.AutomationCaseRepository;
@@ -7,6 +8,8 @@ import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
 import com.etribunal.ai.automation.repository.AutomationRunRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -28,8 +31,13 @@ public class AutomationOrchestrator {
     private final AutomationCaseRepository caseRepository;
     private final AutomationInteractionRepository interactionRepository;
     private final CaseGenerator caseGenerator;
+    private final InteractionPlanner interactionPlanner;
+    private final InteractionExecutor interactionExecutor;
     private final UserSelector userSelector;
     private final JdbcTemplate jdbcTemplate;
+    private final JdbcTemplate identityJdbcTemplate;
+    private final AutomationOrchestrator self;
+    private final AutomationWebSocketController wsController;
 
     public AutomationOrchestrator(
             AutomationConfig config,
@@ -37,21 +45,42 @@ public class AutomationOrchestrator {
             AutomationCaseRepository caseRepository,
             AutomationInteractionRepository interactionRepository,
             CaseGenerator caseGenerator,
+            InteractionPlanner interactionPlanner,
+            InteractionExecutor interactionExecutor,
             UserSelector userSelector,
-            JdbcTemplate jdbcTemplate
+            JdbcTemplate jdbcTemplate,
+            @Qualifier("identityJdbcTemplate") JdbcTemplate identityJdbcTemplate,
+            @Lazy AutomationOrchestrator self,
+            @Lazy AutomationWebSocketController wsController
     ) {
         this.config = config;
         this.runRepository = runRepository;
         this.caseRepository = caseRepository;
         this.interactionRepository = interactionRepository;
         this.caseGenerator = caseGenerator;
+        this.interactionPlanner = interactionPlanner;
+        this.interactionExecutor = interactionExecutor;
         this.userSelector = userSelector;
         this.jdbcTemplate = jdbcTemplate;
+        this.identityJdbcTemplate = identityJdbcTemplate;
+        this.self = self;
+        this.wsController = wsController;
     }
 
     public record RunResult(UUID runId, boolean started, String status, String pollingUrl) {}
 
-    @Transactional
+    private static Map<String, Object> mapOf(Object... entries) {
+        Map<String, Object> map = new HashMap<>();
+        for (int i = 0; i < entries.length; i += 2) {
+            Object key = entries[i];
+            Object value = entries[i + 1];
+            if (value != null) {
+                map.put(key.toString(), value);
+            }
+        }
+        return map;
+    }
+
     public RunResult startRun(boolean dryRunOverride) {
         if (!config.isEnabled()) {
             log.info("Automation disabled (AI_ENABLED=false), refusing to start run");
@@ -109,8 +138,18 @@ public class AutomationOrchestrator {
 
         UUID runId = run.getId();
         log.info("Run {} created (dryRun={}, cases={}, users/case={})", runId, dryRun, dailyCases, usersPerCase);
+        
+        // Broadcast initial run state
+        wsController.broadcastRunUpdate(mapOf(
+            "id", runId.toString(),
+            "status", "PENDING",
+            "dryRun", dryRun,
+            "casesRequested", dailyCases,
+            "casesCreated", 0,
+            "casesFailed", 0
+        ));
 
-        launchRun(runId, dryRun, dailyCases, usersPerCase, intensity, maxPerUser, schedulingInterval);
+        self.launchRun(runId, dryRun, dailyCases, usersPerCase, intensity, maxPerUser, schedulingInterval);
 
         return new RunResult(runId, true, "RUNNING", "/automation/runs/" + runId);
     }
@@ -125,6 +164,13 @@ public class AutomationOrchestrator {
             run.setStatus(AutomationRunStatus.RUNNING);
             run.setStartedAt(Instant.now());
             runRepository.save(run);
+
+            // Broadcast RUNNING status
+            wsController.broadcastRunUpdate(mapOf(
+                "id", runId.toString(),
+                "status", "RUNNING",
+                "startedAt", run.getStartedAt().toString()
+            ));
 
             int poolSize = config.getDailyPoolSize() > 0
                     ? config.getDailyPoolSize()
@@ -141,15 +187,22 @@ public class AutomationOrchestrator {
 
             int casesCreated = 0;
             int casesFailed = 0;
+            int interactionsScheduled = 0;
 
             for (int i = 0; i < dailyCases; i++) {
                 try {
                     CaseGenerator.CaseResult result = caseGenerator.generateCase(
                             runId, i, recentTopics, pool, dryRun).block();
 
-                    if (result != null && result.status() == AutomationCaseStatus.CREATED) {
+                    if (result != null
+                            && (result.status() == AutomationCaseStatus.CREATED
+                                || (dryRun && result.status() == AutomationCaseStatus.PLANNED))) {
                         casesCreated++;
                         recentTopics.add(result.generated().title());
+                        if (!dryRun && result.caseId() != null) {
+                            interactionsScheduled += planAndScheduleInteractions(
+                                    runId, result, pool, usersPerCase, intensity, maxPerUser);
+                        }
                     } else {
                         casesFailed++;
                     }
@@ -159,7 +212,14 @@ public class AutomationOrchestrator {
                 }
             }
 
-            finishRun(runId, casesCreated, casesFailed);
+            log.info("Run {} scheduled {} interactions across {} created cases",
+                    runId, interactionsScheduled, casesCreated);
+
+            self.finishRun(runId, casesCreated, casesFailed);
+
+            if (interactionsScheduled > 0) {
+                broadcastQueueStatus();
+            }
 
         } catch (Exception e) {
             log.error("Run {} failed: {}", runId, e.getMessage());
@@ -168,6 +228,14 @@ public class AutomationOrchestrator {
             run.setErrorMessage(e.getMessage());
             run.setFinishedAt(Instant.now());
             runRepository.save(run);
+
+            // Broadcast FAILED status
+            wsController.broadcastRunUpdate(mapOf(
+                "id", runId.toString(),
+                "status", "FAILED",
+                "errorMessage", e.getMessage(),
+                "finishedAt", Instant.now().toString()
+            ));
         }
     }
 
@@ -189,6 +257,93 @@ public class AutomationOrchestrator {
         runRepository.save(run);
         log.info("Run {} finished: {} created, {} failed (status={})",
                 runId, casesCreated, casesFailed, run.getStatus());
+
+        // Broadcast final run state
+        wsController.broadcastRunUpdate(mapOf(
+            "id", runId.toString(),
+            "status", run.getStatus().name(),
+            "casesCreated", casesCreated,
+            "casesFailed", casesFailed,
+            "finishedAt", run.getFinishedAt().toString()
+        ));
+
+        // Refrescar KPIs de cola en el panel admin
+        wsController.broadcastQueueUpdate(getQueueStatus());
+    }
+
+    /**
+     * Genera el plan de interacciones para un caso recién creado (vía IA) y lo agenda
+     * en la cola del scheduler. Si el pool no tiene usuarios elegibles o el plan es
+     * inválido, se registra y continúa sin romper el run.
+     */
+    private int planAndScheduleInteractions(
+            UUID runId,
+            CaseGenerator.CaseResult result,
+            List<UserSelector.BotUser> pool,
+            int interactionCount,
+            int intensity,
+            int maxPerUser
+    ) {
+        try {
+            com.etribunal.ai.automation.domain.dtos.GeneratedCase generated = result.generated();
+            if (generated == null || result.caseId() == null) {
+                log.warn("Run {} skips interactions: case {} has no generated payload", runId, result.caseId());
+                return 0;
+            }
+
+            Optional<AutomationCaseEntity> automationCaseOpt = caseRepository.findByCaseId(result.caseId());
+            if (automationCaseOpt.isEmpty()) {
+                log.warn("Run {} skips interactions: automation case not found for {}", runId, result.caseId());
+                return 0;
+            }
+            AutomationCaseEntity automationCase = automationCaseOpt.get();
+
+            InteractionPlanner.PlanResult plan = interactionPlanner.generate(
+                    result.caseId(),
+                    generated.title(),
+                    generated.sideAContent(),
+                    generated.sideBContent(),
+                    generated.category(),
+                    interactionCount,
+                    intensity,
+                    pool,
+                    result.authorId(),
+                    result.sideBUserId(),
+                    maxPerUser
+            ).block();
+
+            if (plan == null || plan.interactions().isEmpty()) {
+                log.warn("Run {} got empty interaction plan for case {}", runId, result.caseId());
+                return 0;
+            }
+
+            automationCase.setTargetInteractions(plan.interactions().size());
+            caseRepository.save(automationCase);
+
+            List<AutomationInteractionEntity> scheduled = interactionExecutor.scheduleInteractions(
+                    automationCase.getId(),
+                    plan.interactions(),
+                    Instant.now(),
+                    config.getSchedulingIntervalMin(),
+                    config.getSchedulingIntervalMax(),
+                    config.getSchedulingWindowHours()
+            );
+
+            log.info("Run {} scheduled {} interactions for case {}",
+                    runId, scheduled.size(), result.caseId());
+            return scheduled.size();
+        } catch (Exception e) {
+            log.error("Failed to plan/schedule interactions for case {}: {}", result.caseId(), e.getMessage());
+            return 0;
+        }
+    }
+
+    public void broadcastQueueStatus() {
+        wsController.broadcastQueueUpdate(getQueueStatus());
+    }
+
+    public void broadcastEngagement(Map<String, Object> summary) {
+        wsController.broadcastEngagementUpdate(summary);
     }
 
     @Transactional
@@ -207,6 +362,14 @@ public class AutomationOrchestrator {
                 run.setErrorMessage("Stale recovery");
                 run.setFinishedAt(Instant.now());
                 runRepository.save(run);
+
+                // Broadcast FAILED status for stale run
+                wsController.broadcastRunUpdate(mapOf(
+                    "id", run.getId().toString(),
+                    "status", "FAILED",
+                    "errorMessage", "Stale recovery",
+                    "finishedAt", Instant.now().toString()
+                ));
             }
         }
     }
@@ -256,11 +419,11 @@ public class AutomationOrchestrator {
     }
 
     @Transactional(readOnly = true)
-    public Map<String, Object> getQueueStatus() {        Instant dayStart = Instant.now().atZone(java.time.ZoneId.systemDefault())
+    public Map<String, Object> getQueueStatus() {
+        Instant dayStart = Instant.now().atZone(java.time.ZoneId.systemDefault())
                 .toLocalDate().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
 
-        long scheduled = interactionRepository.countByStatusAndScheduledAtLessThanEqual(
-                AutomationInteractionStatus.SCHEDULED, Instant.now());
+        long scheduled = interactionRepository.countByStatus(AutomationInteractionStatus.SCHEDULED);
         long processing = interactionRepository.countByStatus(AutomationInteractionStatus.PROCESSING);
         long completed = interactionRepository.countByStatusAndExecutedAtGreaterThanEqual(
                 AutomationInteractionStatus.SUCCESS, dayStart);
@@ -288,7 +451,7 @@ public class AutomationOrchestrator {
     }
 
     private void autoEnableBots() {
-        jdbcTemplate.update(
+        identityJdbcTemplate.update(
             """
             UPDATE users SET automation_enabled = true
             WHERE is_bot = true AND deleted_at IS NULL AND is_anonymous = false

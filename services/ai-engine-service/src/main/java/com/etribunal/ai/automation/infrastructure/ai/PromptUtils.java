@@ -15,6 +15,23 @@ public final class PromptUtils {
         5. El contenido debe ser apto para debate público: provocador sí, tóxico no.
         """;
 
+    public static final String CASE_JSON_SCHEMA = """
+        SCHEMA JSON OBLIGATORIO (respeta EXACTAMENTE estos nombres de campo):
+        {
+          "title": "string (≤ 120 chars)",
+          "description": "string (≤ 500 chars)",
+          "sideAContent": "string (≤ 1000 chars)",
+          "sideBContent": "string (≤ 1000 chars, usa \\"\\" si no aplica)",
+          "category": "Relationship | Friendship | Work | Family | Other",
+          "caseType": "classic | vote",
+          "sideASubtitle": "string (≤ 30 chars)",
+          "sideBSubtitle": "string (≤ 30 chars)",
+          "bothWrongSubtitle": "string (≤ 30 chars)",
+          "metadata": { }
+        }
+        IMPORTANTE: los argumentos van en sideAContent/sideBContent. NO uses "sideA"/"sideB" como nombres de campo.
+        """;
+
     public static String caseGenerationPrompt(String language, int intensity) {
         String toneDirective = IntensityMapper.toDirective(intensity);
         return """
@@ -28,7 +45,7 @@ public final class PromptUtils {
             - Descripción: contexto neutral, ≤ 500 chars.
             - Side A: argumento a favor, ≤ 1000 chars.
             - Side B: argumento en contra (si vote), ≤ 1000 chars.
-            - Categoría: una de [politica, sociedad, tecnologia, economia, cultura, ciencia, deportes, otro].
+            - Categoría: una de [Relationship, Friendship, Work, Family, Other].
             - Tipo: "classic" (solo Side A, debate abierto) o "vote" (tiene Side B, espera respuesta).
             - Subtítulos personalizados para botones de voto (solo si vote): sideASubtitle, sideBSubtitle, bothWrongSubtitle (≤ 30 chars cada uno).
             
@@ -39,16 +56,16 @@ public final class PromptUtils {
             Evita duplicados con estos temas recientes: %s
             Semilla de variación: %s
 
+            %s
+
             Responde SOLO con JSON válido según el schema proporcionado.
-            """.formatted(language, toneDirective, MODERATION_SAFE_WRITING, "{successExamples}", "{liveContext}", "{recentTopics}", "{variationSeed}");
+            """.formatted(language, toneDirective, MODERATION_SAFE_WRITING, "{successExamples}", "{liveContext}", "{recentTopics}", "{variationSeed}", CASE_JSON_SCHEMA);
     }
 
-    public static String interactionPlanningPrompt(String language, int intensity) {
-        String toneDirective = IntensityMapper.toDirective(intensity);
+    public static String interactionPlanningPrompt(String language) {
         return """
             Eres un planificador de interacciones para un caso de debate.
-            Genera un plan de %d interacciones para %d usuarios disponibles (máx %d por usuario).
-            Tono: %s
+            Recomendaciones de intensidad: {interactionCount} ({availableUsers} usuarios disponibles, máx {maxPerUser} por usuario).
             %s
             
             Caso: "%s"
@@ -56,21 +73,30 @@ public final class PromptUtils {
             Side B: %s
             Categoría: %s
             
-            Tipos válidos: COMMENT, REPLY, REACTION, VOTE.
-            - COMMENT: requiere content (opinión original).
-            - REPLY: requiere content + replyToIndex (índice del COMMENT al que responde, 0-based).
-            - REACTION: requiere reaction (LIKE, LOVE, ANGRY).
-            - VOTE: requiere option (A, B, BOTH_WRONG).
+            Responde SOLO con un JSON que cumpla EXACTAMENTE este esquema:
+            {
+              "interactions": [
+                {
+                  "type": "COMMENT",
+                  "stance": "pro-A | pro-B | neutral",
+                  "tone": 0-100,
+                  "content": "string",
+                  "reaction": null,
+                  "option": null,
+                  "replyToIndex": null
+                }
+              ]
+            }
             
-            Reglas:
-            - Distribuye stances (pro-A, pro-B, neutral) según el caso.
-            - REPLY solo a COMMENTS previos en el plan.
-            - Intensidad del tono: %d (0-100).
-            - NO repitas usuarios consecutivamente si es posible.
+            Tipos válidos y campos requeridos:
+            - COMMENT: type + stance + tone + content
+            - REPLY: type + stance + tone + content + replyToIndex (índice del COMMENT al que responde, 0-based)
+            - REACTION: type + stance (no para reacciones) + reaction (LIKE, LOVE, ANGRY)
+            - VOTE: type + option (A, B, BOTH_WRONG)
             
-            Responde SOLO con JSON válido según el schema.
-            """.formatted("{interactionCount}", "{availableUsers}", "{maxPerUser}", toneDirective, MODERATION_SAFE_WRITING,
-                "{title}", "{sideA}", "{sideB}", "{category}", intensity);
+            NO uses "sideA"/"sideB" ni otros nombres de campo. Distribuye stances (pro-A, pro-B, neutral) según el caso.
+            """.formatted("{interactionCount}", "{availableUsers}", "{maxPerUser}", MODERATION_SAFE_WRITING,
+                "{title}", "{sideA}", "{sideB}", "{category}");
     }
 
     public static String commentGenerationPrompt(String language, int intensity) {

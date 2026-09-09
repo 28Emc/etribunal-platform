@@ -9,11 +9,15 @@ import com.etribunal.ai.automation.repository.AutomationCaseRepository;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.*;
 
 @Service
@@ -29,6 +33,20 @@ public class InteractionExecutor {
     private final AnalyticsRecorder analyticsRecorder;
     private final AutomationConfig config;
     private final ActivityProfileService activityProfileService;
+
+    /**
+     * Self-proxy lazy: permite invocar {@link #dispatch(AutomationInteractionEntity)} a través del
+     * proxy de Spring para que retorne en una transacción independiente (REQUIRES_NEW). Así un fallo
+     * de SQL en UNA interacción revierte solo su subtransacción y no aborta el tick completo,
+     * permitiendo persistir el estado FAILED y que el resto de interacciones siga ejecutándose.
+     */
+    @Autowired
+    @Lazy
+    private InteractionExecutor self;
+
+    void setSelf(InteractionExecutor self) {
+        this.self = self;
+    }
 
     public InteractionExecutor(
             AutomationInteractionRepository interactionRepository,
@@ -198,7 +216,8 @@ public class InteractionExecutor {
         interactionRepository.save(entity);
 
         try {
-            String resultId = dispatch(entity);
+            InteractionExecutor dispatchSource = self != null ? self : this;
+            String resultId = dispatchSource.dispatch(entity);
             entity.setStatus(AutomationInteractionStatus.SUCCESS);
             entity.setResultId(resultId);
             entity.setExecutedAt(Instant.now());
@@ -227,9 +246,15 @@ public class InteractionExecutor {
         }
     }
 
-    private String dispatch(AutomationInteractionEntity entity) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = entity.getMetadata() instanceof Map ? (Map<String, Object>) entity.getMetadata() : Map.of();
+    /**
+     * Ejecuta la acción concreta (comentario/reply/reacción/voto) en su PROPIA transacción
+     * (REQUIRES_NEW). Al ser invocado vía el self-proxy, cualquier error de SQL en la acción
+     * revierte solo esta subtransacción: el estado FAILED y las demás interacciones del tick
+     * quedan preservadas.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public String dispatch(AutomationInteractionEntity entity) {
+        Map<String, Object> metadata = entity.getMetadata() == null ? Map.of() : entity.getMetadata();
         String caseId = getCaseIdFromEntity(entity);
         String userId = entity.getUserId();
 
@@ -257,37 +282,88 @@ public class InteractionExecutor {
     }
 
     private String createComment(String caseId, String userId, String content, String parentCommentId) {
-        String commentId = UUID.randomUUID().toString();
+        UUID commentUuid = UUID.randomUUID();
+        Timestamp now = Timestamp.from(Instant.now());
+        UUID caseUuid = UUID.fromString(caseId);
+        UUID userUuid = UUID.fromString(userId);
         if (parentCommentId != null) {
             jdbcTemplate.update(
-                "INSERT INTO comments (id, case_id, user_id, parent_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                commentId, caseId, userId, parentCommentId, content, Instant.now(), Instant.now()
+                "INSERT INTO comments (id, case_id, user_id, parent_id, content, risk_score, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?)",
+                commentUuid, caseUuid, userUuid, UUID.fromString(parentCommentId), content, now, now
             );
         } else {
             jdbcTemplate.update(
-                "INSERT INTO comments (id, case_id, user_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                commentId, caseId, userId, content, Instant.now(), Instant.now()
+                "INSERT INTO comments (id, case_id, user_id, content, risk_score, created_at, updated_at) VALUES (?, ?, ?, ?, 0.0, ?, ?)",
+                commentUuid, caseUuid, userUuid, content, now, now
             );
         }
-        return commentId;
+        jdbcTemplate.update(
+            "UPDATE cases SET total_comments = total_comments + 1, updated_at = ? WHERE id = ?",
+            now, caseUuid
+        );
+        return commentUuid.toString();
     }
 
     private String addReaction(String caseId, String userId, String emoji) {
-        String reactionId = UUID.randomUUID().toString();
+        UUID reactionUuid = UUID.randomUUID();
+        Timestamp now = Timestamp.from(Instant.now());
+        UUID caseUuid = UUID.fromString(caseId);
+        UUID userUuid = UUID.fromString(userId);
         jdbcTemplate.update(
-            "INSERT INTO reactions (id, case_id, user_id, emoji, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (case_id, user_id, emoji) DO NOTHING",
-            reactionId, caseId, userId, emoji, Instant.now()
+            """
+            INSERT INTO reactions (id, target_type, target_id, emoji, user_id, case_id, comment_id, created_at)
+            VALUES (?, 'CASE', ?, ?, ?, ?, NULL, ?)
+            ON CONFLICT (target_type, target_id, user_id, emoji) DO NOTHING
+            """,
+            reactionUuid, caseUuid, emoji, userUuid, caseUuid, now
         );
-        return reactionId;
+        return reactionUuid.toString();
     }
 
     private String createVote(String caseId, String userId, String option) {
-        String voteId = UUID.randomUUID().toString();
+        UUID voteUuid = UUID.randomUUID();
+        Timestamp now = Timestamp.from(Instant.now());
+        UUID caseUuid = UUID.fromString(caseId);
+        UUID userUuid = UUID.fromString(userId);
+
+        // Si el usuario ya votó, necesitamos el tipo previo para ajustar los contadores
+        String previousOption = jdbcTemplate.query(
+                "SELECT vote_type FROM case_votes WHERE case_id = ? AND user_id = ?",
+                rs -> rs.next() ? rs.getString(1) : null,
+                caseUuid, userUuid);
+
         jdbcTemplate.update(
-            "INSERT INTO votes (id, case_id, user_id, vote_type, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (case_id, user_id) DO UPDATE SET vote_type = ?, updated_at = ?",
-            voteId, caseId, userId, option, Instant.now(), option, Instant.now()
+            """
+            INSERT INTO case_votes (id, vote_type, case_id, user_id, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (case_id, user_id) DO UPDATE SET vote_type = EXCLUDED.vote_type
+            """,
+            voteUuid, option, caseUuid, userUuid, now
         );
-        return voteId;
+
+        if (previousOption == null) {
+            jdbcTemplate.update(
+                "UPDATE cases SET total_votes = total_votes + 1, " +
+                "votes_a = votes_a + ?, votes_b = votes_b + ?, votes_both_wrong = votes_both_wrong + ?, " +
+                "updated_at = ? WHERE id = ?",
+                delta(option, "A"), delta(option, "B"), delta(option, "BOTH_WRONG"), now, caseUuid
+            );
+        } else if (!previousOption.equals(option)) {
+            jdbcTemplate.update(
+                "UPDATE cases SET " +
+                "votes_a = votes_a + ?, votes_b = votes_b + ?, votes_both_wrong = votes_both_wrong + ?, " +
+                "updated_at = ? WHERE id = ?",
+                delta(option, "A") - delta(previousOption, "A"),
+                delta(option, "B") - delta(previousOption, "B"),
+                delta(option, "BOTH_WRONG") - delta(previousOption, "BOTH_WRONG"),
+                now, caseUuid
+            );
+        }
+        return voteUuid.toString();
+    }
+
+    private static int delta(String option, String target) {
+        return target.equals(option) ? 1 : 0;
     }
 
     private String resolveParentCommentId(UUID automationCaseId, int replyToPlanIndex) {
@@ -302,8 +378,7 @@ public class InteractionExecutor {
     }
 
     private String getCaseIdFromEntity(AutomationInteractionEntity entity) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = entity.getMetadata() instanceof Map ? (Map<String, Object>) entity.getMetadata() : Map.of();
+        Map<String, Object> metadata = entity.getMetadata() == null ? Map.of() : entity.getMetadata();
         String caseId = (String) metadata.get("case_id");
         if (caseId == null) {
             caseId = entity.getAutomationCase().getCaseId();

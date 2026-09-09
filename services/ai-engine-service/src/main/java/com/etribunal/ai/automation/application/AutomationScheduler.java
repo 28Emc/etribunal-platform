@@ -9,6 +9,7 @@ import com.etribunal.ai.automation.repository.AutomationRunRepository;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.TaskScheduler;
@@ -17,7 +18,10 @@ import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -36,7 +40,9 @@ public class AutomationScheduler {
     private final TaskScheduler taskScheduler;
     private final EngagementService engagementService;
     private final ActivityProfileService activityProfileService;
+    private final Clock clock;
 
+    @Autowired
     public AutomationScheduler(
             AutomationOrchestrator orchestrator,
             InteractionExecutor executor,
@@ -47,6 +53,21 @@ public class AutomationScheduler {
             EngagementService engagementService,
             ActivityProfileService activityProfileService
     ) {
+        this(orchestrator, executor, interactionRepository, runRepository, config, taskScheduler,
+                engagementService, activityProfileService, Clock.systemDefaultZone());
+    }
+
+    public AutomationScheduler(
+            AutomationOrchestrator orchestrator,
+            InteractionExecutor executor,
+            AutomationInteractionRepository interactionRepository,
+            AutomationRunRepository runRepository,
+            AutomationConfig config,
+            TaskScheduler taskScheduler,
+            EngagementService engagementService,
+            ActivityProfileService activityProfileService,
+            Clock clock
+    ) {
         this.orchestrator = orchestrator;
         this.executor = executor;
         this.interactionRepository = interactionRepository;
@@ -55,6 +76,7 @@ public class AutomationScheduler {
         this.taskScheduler = taskScheduler;
         this.engagementService = engagementService;
         this.activityProfileService = activityProfileService;
+        this.clock = clock;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -68,6 +90,24 @@ public class AutomationScheduler {
         String cron = "0 0 " + hour + " * * *";
         taskScheduler.schedule(this::dailyRun, new CronTrigger(cron));
         log.info("Daily automation run scheduled at {}:00 ({})", hour, cron);
+
+        catchUpMissedRun(hour);
+    }
+
+    private void catchUpMissedRun(int runHour) {
+        int currentHour = LocalTime.now(clock).getHour();
+        if (currentHour < runHour) {
+            log.debug("Catch-up not needed: current hour {} < runHour {}", currentHour, runHour);
+            return;
+        }
+        Instant todayStart = Instant.now(clock).atZone(ZoneId.systemDefault())
+                .toLocalDate().atStartOfDay(ZoneId.systemDefault()).toInstant();
+        if (runRepository.existsByCreatedAtAfter(todayStart)) {
+            log.info("Catch-up skipped: a run already exists for today");
+            return;
+        }
+        log.info("Catch-up triggered: current hour {} >= runHour {}, no run today -> starting run", currentHour, runHour);
+        orchestrator.startRun(false);
     }
 
     public void dailyRun() {
@@ -88,6 +128,7 @@ public class AutomationScheduler {
         }
         int evaluated = engagementService.evaluateRecentCases(config.getEngagement().getEvaluationDays());
         log.info("Engagement evaluation completed for {} cases", evaluated);
+        orchestrator.broadcastEngagement(engagementService.getAnalyticsSummary(10));
     }
 
     @Scheduled(fixedRate = 60_000)
@@ -119,6 +160,7 @@ public class AutomationScheduler {
         );
         if (expired > 0) {
             log.warn("Expired {} stale PROCESSING interactions back to SCHEDULED", expired);
+            orchestrator.broadcastQueueStatus();
         }
     }
 
@@ -128,12 +170,21 @@ public class AutomationScheduler {
                 AutomationInteractionStatus.SCHEDULED, now, org.springframework.data.domain.PageRequest.of(0, TICK_BATCH)
         );
 
+        int executed = 0;
         for (AutomationInteractionEntity interaction : due) {
             try {
-                executor.execute(interaction.getId());
+                InteractionExecutor.ExecuteResult result = executor.execute(interaction.getId());
+                if (result != null && result.status() != null) {
+                    executed++;
+                }
             } catch (Exception e) {
                 log.error("Failed to execute interaction {}: {}", interaction.getId(), e.getMessage());
             }
+        }
+
+        if (executed > 0) {
+            orchestrator.broadcastQueueStatus();
+            log.info("Tick executed {} interactions (queue updated)", executed);
         }
     }
 }

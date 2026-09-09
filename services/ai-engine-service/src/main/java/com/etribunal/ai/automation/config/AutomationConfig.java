@@ -54,11 +54,11 @@ public class AutomationConfig {
     @Max(100)
     private int intensityMax = 70;
 
-    @Min(5)
+    @Min(1)
     @Max(1440)
     private int schedulingIntervalMin = 30;
 
-    @Min(5)
+    @Min(1)
     @Max(1440)
     private int schedulingIntervalMax = 180;
 
@@ -172,7 +172,7 @@ public class AutomationConfig {
         private String apiKey = "";
 
         @NotBlank
-        private String model = "gemini-2.0-flash";
+        private String model = "gemini-3.5-flash-lite";
 
         private double temperature = 0.8;
         private double topP = 0.95;

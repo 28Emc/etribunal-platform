@@ -11,10 +11,12 @@ dependencyManagement {
 
 dependencies {
     implementation(project(":libs:common-kafka"))
+    implementation(project(":libs:common-security"))
 
     implementation(libs.spring.boot.starter.data.jpa)
     implementation(libs.postgresql)
     implementation(libs.spring.boot.starter.webflux)
+    implementation(libs.spring.boot.starter.websocket)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.kafka)
@@ -26,7 +28,8 @@ dependencies {
     implementation(libs.springdoc.openapi.starter.webflux.ui)
 
     // Spring AI for Gemini (1.1.8 - compatible with Boot 3.5.x)
-    implementation("org.springframework.ai:spring-ai-starter-model-vertex-ai-gemini")
+    // Google GenAI permit use Gemini Developer API (API key AI Studio) en vez de Vertex AI.
+    implementation("org.springframework.ai:spring-ai-starter-model-google-genai")
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(project(":libs:common-test"))

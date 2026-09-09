@@ -11,6 +11,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -53,7 +54,7 @@ public class AutomationRunEntity {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata", columnDefinition = "jsonb")
-    private Object metadata;
+    private Map<String, Object> metadata;
 
     @Column(name = "error_message", columnDefinition = "text")
     private String errorMessage;
@@ -95,8 +96,8 @@ public class AutomationRunEntity {
     public void setInteractionIntensity(int interactionIntensity) { this.interactionIntensity = interactionIntensity; }
     public boolean isDryRun() { return dryRun; }
     public void setDryRun(boolean dryRun) { this.dryRun = dryRun; }
-    public Object getMetadata() { return metadata; }
-    public void setMetadata(Object metadata) { this.metadata = metadata; }
+    public Map<String, Object> getMetadata() { return metadata; }
+    public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public Instant getCreatedAt() { return createdAt; }

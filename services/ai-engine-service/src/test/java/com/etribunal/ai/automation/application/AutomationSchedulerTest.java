@@ -20,7 +20,11 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
 import org.springframework.scheduling.support.CronTrigger;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
@@ -44,15 +48,17 @@ class AutomationSchedulerTest {
     private ActivityProfileService activityProfileService;
 
     private AutomationConfig config;
+    private Clock fixedClock;
 
     private AutomationScheduler scheduler;
 
     @BeforeEach
     void setUp() {
         config = new AutomationConfig();
+        fixedClock = Clock.fixed(Instant.parse("2026-09-08T10:00:00Z"), ZoneOffset.UTC);
         scheduler = new AutomationScheduler(
                 orchestrator, executor, interactionRepository, runRepository,
-                config, taskScheduler, engagementService, activityProfileService
+                config, taskScheduler, engagementService, activityProfileService, fixedClock
         );
     }
 
@@ -148,5 +154,43 @@ class AutomationSchedulerTest {
                 eq(AutomationInteractionStatus.SCHEDULED),
                 any(Instant.class));
         verify(executor, never()).execute(any(UUID.class));
+    }
+
+    @Test
+    void scheduleDailyRun_catchUpNotTriggered_whenCurrentHourBeforeRunHour() {
+        config.setEnabled(true);
+        config.setRunHour(14); // runHour = 14, clock fixed at 10:00
+        when(taskScheduler.schedule(any(Runnable.class), any(Trigger.class))).thenReturn(null);
+
+        scheduler.scheduleDailyRun();
+
+        verify(orchestrator, never()).startRun(anyBoolean());
+    }
+
+    @Test
+    void scheduleDailyRun_catchUpNotTriggered_whenRunAlreadyExistsToday() {
+        config.setEnabled(true);
+        config.setRunHour(9); // runHour = 9, clock fixed at 10:00 (>= runHour)
+        when(taskScheduler.schedule(any(Runnable.class), any(Trigger.class))).thenReturn(null);
+        when(runRepository.existsByCreatedAtAfter(any(Instant.class))).thenReturn(true);
+
+        scheduler.scheduleDailyRun();
+
+        verify(orchestrator, never()).startRun(anyBoolean());
+    }
+
+    @Test
+    void scheduleDailyRun_catchUpTriggersStartRun_whenCurrentHourAfterRunHourAndNoRunToday() {
+        config.setEnabled(true);
+        config.setRunHour(9); // runHour = 9, clock fixed at 10:00 (>= runHour)
+        when(taskScheduler.schedule(any(Runnable.class), any(Trigger.class))).thenReturn(null);
+        when(runRepository.existsByCreatedAtAfter(any(Instant.class))).thenReturn(false);
+        when(orchestrator.startRun(false)).thenReturn(
+                new AutomationOrchestrator.RunResult(UUID.randomUUID(), true, "RUNNING", "/api/automation/runs/x")
+        );
+
+        scheduler.scheduleDailyRun();
+
+        verify(orchestrator).startRun(false);
     }
 }

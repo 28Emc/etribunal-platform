@@ -16,6 +16,7 @@ class ActivityProfileServiceTest {
 
     private AutomationConfig config;
     private JdbcTemplate jdbc;
+    private JdbcTemplate identityJdbc;
 
     @BeforeEach
     void setUp() {
@@ -26,6 +27,8 @@ class ActivityProfileServiceTest {
         config.getActivity().setMinTransitionSamples(20);
         config.getActivity().setLookbackDays(7);
         jdbc = mock(JdbcTemplate.class);
+        identityJdbc = mock(JdbcTemplate.class);
+        when(identityJdbc.queryForList(anyString(), eq(String.class))).thenReturn(List.of());
     }
 
     @Test
@@ -34,7 +37,7 @@ class ActivityProfileServiceTest {
         when(jdbc.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), anyInt()))
                 .thenReturn(List.of());
 
-        ActivityProfileService svc = new ActivityProfileService(jdbc, config);
+        ActivityProfileService svc = new ActivityProfileService(jdbc, identityJdbc, config);
         svc.refresh();
 
         assertThat(svc.phase()).isEqualTo(ActivityProfileService.ProfilePhase.BOOTSTRAP);
@@ -49,7 +52,7 @@ class ActivityProfileServiceTest {
         when(jdbc.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), anyInt()))
                 .thenReturn(List.of(Map.entry(12, 400), Map.entry(13, 400)));
 
-        ActivityProfileService svc = new ActivityProfileService(jdbc, config);
+        ActivityProfileService svc = new ActivityProfileService(jdbc, identityJdbc, config);
         svc.refresh();
 
         assertThat(svc.phase()).isEqualTo(ActivityProfileService.ProfilePhase.STABLE);
@@ -60,7 +63,7 @@ class ActivityProfileServiceTest {
 
     @Test
     void weightForHour_returnsUniformBeforeRefresh() {
-        ActivityProfileService svc = new ActivityProfileService(jdbc, config);
+        ActivityProfileService svc = new ActivityProfileService(jdbc, identityJdbc, config);
         for (int h = 0; h < 24; h++) {
             assertThat(svc.weightForHour(h)).isCloseTo(1.0 / 24, org.assertj.core.data.Offset.offset(1e-9));
         }
@@ -71,7 +74,7 @@ class ActivityProfileServiceTest {
         when(jdbc.queryForObject(anyString(), eq(Integer.class), anyInt()))
                 .thenThrow(new RuntimeException("db down"));
 
-        ActivityProfileService svc = new ActivityProfileService(jdbc, config);
+        ActivityProfileService svc = new ActivityProfileService(jdbc, identityJdbc, config);
         svc.refresh();
 
         // Se mantiene uniforme (no lanza)

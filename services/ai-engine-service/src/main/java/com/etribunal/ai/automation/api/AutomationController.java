@@ -26,6 +26,7 @@ public class AutomationController {
     private final EngagementService engagementService;
     private final AutomationConfig config;
     private final AutomationAdminGuard adminGuard;
+    private final AutomationWebSocketController wsController;
 
     public AutomationController(
             AutomationOrchestrator orchestrator,
@@ -33,7 +34,8 @@ public class AutomationController {
             AutomationSettingsService settingsService,
             EngagementService engagementService,
             AutomationConfig config,
-            AutomationAdminGuard adminGuard
+            AutomationAdminGuard adminGuard,
+            AutomationWebSocketController wsController
     ) {
         this.orchestrator = orchestrator;
         this.scheduler = scheduler;
@@ -41,6 +43,7 @@ public class AutomationController {
         this.engagementService = engagementService;
         this.config = config;
         this.adminGuard = adminGuard;
+        this.wsController = wsController;
     }
 
     @PostMapping("/run")
@@ -106,7 +109,9 @@ public class AutomationController {
             @RequestBody Map<String, Object> changes) {
         adminGuard.assertAdmin(roles);
         log.info("Updating automation settings with {} keys", changes == null ? 0 : changes.size());
-        return ResponseEntity.ok(settingsService.updateSettings(changes));
+        Map<String, Object> updated = settingsService.updateSettings(changes);
+        wsController.broadcastSettingsUpdate(updated);
+        return ResponseEntity.ok(updated);
     }
 
     @GetMapping("/engagement")

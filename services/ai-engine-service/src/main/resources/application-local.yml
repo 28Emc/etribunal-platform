@@ -30,12 +30,14 @@ spring:
       group-id: ai-engine-service
       auto-offset-reset: earliest
   ai:
-    vertex:
-      ai:
-        gemini:
-          project-id: ${VERTEX_AI_PROJECT_ID:dummy-project}
-          location: ${VERTEX_AI_LOCATION:us-central1}
-          api-endpoint: ${VERTEX_AI_ENDPOINT:}
+    google:
+      genai:
+        api-key: ${AI_API_KEY:}
+        chat:
+          options:
+            model: ${AI_MODEL:gemini-3.5-flash-lite}
+            temperature: ${AI_TEMPERATURE:0.8}
+            top-p: ${AI_TOP_P:0.95}
 
 management:
   endpoints:
@@ -60,6 +62,10 @@ springdoc:
     enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}
 
 etribunal:
+  jwt:
+    # DEV ONLY - debe coincidir con identity-service y gateway-service (mismos secretos compartidos)
+    access-secret: "dev-only-access-secret-0123456789abcdef0123456789abcdef"
+    issuer: etribunal
   automation:
     enabled: ${AUTOMATION_ENABLED:false}
     dry-run: ${AUTOMATION_DRY_RUN:true}
@@ -78,9 +84,9 @@ etribunal:
     scheduling-window-hours: ${AUTOMATION_WINDOW_HOURS:24}
     daily-pool-size: ${AUTOMATION_POOL_SIZE:0}
     ai:
-      provider: ${AI_PROVIDER:mock}
+      provider: ${AI_PROVIDER:gemini}
       api-key: ${AI_API_KEY:}
-      model: ${AI_MODEL:gemini-2.0-flash}
+      model: ${AI_MODEL:gemini-3.5-flash-lite}
       temperature: ${AI_TEMPERATURE:0.8}
       top-p: ${AI_TOP_P:0.95}
       max-output-tokens-case: ${AI_MAX_TOKENS_CASE:1024}
@@ -90,3 +96,8 @@ etribunal:
       rpm: ${AI_RPM:12}
       rpd: ${AI_RPD:425}
       tpm: ${AI_TPM:212500}
+  identity:
+    datasource:
+      url: ${IDENTITY_DB_URL:jdbc:postgresql://localhost:7002/etribunal_identity}
+      username: ${IDENTITY_DB_USER:etribunal_user}
+      password: ${IDENTITY_DB_PASS:etribunal_pass}

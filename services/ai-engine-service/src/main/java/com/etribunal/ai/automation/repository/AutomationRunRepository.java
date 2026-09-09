@@ -29,4 +29,7 @@ public interface AutomationRunRepository extends JpaRepository<AutomationRunEnti
     List<AutomationRunEntity> findRecentRuns();
 
     Optional<AutomationRunEntity> findFirstByStatusIn(List<AutomationRunStatus> statuses);
+
+    @Query("SELECT COUNT(r) > 0 FROM AutomationRunEntity r WHERE r.createdAt >= :since")
+    boolean existsByCreatedAtAfter(@Param("since") Instant since);
 }

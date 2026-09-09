@@ -93,15 +93,17 @@ class InteractionExecutorTest {
 
     @Test
     void execute_publishesEventAndAnalytics_onSuccessfulInteraction() {
+        String caseUuid = UUID.randomUUID().toString();
+        String userUuid = UUID.randomUUID().toString();
         AutomationCaseEntity caseEntity = new AutomationCaseEntity();
-        caseEntity.setCaseId("case-123");
+        caseEntity.setCaseId(caseUuid);
 
         AutomationInteractionEntity entity = new AutomationInteractionEntity();
         entity.setAutomationCase(caseEntity);
-        entity.setUserId("user-1");
+        entity.setUserId(userUuid);
         entity.setInteractionType(AutomationInteractionType.COMMENT);
         entity.setStatus(AutomationInteractionStatus.SCHEDULED);
-        entity.setMetadata(new HashMap<>(Map.of("content", "Hola", "case_id", "case-123")));
+        entity.setMetadata(new HashMap<>(Map.of("content", "Hola", "case_id", caseUuid)));
 
         when(interactionRepository.findById(any(UUID.class))).thenReturn(Optional.of(entity));
         when(interactionRepository.save(any(AutomationInteractionEntity.class)))
@@ -111,9 +113,9 @@ class InteractionExecutorTest {
 
         assertThat(result.status()).isEqualTo("SUCCESS");
         verify(eventPublisher).publishActivity(
-                eq(AutomationInteractionType.COMMENT), eq("case-123"), eq("user-1"), anyString());
+                eq(AutomationInteractionType.COMMENT), eq(caseUuid), eq(userUuid), anyString());
         verify(analyticsRecorder).record(
-                eq(AutomationInteractionType.COMMENT), eq("case-123"), eq("user-1"), anyString());
+                eq(AutomationInteractionType.COMMENT), eq(caseUuid), eq(userUuid), anyString());
         verify(caseRepository).incrementSuccessfulInteractions(isNull());
     }
 

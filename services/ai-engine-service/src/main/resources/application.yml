@@ -2,6 +2,8 @@ server:
   port: 8083
 
 spring:
+  config:
+    import: optional:file:../.env
   application:
     name: ai-engine-service
   datasource:
@@ -29,6 +31,15 @@ spring:
     consumer:
       group-id: ai-engine-service
       auto-offset-reset: earliest
+  ai:
+    google:
+      genai:
+        api-key: ${AI_API_KEY:}
+        chat:
+          options:
+            model: ${AI_MODEL:gemini-3.5-flash-lite}
+            temperature: ${AI_TEMPERATURE:0.8}
+            top-p: ${AI_TOP_P:0.95}
 
 management:
   endpoints:
@@ -53,6 +64,9 @@ springdoc:
     enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}
 
 etribunal:
+  jwt:
+    access-secret: ${JWT_ACCESS_SECRET:}
+    issuer: ${JWT_ISSUER:etribunal}
   automation:
     enabled: ${AUTOMATION_ENABLED:false}
     dry-run: ${AUTOMATION_DRY_RUN:true}
@@ -73,7 +87,7 @@ etribunal:
     ai:
       provider: ${AI_PROVIDER:gemini}
       api-key: ${AI_API_KEY:}
-      model: ${AI_MODEL:gemini-2.0-flash}
+      model: ${AI_MODEL:gemini-3.5-flash-lite}
       temperature: ${AI_TEMPERATURE:0.8}
       top-p: ${AI_TOP_P:0.95}
       max-output-tokens-case: ${AI_MAX_TOKENS_CASE:1024}
@@ -104,3 +118,8 @@ etribunal:
       rss-feed-urls: ${RSS_FEED_URLS:}
       max-news-items: ${AUTOMATION_CONTEXT_MAX_NEWS:5}
       news-cache-ttl: ${AUTOMATION_CONTEXT_NEWS_CACHE_TTL:15m}
+  identity:
+    datasource:
+      url: ${IDENTITY_DB_URL:jdbc:postgresql://localhost:7002/etribunal_identity}
+      username: ${IDENTITY_DB_USER:etribunal_user}
+      password: ${IDENTITY_DB_PASS:etribunal_pass}

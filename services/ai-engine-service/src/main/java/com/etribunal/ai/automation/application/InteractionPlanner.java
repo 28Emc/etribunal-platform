@@ -203,9 +203,26 @@ public class InteractionPlanner {
                     attempts++;
                 }
             } else {
-                // REPLY uses same user as the parent COMMENT
+                // REPLY: responder distinto al autor del COMMENT padre (evitar self-reply).
+                // Si el pool no tiene un usuario alternativo disponible, se usa el del padre.
                 if (pi.replyToIndex() != null && pi.replyToIndex() < result.size()) {
-                    userId = result.get(pi.replyToIndex()).userId();
+                    String parentUserId = result.get(pi.replyToIndex()).userId();
+                    int attempts = 0;
+                    while (attempts < available.size() * 2 && userId == null) {
+                        UserSelector.BotUser candidate = available.get(userIndex % available.size());
+                        int count = userCounts.getOrDefault(candidate.id(), 0);
+                        if (!candidate.id().equals(parentUserId) && count < maxPerUser) {
+                            userId = candidate.id();
+                            userCounts.merge(userId, 1, Integer::sum);
+                        }
+                        userIndex++;
+                        attempts++;
+                    }
+                    if (userId == null) {
+                        userId = parentUserId;
+                        userCounts.merge(userId, 1, Integer::sum);
+                        userIndex++;
+                    }
                 }
             }
 

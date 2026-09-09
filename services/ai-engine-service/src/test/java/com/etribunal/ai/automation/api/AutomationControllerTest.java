@@ -48,6 +48,9 @@ class AutomationControllerTest {
     @Spy
     private AutomationAdminGuard adminGuard;
 
+    @Mock
+    private AutomationWebSocketController wsController;
+
     @InjectMocks
     private AutomationController controller;
 

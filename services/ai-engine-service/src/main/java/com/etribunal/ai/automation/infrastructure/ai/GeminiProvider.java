@@ -82,6 +82,7 @@ public class GeminiProvider implements AIProvider {
         Mono<T> attempt = Mono.fromCallable(() -> {
             ChatResponse response = chatClient.prompt()
                     .system(systemPrompt)
+                    .user("Ejecuta exactamente las instrucciones del system prompt y devuelve únicamente la respuesta solicitada.")
                     .call()
                     .chatResponse();
             return extractContent(response);
@@ -124,7 +125,7 @@ public class GeminiProvider implements AIProvider {
     }
 
     private String buildPlanPrompt(GenerateInteractionPlanInput input) {
-        String p = PromptUtils.interactionPlanningPrompt(input.language(), input.intensity());
+        String p = PromptUtils.interactionPlanningPrompt(input.language());
         p = p.replace("{interactionCount}", String.valueOf(input.interactionCount()));
         p = p.replace("{availableUsers}", String.valueOf(input.availableUsers()));
         p = p.replace("{maxPerUser}", String.valueOf(input.maxPerUser()));

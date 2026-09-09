@@ -1,6 +1,7 @@
 package com.etribunal.ai.automation.application;
 
 import com.etribunal.ai.automation.config.AutomationConfig;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -12,7 +13,7 @@ public class UserSelector {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public UserSelector(JdbcTemplate jdbcTemplate) {
+    public UserSelector(@Qualifier("identityJdbcTemplate") JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 
