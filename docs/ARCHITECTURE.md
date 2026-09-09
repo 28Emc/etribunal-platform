@@ -39,14 +39,15 @@
    │  etribunal_      │  │  etribunal_      │  │  (shared      │
    │  identity        │  │  core            │  │   core DB)    │
    │  :7002           │  │  :7003           │  │  :7003        │
-   └─────────────────┘  └─────────────────┘  └───────────────┘
+   │  (vol floci-rds) │  │  (vol floci-rds) │  │  (vol floci-  │
+   └─────────────────┘  └─────────────────┘  └───rds)─────────┘
             │
    ┌────────▼────────┐              ┌─────────────────┐
    │  Redis           │              │  S3 / Floci      │
    │  :6379           │              │  :4566           │
    │  sesión, rate    │              │  media storage   │
-   │  limits, inval.  │              └─────────────────┘
-   └─────────────────┘
+   │  limits, inval.  │              │  (vol floci-data)│
+   └─────────────────┘              └─────────────────┘
 ```
 
 ## Comunicación entre servicios
@@ -148,6 +149,43 @@ y un panel frontend en `/admin/motor-ia`. Detalle completo en
 [`AI_ACTIVITY_ENGINE.md`](./AI_ACTIVITY_ENGINE.md).
 
 ## Bases de datos
+
+### Persistencia en el modo Docker
+
+> **⚠️ Alcance:** todo lo descripto en esta sección (storage `hybrid`, volúmenes `floci-data`/
+> `floci-rds-*`) corresponde al `docker-compose.yml` de **desarrollo local** únicamente.
+> Producción se despliega y configura por otra vía (aún no documentada).
+
+El `docker-compose.yml` monta Floci con storage **hybrid** y dos niveles de volúmenes:
+
+| Volumen | Propósito | Se borra con |
+|----------|-----------|--------------|
+| `floci-data` | Metadata de Floci (`/app/data`: instancias RDS, buckets, etc.) | `docker compose down -v` |
+| `floci-rds-{volumeId}` | Data de cada PostgreSQL hermano (uno por instancia RDS) | `docker compose down -v` |
+
+Con esto los datos **persisten entre `up`/`down`**: al reiniciar, Floci rehidrata la metadata y
+los contenedores RDS se re-crean apuntando a los mismos `floci-rds-{volumeId}` (no se pierde
+información). 
+
+`floci-init` sigue siendo **idempotente**: en cada `up` intenta `create-db-instance`, que es un
+no-op si ya existen (`DBInstanceAlreadyExists`).
+
+### Seeds de identidad (migraciones Flyway)
+
+> Los seeds V5/V6 se aplican a cualquier base (local o no) por ser migraciones Flyway regulares de
+> identity-service; se documentan dentro del flujo **local**, pero su comportamiento (crear admin
+> y pool de bots) es independiente del docker-compose. Ajustá según política productiva cuando se
+> defina el deploy real.
+
+identity-service aplica dos seeds idempotentes junto con sus migraciones (V5, V6):
+
+| Migración | Contenido | Relevante para |
+|-----------|-----------|----------------|
+| `V5__seed_admin.sql` | Usuario `admin@etribunal.com / Admin@2026` con rol `ADMIN` | Panel `/admin/motor-ia`, acceso administrativo |
+| `V6__seed_bots.sql` | 25 usuarios bot (`is_bot=true`, `automation_enabled=true`, avatares por género) | Pool del AI Activity Engine |
+
+Ambas son idempotentes (`ON CONFLICT DO UPDATE SET ...`), por lo que pueden aplicarse sobre BDs
+ya existentes sin duplicar.
 
 ### etribunal_identity
 

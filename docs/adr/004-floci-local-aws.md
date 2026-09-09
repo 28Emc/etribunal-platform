@@ -1,6 +1,6 @@
 # ADR-004: Floci como emulador AWS local
 
-**Estado:** Aceptado · **Fecha:** 2026-08-21
+**Estado:** Aceptado · **Fecha:** 2026-08-21 · **Actualizado:** 2026-09-09 (persistencia)
 
 ## Contexto
 
@@ -35,6 +35,18 @@ En CI corre como service container del workflow; en Testcontainers vía `common-
 
 - Paridad dev ≈ prod con coste cero.
 - Riesgo: drift entre Floci y AWS real en edge cases → mitigar con smoke tests contra staging.
-- Riesgo conocido: el catálogo de instancias RDS puede perderse al reiniciar Floci
-  (volúmenes sobreviven, metadata no) → recrear instancias apuntando a los mismos puertos si ocurre.
+- **Persistencia (2026-09):** en el modo Docker, Floci se levanta con `FLOCI_STORAGE_MODE=hybrid`
+  y el volumen `floci-data` montado en `/app/data`. La metadata del catálogo RDS
+  (`/app/data/rds-instances.json`) **persiste entre `up`/`down`**, al igual que cada PostgreSQL
+  hermano en su volumen `floci-rds-{volumeId}`. Verificado: un ciclo down/up completo reutiliza
+  los mismos IDs de instancia y data. El riesgo "el catálogo RDS se pierde al reiniciar" queda
+  **mitigado** en Docker; solo `docker compose down -v` lo resetea. En CI (service container)
+  sigue siendo fresco por definición, y en Testcontainers la reutilización queda dentro del ciclo
+  del runner.
+  - **Nota de alcance:** esta mitigación y el `docker-compose.yml` que la implementa son **solo
+    para el entorno de desarrollo local**. Producción se despliega y configura por otra vía
+    (aún no documentada); este ADR describe el flujo local/CI/test.
+- **Seeds automáticos:** identity-service aplica en arranque `V5__seed_admin.sql`
+  (admin `admin@etribunal.com / Admin@2026`, rol `ADMIN`) y `V6__seed_bots.sql`
+  (25 usuarios bot para el AI Activity Engine). Ambas idempotentes.
 - Imagen `floci/floci:1.6.0` fijada por tag (incluye fix #1480 del proxy PostgreSQL).

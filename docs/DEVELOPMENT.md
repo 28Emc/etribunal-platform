@@ -1,5 +1,9 @@
 # Development Guide
 
+> **¿Querés correr todo en 2 pasos?** (`scripts\docker-up.bat`) → mirá la sección
+> [Docker Compose](#docker-compose) más abajo. El resto de este guide cubre el **modo externo**
+> (Floci/Redis standalone + bootRun), que sigue disponible pero es más manual.
+
 ## Setup local
 
 ### Prerrequisitos
@@ -35,12 +39,16 @@ scripts\infra-up.bat temporal   :: + Temporal (opt-in)
 docker compose --profile floci-local up -d   # Floci (:4566, RDS :7001-7099) + floci-init (bucket S3)
 docker compose up -d redis                   # Redis :6379
 docker compose --profile zipkin up -d        # Zipkin :9411 (opcional)
-docker compose --profile kafka up -d         # Kafka :9092 (opcional)
+docker compose --profile app up -d kafka     # Kafka :9092 (vive en profile app)
 ```
 
 > `docker compose up -d` (sin profile) solo levanta **Redis** — Floci está en el profile `floci-local`. El bucket S3 `etribunal-media` lo crea `floci-init` (idempotente).
 
 ### 3. Crear instancias RDS en Floci
+
+> **En modo Docker no hace falta este paso**: `floci-init` (profile `floci-local`) crea las instancias
+> y el bucket S3 automáticamente y es idempotente. Este paso aplica solo al **modo externo**
+> (Floci standalone del host + bootRun).
 
 > **Credenciales dummy**: Floci no requiere credenciales reales, pero AWS CLI las exige. Configura credenciales dummy:
 > ```bash
@@ -130,6 +138,40 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 ## Docker Compose
 
+### Modo todo-en-docker (recomendado en Windows)
+
+> **⚠️ Alcance:** este modo (`docker-compose.yml`, perfiles `app`/`floci-local`, persistencia con
+> volúmenes y seeds automáticos V5/V6) es **exclusivamente para desarrollo/prueba en local**.
+> Producción se despliega y configura por otra vía (aun no documentada en este repo).
+
+Un solo script compila los jars, construye las imágenes y levanta **todo** (Floci + Redis +
+Kafka + 4 servicios Spring + UI):
+
+```bat
+scripts\docker-up.bat        :: up (app + floci-local)
+scripts\docker-up.bat all    :: + Zipkin (tracing)
+scripts\docker-down.bat      :: down (conserva los datos)
+```
+
+Manual (cualquier SO):
+
+```bash
+./gradlew bootJar                                 # fat-jars (obligatorio, los Dockerfiles copian el jar)
+docker compose --profile app --profile floci-local up -d --build
+```
+
+> **Persistencia**: Floci corre con `FLOCI_STORAGE_MODE=hybrid` y el volumen `floci-data`
+> montado en `/app/data`. La metadata de Floci (instancias RDS, buckets, etc.) y cada PostgreSQL
+> hermano (`floci-rds-{volumeId}`) persisten entre `down`/`up`. `floci-init` es idempotente.
+> Reset total: `docker compose --profile app --profile floci-local down -v`.
+
+> **Seeds automáticos (identity, migraciones Flyway al arrancar):**
+> - `V5__seed_admin.sql` → admin `admin@etribunal.com / Admin@2026` (ADMIN).
+> - `V6__seed_bots.sql` → 25 bots para el pool del AI Engine.
+>
+> Si ya tenés una BD con migraciones anteriores, al subir identity se aplican V5/V6 encima
+> (no duplican).
+
 ### Perfiles
 
 ```bash
@@ -137,8 +179,7 @@ docker compose up -d                                  # Solo Redis (infra base)
 docker compose --profile floci-local up -d            # + Floci (RDS :7001-7099 + S3)
 docker compose --profile app up -d                    # + 4 servicios Spring
 docker compose --profile zipkin up -d                 # + Zipkin
-docker compose --profile kafka up -d                  # + Kafka
-docker compose --profile temporal up -d               # + Temporal + UI
+docker compose --profile temporal up -d                # + Temporal + UI
 docker compose --profile app --profile floci-local up -d  # Todo (modo docker)
 ```
 
@@ -146,8 +187,13 @@ docker compose --profile app --profile floci-local up -d  # Todo (modo docker)
 
 ```bash
 ./gradlew bootJar                              # Compila todos los servicios
-docker compose --profile app up -d --build     # Reconstruye y levanta
+docker compose --profile app up -d --build     # Reconstruye y levanta (rebuild de imágenes)
 ```
+
+> Nota: los `Dockerfile` de los servicios **no compilan dentro** de la imagen: copian el fat-jar
+> ya construido. Por eso cualquier cambio de código (incluidas migraciones Flyway nuevas) exige
+> re-ejecutar `./gradlew <servicio>:bootJar` antes de `docker compose build <servicio>`.
+> `scripts\docker-up.bat` hace ambos por vos.
 
 ## Testing
 
@@ -249,6 +295,17 @@ curl http://localhost:4566/_localstack/health
 | `AWS_SECRET_ACCESS_KEY` | `test` |
 | `AWS_REGION` | `us-east-1` |
 | `S3_ENDPOINT` | `http://localhost:4566` |
+
+## Troubleshooting (Docker)
+
+| Síntoma | Causa raíz | Solución |
+|---|---|---|
+| Kafka no arranca: `KAFKA-18281 ... nonroutable meta-address 0.0.0.0` | listeners con `0.0.0.0` explícito (bug en 3.9.0) | En `docker-compose.yml` usar bind implícito: `KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093` (sin `0.0.0.0`) |
+| `UnknownHostException: floci` en los backends | el servicio quedó en la red vieja del proyecto (cambio de nombre a `etribunal-net`) | `docker compose --profile app up -d --force-recreate` para re-crear en la red nueva |
+| UI no renderiza / `Could not resolve ...rolldown binding` | `COPY . .` del Dockerfile copió los `node_modules` Windows por encima del Linux | agregar/verificar `etribunal-ui/.dockerignore` (excluye `node_modules`, `dist`) y rebuild de la imagen |
+| Gateway responde `500 Connection refused: localhost:8081` | las rutas del compose apuntaban a `localhost` (hostnames internos) | el compose inyecta `IDENTITY_URL` / `CORE_URL` / `AI_URL` (hostnames de servicios); en `application.yml` el default local solo se usa en bootRun externo |
+| `Spans were dropped ... ConnectException` en logs | Zipkin no está corriendo (tracing best-effort) | no es fatal; levantar con `scripts\docker-up.bat all` / profile `zipkin` si querés trazas |
+| `BackoffRestart` de identity/core con `connection refused floci:700x` | Floci todavía no terminó de crear las RDS / no estaban disponibles | normal los primeros ~30-60s del primer arranque; `floci-init` espera `available` y los servicios reintentan |
 
 ## Git workflow
 

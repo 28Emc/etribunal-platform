@@ -73,6 +73,7 @@ docker build -f services/ai-engine-service/Dockerfile    -t etribunal/ai-engine-
 | `JWT_ISSUER` | No | `etribunal` | Claim `iss` |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | No | `localhost`/`6379`/— | Redis (sesión/rate-limit) |
 | `CORS_ALLOWED_ORIGINS` | No | `http://localhost:3000` | Orígenes permitidos |
+| `IDENTITY_URL` / `CORE_URL` / `AI_URL` | No | `http://localhost:8081/8082/8083` | Hostnames internos (DNS) hacia cada servicio. En Docker el compose los setea a `identity-service:8081`, `core-domain-service:8082`, `ai-engine-service:8083`; el default localhost solo aplica en bootRun/nativo |
 
 ### Identity Service
 
@@ -122,6 +123,12 @@ Flyway se encarga del schema. Las tareas Gradle apuntan por defecto a los puerto
 
 En producción, aplica las migraciones apuntando a tu PostgreSQL real. El propio arranque de cada servicio también ejecuta Flyway automáticamente al iniciar.
 
+> **Seeds automáticos**: identity-service incluye las migraciones `V5__seed_admin.sql`
+> (crea `admin@etribunal.com / Admin@2026` con rol `ADMIN`) y `V6__seed_bots.sql` (25 users
+> bot para el AI Activity Engine). Son idempotentes (`ON CONFLICT DO UPDATE`): en un entorno
+> nuevo aplican automáticamente; en uno existente no duplican. Para arrancar en limpio está bien
+> dejarlos correr.
+
 ---
 
 ## 5. Levantar los servicios
@@ -129,6 +136,14 @@ En producción, aplica las migraciones apuntando a tu PostgreSQL real. El propio
 Cada servicio arranca con `java -jar app.jar`, inyectando las variables de entorno correspondientes. Dos formas típicas:
 
 **A) Contenedores**: usando las imágenes del paso 2, con un `docker compose` propio (el `docker-compose.yml` del repo es para desarrollo; en prod defines el tuyo con los envs reales) o directamente `docker run`.
+
+> **Persistencia del compose local**: el `docker-compose.yml` del repo ya monta Floci con storage
+> `hybrid` y los volúmenes `floci-data` + `floci-rds-*`, así que la base local **persiste** entre
+> `down`/`up`. Un `down -v` lo borra todo (metadata Floci + datos RDS).
+>
+> **⚠️ Alcance:** este compose y su persistencia corresponden **solo al entorno de desarrollo
+> local**. El despliegue y la configuración productiva se realizarán por otra vía (aún no
+> documentada en este repo).
 
 **B) Proceso simple**: en cualquier máquina con JRE 21:
 

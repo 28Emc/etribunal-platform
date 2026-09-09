@@ -41,7 +41,7 @@ Backend de microservicios de **eTribunal** — Java 21 + Spring Boot 3.5 + Gradl
 | Servicio | Puerto | Depende de | Responsabilidad |
 | ---------- | -------- | ----------- | ----------------- |
 | `gateway-service` | 8080 | Redis | API edge, validación JWT, routing |
-| `identity-service` | 8081 | PostgreSQL `etribunal_identity`, Redis | Auth local, usuarios, follows |
+| `identity-service` | 8081 | PostgreSQL `etribunal_identity`, Redis | Auth local, usuarios, follows, seeds admin+pool bots (V5/V6) |
 | `core-domain-service` | 8082 | PostgreSQL `etribunal_core`, Redis, Kafka*, S3 (Floci) | Casos, votos, comentarios, reacciones, media |
 | `ai-engine-service` | 8083 | PostgreSQL `etribunal_core` (shared), Kafka* | Automatización IA, moderación |
 
@@ -155,7 +155,7 @@ docker compose up -d redis
 
 # Infra complementaria
 docker compose --profile zipkin up -d         # Zipkin tracing :9411
-docker compose --profile kafka up -d          # Kafka KRaft :9092
+docker compose --profile app up -d kafka      # Kafka KRaft :9092 (vive en profile app)
 docker compose --profile temporal up -d       # temporal (opcional)
 ```
 
@@ -172,14 +172,26 @@ docker compose --profile temporal up -d       # temporal (opcional)
 > `./gradlew :services:identity-service:flywayMigrate -DFLOCI_HOST=localhost -DFLOCI_IDENTITY_PORT=7002`
 > En arranques posteriores Flyway detecta lo ya aplicado y no hace nada. (El arranque con perfil `local` también aplica Flyway automáticamente.)
 
-### Paso 4 — Levantar los 4 servicios
+### Paso 4 — Levantar la plataforma completa (un solo comando)
 
-**Desde VS Code (tasks)** — ejecuta `Tasks: Run Task`:
+**Windows (script único, recomendado)** — levanta infra + 4 servicios + UI:
 
-- `Start eTribunal infra (Redis + Floci + Zipkin + Kafka + S3)` — Paso 2
-- `Start eTribunal projects` — los 4 servicios + UI
+```bat
+scripts\start-platform.bat
+```
 
-**Windows (scripts, 4 ventanas)**:
+Este script es **idempotente**:
+- Levanta infra (Redis + Floci + Zipkin + Kafka + S3) si no está
+- Arranca Identity :8081 → Core :8082 → Gateway :8080 → AI Engine :8083 (salta los que ya corren)
+- Arranca Frontend UI :3000 (Vite dev server)
+- Espera health checks y muestra las URLs de acceso
+
+**Detener todo:**
+```bat
+scripts\stop-platform.bat
+```
+
+**Windows (scripts individuales, 4 ventanas + UI manual)**:
 
 ```bat
 scripts\start-gateway.bat        :: :8080
@@ -229,9 +241,75 @@ Respuesta esperada: `{"status":"UP",...}`.
 
 ---
 
-## Docker Compose completo (modo docker) — fallback / CI
+## Auto-arranque al encender la PC (Windows)
 
-Levanta infra + los 4 servicios Spring **en contenedores** mediante los `docker/Dockerfile`:
+Para que la plataforma se levante sola al iniciar sesión y el motor de IA genere contenido diario sin intervención manual:
+
+### 1. Usuario admin para el panel
+El usuario `admin@etribunal.com / Admin@2026` (rol `ADMIN`) se crea automáticamente
+por la migración Flyway `V5__seed_admin.sql` de identity-service. No requiere pasos manuales.
+
+El **pool de bots** del AI Engine (25 usuarios, `is_bot=true`, `automation_enabled=true`)
+también se crea automáticamente por la migración `V6__seed_bots.sql`. Ambos se aplican en el
+primer arranque de identity-service y son idempotentes.
+
+Para promulgar cualquier otro usuario a ADMIN (alternativa manual, solo si se quitó el seed):
+```sql
+-- Edita el username antes de ejecutar
+UPDATE public.users SET role = 'ADMIN' WHERE username = 'tu_usuario';
+```
+O usa el script: `scripts\bootstrap-admin.sql`
+
+### 2. Tarea programada (ONLOGON)
+Ejecutá **una vez** en PowerShell como Administrador (ajustá la ruta a tu repo):
+
+```powershell
+$repo = "D:\Trabajo\Repositorios\Workspaces\Veridixo Web App\etribunal-platform"
+schtasks /Create /TN "eTribunalPlatform" `
+  /TR "$repo\scripts\start-platform.bat" `
+  /SC ONLOGON /RL HIGHEST /F
+```
+
+- **ONLOGON**: se ejecuta al iniciar sesión (requiere sesión activa; si hacés *Log Off* los procesos mueren; bloquear pantalla está OK).
+- **RL HIGHEST**: pide elevación para `taskkill` en `stop-platform.bat`.
+- Para eliminar: `schtasks /Delete /TN "eTribunalPlatform" /F`
+
+> **Opcional: Auto-login** — para "prender la PC y olvidarte" sin escribir contraseña: `netplwiz` → desmarcar "Los usuarios deben escribir su nombre y contraseña" → Apply con tu usuario/contraseña. **Solo en entornos de confianza**.
+
+### 3. Config del motor (ajusta según tu semana de pruebas)
+El panel `/admin/motor-ia` (requiere login ADMIN) permite cambiar en caliente:
+| Clave | Recomendado | Qué hace |
+|---|---|---|
+| `runHour` | `9` | Hora del cron diario (0-23). Con catch-up, si la PC se enciende tarde, igual genera. |
+| `dailyCasesMax` | `5` | Casos máximos por día (mínimo = 1). |
+| `usersPerCaseMin/Max` | `6/8` | Interacciones por caso (usuarios bots participantes). |
+| `schedulingIntervalMin/Max` | `2/5` | Minutos entre interacciones (reparto natural en 2-3 h). |
+| `intensityMin/Max` | `20/70` | Tono: 0 provocador → 100 serio/razonado. |
+
+La DB tiene prioridad sobre `.env`. Los cambios en el panel aplican al siguiente run sin reiniciar.
+
+---
+
+## Docker Compose completo (modo docker) — SOLO para desarrollo local
+
+Levanta infra + los 4 servicios Spring + UI **en contenedores**. Es el modo más simple:
+un solo comando para todo (o dos: up/down).
+
+> **⚠️ Alcance:** este `docker-compose.yml` y todo lo descrito en esta sección es **exclusivamente
+> para desarrollo/prueba en local**. El perfil `floci-local`, la persistencia con volúmenes, los
+> seeds automáticos (V5/V6) y las env de ruteo del gateway aplican solo a este entorno. **NO se usa
+> para producción**: el despliegue y la configuración productiva se hará por otra vía (no
+> documentada aún en este repo).
+
+**Windows (scripts, recomendados):**
+
+```bat
+scripts\docker-up.bat        :: compila jars → build imágenes → up (app + floci-local)
+scripts\docker-up.bat all    :: lo mismo + Zipkin (tracing :9411)
+scripts\docker-down.bat      :: down completo (conserva volúmenes/persistencia)
+```
+
+**Manual (cualquier SO):**
 
 ```bash
 # 1. Clonar e instalar (primera vez)
@@ -239,22 +317,36 @@ git clone https://github.com/28Emc/etribunal-platform.git
 cd etribunal-platform
 ./gradlew bootJar                        # construir fat-jars
 
-# 2. Levantar todo (infra + Floci + 4 servicios Spring)
-FLOCI_MODE=docker docker compose --profile app --profile floci-local up -d
+# 2. Levantar todo (infra + Floci + Redis + Kafka + 4 servicios Spring + UI)
+docker compose --profile app --profile floci-local up -d --build
 
-# 3. Opcionales
-docker compose --profile zipkin up -d    # Zipkin :9411
-docker compose --profile kafka up -d     # Kafka :9092
-
-# 4. Migraciones Flyway (Floci en docker es fresco cada vez)
-./gradlew :services:identity-service:flywayMigrate
-./gradlew :services:core-domain-service:flywayMigrate
-
-# Ver logs
-docker compose logs -f <service-name>
+# 3. Opcional: Zipkin
+docker compose --profile zipkin up -d
 ```
 
-> **Nota**: este modo levanta un Floci **temporal** solo para este proyecto (profile `floci-local`). Los datos no persisten entre `docker compose down`.
+**Detener** (mantiene los datos):
+```bash
+docker compose --profile app --profile floci-local down
+# Reset total de datos:  docker compose --profile app --profile floci-local down -v
+```
+
+> **Persistencia**: este modo monta un Floci **dedicado** (profile `floci-local`) con storage
+> `hybrid` + el volumen `floci-data`. La metadata de Floci (qué instancias RDS existen) y cada
+> PostgreSQL hermano (`floci-rds-*`) persisten entre `up`/`down`, así que **los datos NO se
+> pierden al reiniciar**. `floci-init` sigue siendo idempotente (si las instancias ya existen,
+> `create-db-instance` es no-op).
+
+> **Seeds automáticos (migraciones Flyway de identity, se aplican al arrancar):**
+> - `V5__seed_admin.sql` → admin `admin@etribunal.com / Admin@2026` (rol `ADMIN`).
+> - `V6__seed_bots.sql` → pool de 25 bots (`is_bot=true`, `automation_enabled=true`) para el AI Engine.
+>
+> No requieren pasos manuales: Flyway los aplica en el primer arranque de `identity-service` y
+> son idempotentes (no duplican si ya existen).
+
+> **Rutas del gateway en Docker**: el gateway resuelve identity/core/ai por hostname interno
+> (`identity-service:8081`, `core-domain-service:8082`, `ai-engine-service:8083`) vía las env
+> `IDENTITY_URL`, `CORE_URL`, `AI_URL` del `docker-compose.yml`. En modo externo (bootRun) el
+> default sigue apuntando a `localhost` (ver paso 4 de la guía local).
 
 ---
 
@@ -288,11 +380,16 @@ etribunal-platform/
 ├── settings.gradle.kts                 # Módulos incluidos
 ├── docker-compose.yml                  # Infra + servicios
 ├── scripts/
-│   ├── infra-up.bat                    # Levanta infra (Redis + Floci + Zipkin + Kafka + S3)
-│   ├── start-gateway.bat               # bootRun gateway (:8080)
-│   ├── start-identity.bat              # bootRun identity (:8081)
-│   ├── start-core.bat                  # bootRun core (:8082)
-│   └── start-ai.bat                    # bootRun ai-engine (:8083)
+│   ├── docker-up.bat                    # Modo Docker completo (build + up)
+│   ├── docker-down.bat                  # Detiene contenedores (conserva datos)
+│   ├── infra-up.bat                     # Levanta infra (Redis + Floci + Zipkin + Kafka + S3)
+│   ├── start-platform.bat               # Arranque completo en modo externo (bootRun + UI)
+│   ├── stop-platform.bat                # Detiene los servicios por puerto
+│   ├── start-gateway.bat                # bootRun gateway (:8080)
+│   ├── start-identity.bat               # bootRun identity (:8081)
+│   ├── start-core.bat                   # bootRun core (:8082)
+│   ├── start-ai.bat                     # bootRun ai-engine (:8083)
+│   └── bootstrap-admin.sql              # Promueve usuario a ADMIN
 ├── libs/
 │   ├── common-domain/                  # DTOs, eventos, excepciones
 │   ├── common-security/                # JWT provider

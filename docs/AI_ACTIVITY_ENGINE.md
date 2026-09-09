@@ -134,6 +134,25 @@ de verdad).
 - `AutomationSettingsService` aplica la config de BD sobre el bean `AutomationConfig`
   (baseline env) en `ApplicationReadyEvent` y tras cada `PUT`.
 
+### Pool de bots: origen automático (migración V6)
+
+Los bots del pool **ya no se crean a mano**. identity-service aplica la migración Flyway
+`V6__seed_bots.sql` en el arranque, que crea/actualiza 25 usuarios bot
+(`is_bot=true`, `automation_enabled=true`, avatares por género, password `Bot@2026`, emails
+`bot01@etsocial.local`…`bot25@etsocial.local`). Es idempotente (`ON CONFLICT (username) DO UPDATE`),
+así que correrla sobre una BD existente no duplica bots y corrige flags.
+
+El `UserSelector` elige el pool diario **solo entre usuarios `automation_enabled=true`** y
+auto-habilita si el pool quedara vacío (`ensureEligibleUsers`). Para incorporar bots propios al
+pool basta marcarlos en `users`:
+
+```sql
+UPDATE users SET is_bot = true, automation_enabled = true WHERE username = '<tu_bot>';
+```
+
+> ⚠️ No marques usuarios reales como `automation_enabled=true`: los bots usan el mismo flujo de
+> auth/comentarios que usuarios humanos, ahora los pone el seed.
+
 ### Variables de entorno (`etribunal.automation.*`)
 
 | Propiedad | Env | Default | Descripción |
@@ -260,6 +279,15 @@ Una sola migración `V14__automation_settings.sql` creada en Fase 4 (config edit
 - **Editar config sin redeploy:** `PUT /automation/settings` (quedan en BD).
 - **Backup/restore:** los `automation_*` viven en `etribunal_core`; se respaldan con el backup
   normal de core-domain.
+- **Reiniciar el historial (dev):** para limpiar runs/casos/interacciones AI sin perder usuarios
+  ni config (`automation_settings` se conserva), en `etribunal_core`:
+
+  ```sql
+  TRUNCATE TABLE automation_runs, automation_cases, automation_interactions, cases,
+    case_images, case_votes, case_shares, case_reports, comments, reactions, saved_cases,
+    notifications, interaction_logs, activity_profile, case_performance, moderation_logs
+    RESTART IDENTITY CASCADE;
+  ```
 
 ### Garantías clave (Fase 5)
 
