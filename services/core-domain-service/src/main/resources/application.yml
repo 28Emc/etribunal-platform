@@ -24,6 +24,10 @@ management:
     sampling:
       probability: ${OTEL_TRACES_SAMPLER_PROBABILITY:1.0}
 
+etribunal:
+  active-users:
+    window-minutes: ${ACTIVE_USERS_WINDOW_MINUTES:30}
+
 ---
 spring:
   config:

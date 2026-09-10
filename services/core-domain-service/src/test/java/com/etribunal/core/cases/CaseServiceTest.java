@@ -76,7 +76,7 @@ class CaseServiceTest {
         caseService = new CaseService(caseRepository, usersClient, currentUserResolver,
                 new FrontendUrlProperties("http://localhost:3000/"),
                 savedCaseRepository, caseShareRepository, voteRepository, reactionRepository,
-                moderationService, analyticsService);
+                moderationService, analyticsService, 30);
         lenient().when(currentUserResolver.currentUserId(request))
                 .thenReturn(Optional.of(authorId));
         lenient().when(usersClient.summaries(anyList())).thenAnswer(invocation -> {

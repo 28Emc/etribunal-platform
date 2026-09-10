@@ -8,6 +8,8 @@ import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
 import com.etribunal.ai.automation.infrastructure.analytics.ActivityProfileService;
 import com.etribunal.ai.automation.infrastructure.analytics.AnalyticsRecorder;
+import com.etribunal.ai.automation.infrastructure.api.CoreApiClient;
+import com.etribunal.ai.automation.infrastructure.auth.BotAuthService;
 import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
 import com.etribunal.ai.automation.repository.AutomationCaseRepository;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
@@ -17,7 +19,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Instant;
 import java.util.*;
@@ -30,7 +31,9 @@ class InteractionExecutorTest {
     @Mock
     private AutomationCaseRepository caseRepository;
     @Mock
-    private JdbcTemplate jdbcTemplate;
+    private CoreApiClient coreApiClient;
+    @Mock
+    private BotAuthService botAuthService;
     @Mock
     private AutomationEventPublisher eventPublisher;
     @Mock
@@ -109,6 +112,11 @@ class InteractionExecutorTest {
         when(interactionRepository.save(any(AutomationInteractionEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
 
+        UUID randomCommentId = UUID.randomUUID();
+        when(botAuthService.getTokenForBot(userUuid)).thenReturn("bot-token");
+        when(coreApiClient.createComment(eq("bot-token"), eq(UUID.fromString(caseUuid)),
+                eq("Hola"), isNull(), eq(false))).thenReturn(randomCommentId);
+
         InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
 
         assertThat(result.status()).isEqualTo("SUCCESS");
@@ -125,7 +133,7 @@ class InteractionExecutorTest {
         cfg.getActivity().setWeighted(false);
         cfg.getActivity().setEnabled(true);
         InteractionExecutor ex = new InteractionExecutor(
-                interactionRepository, caseRepository, jdbcTemplate,
+                interactionRepository, caseRepository, coreApiClient, botAuthService,
                 eventPublisher, analyticsRecorder, cfg, activityProfileService);
 
         Instant base = Instant.parse("2026-09-03T09:00:00Z");
@@ -143,7 +151,7 @@ class InteractionExecutorTest {
         cfg.getActivity().setWeighted(true);
         cfg.getActivity().setEnabled(true);
         InteractionExecutor ex = new InteractionExecutor(
-                interactionRepository, caseRepository, jdbcTemplate,
+                interactionRepository, caseRepository, coreApiClient, botAuthService,
                 eventPublisher, analyticsRecorder, cfg, activityProfileService);
 
         // Perfil con pico fuerte a las 20:00 (hora UTC)

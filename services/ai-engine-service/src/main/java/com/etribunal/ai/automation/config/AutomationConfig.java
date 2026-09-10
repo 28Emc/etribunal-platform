@@ -143,6 +143,12 @@ public class AutomationConfig {
     public ContextConfig getContext() { return context; }
     public void setContext(ContextConfig context) { this.context = context; }
 
+    // Bot authentication config (API real autenticada)
+    private BotAuthConfig botAuth = new BotAuthConfig();
+
+    public BotAuthConfig getBotAuth() { return botAuth; }
+    public void setBotAuth(BotAuthConfig botAuth) { this.botAuth = botAuth; }
+
     // Helper methods for random range picking
     public int pickDailyCases() {
         return dailyCasesMin + (int) (Math.random() * (dailyCasesMax - dailyCasesMin + 1));
@@ -309,5 +315,37 @@ public class AutomationConfig {
 
         public Duration getNewsCacheTtl() { return newsCacheTtl; }
         public void setNewsCacheTtl(Duration newsCacheTtl) { this.newsCacheTtl = newsCacheTtl; }
+    }
+
+    // Bot authentication config (API real autenticada)
+    public static class BotAuthConfig {
+        private String identityUrl = "http://localhost:8081/api";
+        private String coreUrl = "http://localhost:8082/api";
+        private String emailPattern = "bot%02d@etsocial.local";
+        private String password = "Bot@2026";
+        private int poolSize = 25;
+        private int tokenCacheTtlMinutes = 30;
+        private int httpTimeoutSeconds = 10;
+
+        public String getIdentityUrl() { return identityUrl; }
+        public void setIdentityUrl(String identityUrl) { this.identityUrl = identityUrl; }
+
+        public String getCoreUrl() { return coreUrl; }
+        public void setCoreUrl(String coreUrl) { this.coreUrl = coreUrl; }
+
+        public String getEmailPattern() { return emailPattern; }
+        public void setEmailPattern(String emailPattern) { this.emailPattern = emailPattern; }
+
+        public String getPassword() { return password; }
+        public void setPassword(String password) { this.password = password; }
+
+        public int getPoolSize() { return poolSize; }
+        public void setPoolSize(int poolSize) { this.poolSize = poolSize; }
+
+        public int getTokenCacheTtlMinutes() { return tokenCacheTtlMinutes; }
+        public void setTokenCacheTtlMinutes(int tokenCacheTtlMinutes) { this.tokenCacheTtlMinutes = tokenCacheTtlMinutes; }
+
+        public int getHttpTimeoutSeconds() { return httpTimeoutSeconds; }
+        public void setHttpTimeoutSeconds(int httpTimeoutSeconds) { this.httpTimeoutSeconds = httpTimeoutSeconds; }
     }
 }

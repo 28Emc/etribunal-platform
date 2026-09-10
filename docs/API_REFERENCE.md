@@ -77,7 +77,7 @@ Protegidos por header `X-Internal-Token`. No expuestos vía gateway.
 | `POST` | `/cases/{id}/invite-link` | Generar/regenerar invite link | Sí |
 | `POST` | `/cases/{id}/track-share` | Registrar share de un caso | Sí |
 | `GET` | `/cases/trending/top?limit=10` | Casos trending (feed) | Sí |
-| `GET` | `/cases/active-users?limit=10` | Usuarios activos | Sí |
+| `GET` | `/cases/active-users?limit=10` | Usuarios activos. Por **actividad reciente** en `interaction_logs` (ventana configurable `etribunal.active-users.window-minutes`, default 30 min), no por casos creados. Devuelve `{ users: [{ id, username, avatar_url, is_anonymous, activity_count }], total }` | Sí |
 
 ### Responder Side B / Invite
 

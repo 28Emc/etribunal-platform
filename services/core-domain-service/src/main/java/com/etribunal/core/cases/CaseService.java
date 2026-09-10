@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -56,6 +57,7 @@ public class CaseService {
     private final ReactionRepository reactionRepository;
     private final ModerationService moderationService;
     private final AnalyticsService analyticsService;
+    private final int activeUsersWindowMinutes;
 
     public CaseService(
             CaseRepository caseRepository,
@@ -67,7 +69,8 @@ public class CaseService {
             VoteRepository voteRepository,
             ReactionRepository reactionRepository,
             ModerationService moderationService,
-            AnalyticsService analyticsService) {
+            AnalyticsService analyticsService,
+            @Value("${etribunal.active-users.window-minutes:30}") int activeUsersWindowMinutes) {
         this.caseRepository = caseRepository;
         this.usersClient = usersClient;
         this.currentUser = currentUser;
@@ -78,6 +81,7 @@ public class CaseService {
         this.reactionRepository = reactionRepository;
         this.moderationService = moderationService;
         this.analyticsService = analyticsService;
+        this.activeUsersWindowMinutes = activeUsersWindowMinutes;
     }
 
     // ──────────────────────── Create ────────────────────────
@@ -406,12 +410,15 @@ public class CaseService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> getActiveUsers(int limit) {
-        // Usuarios más activos: contar casos creados (sideA) públicos por usuario
-        List<Object[]> results = caseRepository.countCasesBySideAUser(PageRequest.of(0, limit));
+        // Usuarios con actividad reciente (últimos N minutos) en interaction_logs
+        java.time.Instant since = java.time.Instant.now()
+                .minus(java.time.Duration.ofMinutes(activeUsersWindowMinutes));
+        List<Object[]> results = caseRepository.findActiveUsersByRecentActivity(since,
+                PageRequest.of(0, limit));
         List<Map<String, Object>> users = new ArrayList<>();
         for (Object[] row : results) {
             UUID userId = (UUID) row[0];
-            Long caseCount = (Long) row[1];
+            long activityCount = ((Number) row[1]).longValue();
             UserSummary summary = usersClient.summaries(List.of(userId)).stream().findFirst().orElse(null);
             if (summary != null) {
                 Map<String, Object> u = new HashMap<>();
@@ -419,7 +426,7 @@ public class CaseService {
                 u.put("username", summary.username());
                 u.put("avatar_url", summary.avatarUrl());
                 u.put("is_anonymous", summary.anonymous());
-                u.put("case_count", caseCount);
+                u.put("activity_count", activityCount);
                 users.add(u);
             }
         }

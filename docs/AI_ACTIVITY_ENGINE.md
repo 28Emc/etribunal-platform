@@ -109,17 +109,34 @@ Orchestrator.startRun(dryRun)
 ## Interacciones
 
 `InteractionPlanner` genera un `InteractionPlan` (con retry/fallback) y `InteractionExecutor`
-lo ejecuta de forma **escalonada** (staggered) dentro de la ventana de scheduling:
+lo ejecuta de forma **escalonada** (staggered) dentro de la ventana de scheduling.
 
-| Interacción | Evento Kafka | Analytics |
-|-------------|--------------|-----------|
-| `COMMENT` | `comment-events` | `interaction_logs` (source=ai-engine) |
-| `REPLY` | `comment-events` | ídem |
-| `REACTION` | `reaction-events` | ídem |
-| `VOTE` | `vote-events` | ídem |
+### Ejecución vía API real autenticada (Fase 6)
 
-Todas best-effort y no bloqueantes: si Kafka está caído, el flujo continúa (la BD es la fuente
-de verdad).
+Cada interacción se ejecuta **como el bot dueño de la interacción**, haciendo `POST /auth/login`
+en identity-service y usando el JWT resultante contra la API autenticada de core
+(`BotAuthService` + `CoreApiClient`). Antes se insertaba SQL directo con el `user_id` del bot;
+ahora los endpoints reales de core registran la acción en `interaction_logs` con el `user_id`
+del bot, lo que los hace visibles como usuarios activos en `GET /cases/active-users`.
+
+- `BotAuthService`: resuelve el email del bot (`SELECT email FROM users WHERE id = ? AND is_bot = true`
+  en la DB de identity), hace login y cachea el `access_token` con expiración (TTL de
+  `token-cache-ttl-minutes`, o el `expires_in` de identity si viene).
+- `CoreApiClient`: llama a `POST /cases/{caseId}/votes`, `POST /cases/{caseId}/comments`,
+  `POST/DELETE /reactions`, `DELETE /cases/{caseId}/votes` con `Authorization: Bearer <token>`.
+- `InteractionExecutor.dispatch` elige el token según `entity.getUserId()` → email → login.
+- Los replies se resuelven con `reply_to_plan_index`: se busca el comentario padre del mismo
+  `automation_case` y se usa su `result_id` como `parent_id`.
+
+| Interacción | API core | Evento Kafka | Analytics |
+|-------------|----------|--------------|-----------|
+| `COMMENT` | `POST /cases/{id}/comments` | `comment-events` | `interaction_logs` |
+| `REPLY` | `POST /cases/{id}/comments` (con `parent_id`) | `comment-events` | ídem |
+| `REACTION` | `POST /reactions` | `reaction-events` | ídem |
+| `VOTE` | `POST /cases/{id}/votes` | `vote-events` | ídem |
+
+Todas best-effort y no bloqueantes: si la API está caída, la interacción queda `FAILED` y el resto
+del tick continúa (la BD del motor es la fuente de verdad del run).
 
 ---
 
@@ -177,6 +194,13 @@ UPDATE users SET is_bot = true, automation_enabled = true WHERE username = '<tu_
 | `engagement.*` | `AUTOMATION_ENGAGEMENT_*` | ver abajo | Feedback loop engagement. |
 | `activity.*` | `AUTOMATION_SCHEDULING_WEIGHTED` etc. | `false` / `true` | Scheduling por actividad real. |
 | `context.*` | `AUTOMATION_CONTEXT_NEWS_ENABLED`, `RSS_FEED_URLS`, etc. | `true` / `(lista)` / `5` / `15m` | Contexto vivo (noticias RSS). |
+| `bot-auth.identity-url` | `IDENTITY_URL` | `http://localhost:8081/api` | Base URL de identity-service para login. |
+| `bot-auth.core-url` | `CORE_URL` | `http://localhost:8082/api` | Base URL de core-domain-service para interacciones. |
+| `bot-auth.email-pattern` | `AUTOMATION_BOT_EMAIL_PATTERN` | `bot%02d@etsocial.local` | Patrón de emails de bots (fallback si el bot no está en users). |
+| `bot-auth.password` | `AUTOMATION_BOT_PASSWORD` | `Bot@2026` | Password de los bots del seed V6. |
+| `bot-auth.pool-size` | `AUTOMATION_POOL_SIZE` | `25` | Tope del pool diario de bots. |
+| `bot-auth.token-cache-ttl-minutes` | `AUTOMATION_BOT_TOKEN_TTL_MINUTES` | `30` | TTL del cache de tokens. |
+| `bot-auth.http-timeout-seconds` | `AUTOMATION_HTTP_TIMEOUT_SECONDS` | `10` | Timeout HTTP de login/interacciones. |
 
 **Pesos de engagement** (defaults): votes `4`, comments `5`, reactions `3`, shares `6`,
 saves `4`, views `1`; evaluación en `7` días; top `3` ejemplos.

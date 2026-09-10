@@ -2,6 +2,8 @@ package com.etribunal.ai.automation.application;
 
 import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.*;
+import com.etribunal.ai.automation.infrastructure.api.CoreApiClient;
+import com.etribunal.ai.automation.infrastructure.auth.BotAuthService;
 import com.etribunal.ai.automation.infrastructure.analytics.ActivityProfileService;
 import com.etribunal.ai.automation.infrastructure.analytics.AnalyticsRecorder;
 import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
@@ -11,13 +13,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.sql.Timestamp;
 import java.util.*;
 
 @Service
@@ -28,7 +28,8 @@ public class InteractionExecutor {
 
     private final AutomationInteractionRepository interactionRepository;
     private final AutomationCaseRepository caseRepository;
-    private final JdbcTemplate jdbcTemplate;
+    private final CoreApiClient coreApiClient;
+    private final BotAuthService botAuthService;
     private final AutomationEventPublisher eventPublisher;
     private final AnalyticsRecorder analyticsRecorder;
     private final AutomationConfig config;
@@ -37,7 +38,7 @@ public class InteractionExecutor {
     /**
      * Self-proxy lazy: permite invocar {@link #dispatch(AutomationInteractionEntity)} a través del
      * proxy de Spring para que retorne en una transacción independiente (REQUIRES_NEW). Así un fallo
-     * de SQL en UNA interacción revierte solo su subtransacción y no aborta el tick completo,
+     * de API en UNA interacción revierte solo su subtransacción y no aborta el tick completo,
      * permitiendo persistir el estado FAILED y que el resto de interacciones siga ejecutándose.
      */
     @Autowired
@@ -51,7 +52,8 @@ public class InteractionExecutor {
     public InteractionExecutor(
             AutomationInteractionRepository interactionRepository,
             AutomationCaseRepository caseRepository,
-            JdbcTemplate jdbcTemplate,
+            CoreApiClient coreApiClient,
+            BotAuthService botAuthService,
             AutomationEventPublisher eventPublisher,
             AnalyticsRecorder analyticsRecorder,
             AutomationConfig config,
@@ -59,7 +61,8 @@ public class InteractionExecutor {
     ) {
         this.interactionRepository = interactionRepository;
         this.caseRepository = caseRepository;
-        this.jdbcTemplate = jdbcTemplate;
+        this.coreApiClient = coreApiClient;
+        this.botAuthService = botAuthService;
         this.eventPublisher = eventPublisher;
         this.analyticsRecorder = analyticsRecorder;
         this.config = config;
@@ -67,10 +70,10 @@ public class InteractionExecutor {
     }
 
     public record ExecuteResult(
-        String status,
-        String resultId,
-        String errorCode,
-        String errorMessage
+            String status,
+            String resultId,
+            String errorCode,
+            String errorMessage
     ) {}
 
     @Transactional
@@ -207,8 +210,8 @@ public class InteractionExecutor {
         AutomationInteractionEntity entity = opt.get();
 
         if (entity.getStatus() == AutomationInteractionStatus.SUCCESS ||
-            entity.getStatus() == AutomationInteractionStatus.FAILED ||
-            entity.getStatus() == AutomationInteractionStatus.REJECTED) {
+                entity.getStatus() == AutomationInteractionStatus.FAILED ||
+                entity.getStatus() == AutomationInteractionStatus.REJECTED) {
             return new ExecuteResult(entity.getStatus().name(), entity.getResultId(), entity.getErrorCode(), entity.getErrorMessage());
         }
 
@@ -247,10 +250,9 @@ public class InteractionExecutor {
     }
 
     /**
-     * Ejecuta la acción concreta (comentario/reply/reacción/voto) en su PROPIA transacción
-     * (REQUIRES_NEW). Al ser invocado vía el self-proxy, cualquier error de SQL en la acción
-     * revierte solo esta subtransacción: el estado FAILED y las demás interacciones del tick
-     * quedan preservadas.
+     * Ejecuta la acción concreta (comentario/reply/reacción/voto) vía API autenticada del core.
+     * Se invoca vía el self-proxy para que cada interacción tenga su propia transacción
+     * (REQUIRES_NEW). Un fallo de API en UNA interacción revierte solo su subtransacción.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public String dispatch(AutomationInteractionEntity entity) {
@@ -258,121 +260,54 @@ public class InteractionExecutor {
         String caseId = getCaseIdFromEntity(entity);
         String userId = entity.getUserId();
 
-        switch (entity.getInteractionType()) {
-            case COMMENT -> {
-                String content = metadata.getOrDefault("content", "").toString();
-                return createComment(caseId, userId, content, null);
-            }
-            case REPLY -> {
-                String content = metadata.getOrDefault("content", "").toString();
-                Integer replyToIndex = (Integer) metadata.getOrDefault("reply_to_plan_index", -1);
-                String parentCommentId = resolveParentCommentId(entity.getAutomationCase().getId(), replyToIndex);
-                return createComment(caseId, userId, content, parentCommentId);
-            }
-            case REACTION -> {
-                String emoji = metadata.getOrDefault("reaction", "LIKE").toString();
-                return addReaction(caseId, userId, emoji);
-            }
-            case VOTE -> {
-                String option = metadata.getOrDefault("option", "A").toString();
-                return createVote(caseId, userId, option);
-            }
-            default -> throw new IllegalArgumentException("Unknown interaction type: " + entity.getInteractionType());
+        // Obtener el token del bot propietario de la interacción (login real vía API)
+        String token = botAuthService.getTokenForBot(userId);
+
+        try {
+            return switch (entity.getInteractionType()) {
+                case COMMENT -> {
+                    String content = metadata.getOrDefault("content", "").toString();
+                    String parentCommentId = resolveReplyParent(entity.getAutomationCase().getId(), metadata);
+                    yield coreApiClient.createComment(token, UUID.fromString(caseId), content,
+                            parentCommentId != null ? UUID.fromString(parentCommentId) : null, false).toString();
+                }
+                case REPLY -> {
+                    String content = metadata.getOrDefault("content", "").toString();
+                    String parentCommentId = resolveReplyParent(entity.getAutomationCase().getId(), metadata);
+                    yield coreApiClient.createComment(token, UUID.fromString(caseId), content,
+                            parentCommentId != null ? UUID.fromString(parentCommentId) : null, false).toString();
+                }
+                case REACTION -> {
+                    String emoji = metadata.getOrDefault("reaction", "LIKE").toString();
+                    yield coreApiClient.addReaction(token, "CASE", UUID.fromString(caseId), emoji).toString();
+                }
+                case VOTE -> {
+                    String option = metadata.getOrDefault("option", "A").toString();
+                    yield coreApiClient.vote(token, UUID.fromString(caseId), option).toString();
+                }
+                default -> throw new IllegalArgumentException("Unknown interaction type: " + entity.getInteractionType());
+            };
+        } catch (Exception e) {
+            log.error("API call failed for interaction {}: {}", entity.getId(), e.getMessage());
+            throw e;
         }
     }
 
-    private String createComment(String caseId, String userId, String content, String parentCommentId) {
-        UUID commentUuid = UUID.randomUUID();
-        Timestamp now = Timestamp.from(Instant.now());
-        UUID caseUuid = UUID.fromString(caseId);
-        UUID userUuid = UUID.fromString(userId);
-        if (parentCommentId != null) {
-            jdbcTemplate.update(
-                "INSERT INTO comments (id, case_id, user_id, parent_id, content, risk_score, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?)",
-                commentUuid, caseUuid, userUuid, UUID.fromString(parentCommentId), content, now, now
-            );
-        } else {
-            jdbcTemplate.update(
-                "INSERT INTO comments (id, case_id, user_id, content, risk_score, created_at, updated_at) VALUES (?, ?, ?, ?, 0.0, ?, ?)",
-                commentUuid, caseUuid, userUuid, content, now, now
-            );
+    private String resolveReplyParent(UUID automationCaseId, Map<String, Object> metadata) {
+        int replyToIndex = -1;
+        Object obj = metadata.get("reply_to_plan_index");
+        if (obj instanceof Integer) {
+            replyToIndex = (Integer) obj;
+        } else if (obj instanceof String) {
+            try {
+                replyToIndex = Integer.parseInt((String) obj);
+            } catch (NumberFormatException ignored) {}
         }
-        jdbcTemplate.update(
-            "UPDATE cases SET total_comments = total_comments + 1, updated_at = ? WHERE id = ?",
-            now, caseUuid
-        );
-        return commentUuid.toString();
-    }
-
-    private String addReaction(String caseId, String userId, String emoji) {
-        UUID reactionUuid = UUID.randomUUID();
-        Timestamp now = Timestamp.from(Instant.now());
-        UUID caseUuid = UUID.fromString(caseId);
-        UUID userUuid = UUID.fromString(userId);
-        jdbcTemplate.update(
-            """
-            INSERT INTO reactions (id, target_type, target_id, emoji, user_id, case_id, comment_id, created_at)
-            VALUES (?, 'CASE', ?, ?, ?, ?, NULL, ?)
-            ON CONFLICT (target_type, target_id, user_id, emoji) DO NOTHING
-            """,
-            reactionUuid, caseUuid, emoji, userUuid, caseUuid, now
-        );
-        return reactionUuid.toString();
-    }
-
-    private String createVote(String caseId, String userId, String option) {
-        UUID voteUuid = UUID.randomUUID();
-        Timestamp now = Timestamp.from(Instant.now());
-        UUID caseUuid = UUID.fromString(caseId);
-        UUID userUuid = UUID.fromString(userId);
-
-        // Si el usuario ya votó, necesitamos el tipo previo para ajustar los contadores
-        String previousOption = jdbcTemplate.query(
-                "SELECT vote_type FROM case_votes WHERE case_id = ? AND user_id = ?",
-                rs -> rs.next() ? rs.getString(1) : null,
-                caseUuid, userUuid);
-
-        jdbcTemplate.update(
-            """
-            INSERT INTO case_votes (id, vote_type, case_id, user_id, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT (case_id, user_id) DO UPDATE SET vote_type = EXCLUDED.vote_type
-            """,
-            voteUuid, option, caseUuid, userUuid, now
-        );
-
-        if (previousOption == null) {
-            jdbcTemplate.update(
-                "UPDATE cases SET total_votes = total_votes + 1, " +
-                "votes_a = votes_a + ?, votes_b = votes_b + ?, votes_both_wrong = votes_both_wrong + ?, " +
-                "updated_at = ? WHERE id = ?",
-                delta(option, "A"), delta(option, "B"), delta(option, "BOTH_WRONG"), now, caseUuid
-            );
-        } else if (!previousOption.equals(option)) {
-            jdbcTemplate.update(
-                "UPDATE cases SET " +
-                "votes_a = votes_a + ?, votes_b = votes_b + ?, votes_both_wrong = votes_both_wrong + ?, " +
-                "updated_at = ? WHERE id = ?",
-                delta(option, "A") - delta(previousOption, "A"),
-                delta(option, "B") - delta(previousOption, "B"),
-                delta(option, "BOTH_WRONG") - delta(previousOption, "BOTH_WRONG"),
-                now, caseUuid
-            );
+        if (replyToIndex < 0) {
+            return null;
         }
-        return voteUuid.toString();
-    }
-
-    private static int delta(String option, String target) {
-        return target.equals(option) ? 1 : 0;
-    }
-
-    private String resolveParentCommentId(UUID automationCaseId, int replyToPlanIndex) {
-        if (replyToPlanIndex < 0) return null;
-
-        Optional<AutomationInteractionEntity> parentInteraction = interactionRepository
-                .findByAutomationCaseIdAndPlanIndex(automationCaseId, replyToPlanIndex);
-
-        return parentInteraction
+        return interactionRepository
+                .findByAutomationCaseIdAndPlanIndex(automationCaseId, replyToIndex)
                 .map(AutomationInteractionEntity::getResultId)
                 .orElse(null);
     }

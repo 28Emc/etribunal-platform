@@ -35,8 +35,15 @@ public interface CaseRepository
             + "ORDER BY (c.totalVotes + c.totalComments + c.totalShares + c.totalAnchors) DESC, c.createdAt DESC")
     Page<CaseEntity> findTrendingCases(Pageable pageable);
 
-    // Active users: usuarios con más casos creados (públicos)
-    @Query("SELECT c.sideAUserId, COUNT(c) FROM CaseEntity c WHERE c.deletedAt IS NULL AND c.status = 'PUBLIC' "
-            + "GROUP BY c.sideAUserId ORDER BY COUNT(c) DESC")
-    List<Object[]> countCasesBySideAUser(Pageable pageable);
+    // Active users (recent activity): usuarios con interacciones recientes en interaction_logs
+    @Query(value = """
+            SELECT il.user_id, COUNT(il) as activity_count
+            FROM interaction_logs il
+            WHERE il.user_id IS NOT NULL
+              AND il.created_at >= :since
+            GROUP BY il.user_id
+            ORDER BY activity_count DESC
+            """, nativeQuery = true)
+    List<Object[]> findActiveUsersByRecentActivity(@Param("since") java.time.Instant since,
+            Pageable pageable);
 }
