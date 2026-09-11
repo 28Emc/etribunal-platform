@@ -3,7 +3,7 @@
 # Overlay opcional sobre docker-compose.yml. Se usa junto con el compose base:
 #   docker compose -f docker-compose.yml -f docker-compose.observability.yml \
 #     --profile app --profile floci-local --profile observability up -d --build
-# (o directamente con scripts\observability-up.bat)
+# (o directamente con scripts\docker-up.bat obs)
 #
 # Efectos sobre las apps:
 #   - LOGGING_STRUCTURED_FORMAT=ecs  → logs JSON estructurados (incluyen trace.id/span.id)

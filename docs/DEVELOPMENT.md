@@ -148,9 +148,10 @@ Un solo script compila los jars, construye las imágenes y levanta **todo** (Flo
 Kafka + 4 servicios Spring + UI):
 
 ```bat
-scripts\docker-up.bat        :: up (app + floci-local)
-scripts\docker-up.bat all    :: + Zipkin (tracing)
-scripts\docker-down.bat      :: down (conserva los datos)
+scripts\docker-up.bat            :: up (app + floci-local)
+scripts\docker-up.bat all        :: + Zipkin (tracing)
+scripts\docker-up.bat obs        :: + Observabilidad (Grafana LGTM)
+scripts\docker-down.bat          :: down (conserva los datos)
 ```
 
 Manual (cualquier SO):
@@ -198,10 +199,10 @@ docker compose --profile app up -d --build     # Reconstruye y levanta (rebuild 
 ### Observabilidad (Grafana LGTM: Prometheus + Tempo + Loki + Alloy)
 
 Stack opcional de telemetría y logs centralizados, activado con un overlay sobre el compose
-base (profile `observability`). Un solo script hace todo:
+base (profile `observability`). No hace falta script aparte: es el flag `obs` del `docker-up`:
 
 ```bat
-scripts\observability-up.bat            :: docker-up + Prometheus/Grafana/Loki/Tempo/Alloy
+scripts\docker-up.bat obs       :: docker-up + Prometheus/Grafana/Loki/Tempo/Alloy
 ```
 
 Manual:
