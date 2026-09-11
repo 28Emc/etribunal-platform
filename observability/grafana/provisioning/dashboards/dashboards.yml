@@ -1,0 +1,13 @@
+# eTribunal — Dashboard provider (import manual / UI o directorio dashboards/)
+apiVersion: 1
+
+providers:
+  - name: eTribunal
+    orgId: 1
+    folder: eTribunal
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 60
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

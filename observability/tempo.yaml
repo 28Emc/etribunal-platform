@@ -1,0 +1,25 @@
+# eTribunal — Tempo config (dev, backend local)
+#
+# Recibe trazas vía Zipkin v2 en :9411 (los servicios Spring usan
+# management.zipkin.tracing.endpoint=http://tempo:9411/api/v2/spans)
+# y las expone a Grafana por gRPC/HTTP en :3200.
+server:
+  http_listen_address: 0.0.0.0
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    zipkin:
+      endpoint: 0.0.0.0:9411
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo-traces
+    wal:
+      path: /tmp/tempo-wal
+
+metrics_generator:
+  storage:
+    path: /tmp/tempo-metrics

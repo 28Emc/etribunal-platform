@@ -7,7 +7,8 @@ dependencies {
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.data.redis)
 
-    // OpenTelemetry tracing
+    // Observabilidad: trazas OTel/Zipkin + métricas Prometheus
+    implementation(libs.micrometer.registry.prometheus)
     implementation(libs.micrometer.tracing.bridge.brave)
     implementation(libs.zipkin.reporter.brave)
     implementation(libs.otel.exporter.zipkin)

@@ -1,0 +1,18 @@
+// eTribunal — Alloy: logs JSON de los contenedores -> Loki
+// Escaneo de contenedores Docker y envío a Loki (:3100).
+discovery.docker "docker_scrape" {
+  host = "unix:///var/run/docker.sock"
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.docker_scrape.targets
+  labels     = { job = "etribunal" }
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

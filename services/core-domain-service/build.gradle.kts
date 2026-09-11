@@ -23,7 +23,8 @@ dependencies {
     implementation(libs.spring.boot.starter.mail)
     implementation(libs.spring.kafka)
 
-    // OpenTelemetry tracing
+    // Observabilidad: trazas OTel/Zipkin + métricas Prometheus
+    implementation(libs.micrometer.registry.prometheus)
     implementation(libs.micrometer.tracing.bridge.brave)
     implementation(libs.zipkin.reporter.brave)
     implementation(libs.otel.exporter.zipkin)

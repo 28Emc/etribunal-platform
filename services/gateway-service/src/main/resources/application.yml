@@ -84,6 +84,11 @@ management:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT:}
 
+logging:
+  structured:
+    format:
+      console: ${LOGGING_STRUCTURED_FORMAT:}
+
 ---
 spring:
   config:

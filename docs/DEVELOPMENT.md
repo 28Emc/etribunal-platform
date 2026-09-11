@@ -195,6 +195,48 @@ docker compose --profile app up -d --build     # Reconstruye y levanta (rebuild 
 > re-ejecutar `./gradlew <servicio>:bootJar` antes de `docker compose build <servicio>`.
 > `scripts\docker-up.bat` hace ambos por vos.
 
+### Observabilidad (Grafana LGTM: Prometheus + Tempo + Loki + Alloy)
+
+Stack opcional de telemetría y logs centralizados, activado con un overlay sobre el compose
+base (profile `observability`). Un solo script hace todo:
+
+```bat
+scripts\observability-up.bat            :: docker-up + Prometheus/Grafana/Loki/Tempo/Alloy
+```
+
+Manual:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.observability.yml \
+  --profile app --profile floci-local --profile observability up -d --build
+```
+
+**Qué hace sobre las apps** (sin el overlay el comportamiento queda igual que siempre):
+
+| Ajuste | Valor con overlay | Sin overlay |
+|---|---|---|
+| Logs | JSON estructurado (`LOGGING_STRUCTURED_FORMAT=ecs`, incluye `trace.id`/`span.id`) | texto plano |
+| Trazas | a Tempo vía Zipkin v2 (`MANAGEMENT_ZIPKIN_TRACING_ENDPOINT=http://tempo:9411`) | Zipkin solo en profile `zipkin` |
+
+| Componente | URL | Notas |
+|---|---|---|
+| Grafana | http://localhost:3001 | `admin/admin`, datasources auto-configurados |
+| Prometheus | http://localhost:9090 | scrape de los 4 servicios (`/actuator/prometheus`) |
+| Tempo | http://localhost:3200/search | receiver Zipkin en `:9411` |
+| Loki | http://localhost:3100 | logs JSON de los contenedores vía Alloy |
+| Alloy | http://localhost:12345 | grafana/Alloy UI |
+
+**Verificar rápido** tras levantar:
+
+1. Generar tráfico: login → crear caso → votar/comentar (y opcional un `POST /automation/run?dryRun=true`).
+2. Grafana → **Explore** → Prometheus: buscar `jvm_memory_used_bytes` o `http_server_requests_seconds_count`.
+3. **Explore** → Tempo: buscar un service (`gateway-service`, `core-domain-service`, ...) en los últimos 15 min.
+4. **Explore** → Loki: filtar `{container_name=~"etribunal-.*"}`; cada línea JSON trae `trace.id` → click para abrir la traza.
+
+> **Backend**: agregamos `micrometer-registry-prometheus` a los 4 servicios y el knob
+> `logging.structured.format.console` (env `LOGGING_STRUCTURED_FORMAT`). Dashboard de ejemplo:
+> Grafana → Dashboards → New → import → `19004` (JVM/Micrometer Spring Boot).
+
 ## Testing
 
 ### Unit + Integration tests

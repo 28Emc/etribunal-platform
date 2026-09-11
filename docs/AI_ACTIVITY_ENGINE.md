@@ -289,8 +289,11 @@ Una sola migración `V14__automation_settings.sql` creada en Fase 4 (config edit
 ## Observabilidad
 
 - Health: `GET /status` (springdoc) + probes `management/health`.
-- Metrics: prometheus (`management.endpoint.prometheus`).
-- Trazas: Zipkin / OpenTelemetry (`ZIPKIN_ENDPOINT`, sampling 1.0).
+- Metrics: `/actuator/prometheus` activo (requiere `micrometer-registry-prometheus`, ya incluido en
+  los 4 servicios). Stack completo (Prometheus + Grafana + Tempo + Loki + Alloy) vía el overlay
+  `docker-compose.observability.yml` / `scripts\observability-up.bat` — ver `docs/DEVELOPMENT.md`.
+- Logs: planos por defecto; con el overlay se emiten en JSON estructurado (`LOGGING_STRUCTURED_FORMAT=ecs`).
+- Trazas: Zipkin / OpenTelemetry (`ZIPKIN_ENDPOINT` o `MANAGEMENT_ZIPKIN_TRACING_ENDPOINT`, sampling 1.0).
 - Swagger OpenAPI: `SPRINGDOC_SWAGGER_UI_ENABLED`.
 - `AutomationLogger`-style logs con run/case/interaction ids.
 
