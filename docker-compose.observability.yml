@@ -64,7 +64,7 @@ services:
     command:
       - -config.file=/etc/loki/local-config.yaml
     volumes:
-      - loki-data:/loki/wal
+      - loki-data:/loki
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3100/ready"]
       interval: 10s
@@ -75,6 +75,9 @@ services:
     image: grafana/tempo:2.6.1
     container_name: etribunal-tempo
     profiles: ["observability"]
+    # Los volúmenes se montan sobre /tmp/tempo-* (root-owned en la imagen y el
+    # contenedor corre con uid 10001): correr como root evita permission denied.
+    user: "0:0"
     ports:
       - "3200:3200"
       - "9411:9411"
