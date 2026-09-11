@@ -85,7 +85,7 @@ echo  Grafana          : http://localhost:3001   ^(admin/admin^)
 echo  Prometheus       : http://localhost:9090
 echo  Tempo            : http://localhost:3200/search
 echo  Loki             : http://localhost:3100
-echo  Alloy (UI)       : http://localhost:12345
+echo  Alloy ^(UI^)       : http://localhost:12345
 )
 echo.
 echo  Opcional: scripts\docker-up.bat all  ^(Zipkin /tracing^) ^| obs ^(Observabilidad^)
