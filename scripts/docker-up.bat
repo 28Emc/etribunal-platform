@@ -80,7 +80,7 @@ echo  UI              : http://localhost:3000
 echo  Swagger         : http://localhost:8080/swagger-ui
 if "%OBS%"=="1" (
 echo.
-echo  -- Observabilidad (LGTM) --
+echo  [Observabilidad LGTM]
 echo  Grafana          : http://localhost:3001   ^(admin/admin^)
 echo  Prometheus       : http://localhost:9090
 echo  Tempo            : http://localhost:3200/search
