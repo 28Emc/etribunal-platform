@@ -73,7 +73,7 @@ etribunal:
     access-secret: ${JWT_ACCESS_SECRET:}
     issuer: ${JWT_ISSUER:etribunal}
   automation:
-    enabled: ${AUTOMATION_ENABLED:false}
+    enabled: ${AUTOMATION_ENABLED:true}
     dry-run: ${AUTOMATION_DRY_RUN:true}
     run-hour: ${AUTOMATION_RUN_HOUR:9}
     language: ${AUTOMATION_LANGUAGE:es}

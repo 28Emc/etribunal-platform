@@ -174,7 +174,7 @@ UPDATE users SET is_bot = true, automation_enabled = true WHERE username = '<tu_
 
 | Propiedad | Env | Default | Descripción |
 |-----------|-----|---------|-------------|
-| `enabled` | `AUTOMATION_ENABLED` | `false` | Master switch. Si es false, nada corre. |
+| `enabled` | `AUTOMATION_ENABLED` | `true` | Master switch. Por defecto activado: cron + catch-up al arrancar. |
 | `dry-run` | `AUTOMATION_DRY_RUN` | `true` | Planifica/loguea sin persistir. |
 | `run-hour` | `AUTOMATION_RUN_HOUR` | `9` | Hora del cron diario (09:00). |
 | `language` | `AUTOMATION_LANGUAGE` | `es` | Idioma de generación (solo español). |
@@ -301,7 +301,7 @@ Una sola migración `V14__automation_settings.sql` creada en Fase 4 (config edit
 
 ## Operaciones
 
-- **Encender el motor:** `AUTOMATION_ENABLED=true` + `AI_API_KEY` configurada.
+- **Motor activo por defecto:** con `AUTOMATION_ENABLED=true` (default) agenda el cron diario y hace catch-up al arrancar. Para desactivarlo: `AUTOMATION_ENABLED=false`. Requiere `AI_API_KEY` configurada.
 - **Probar sin tocar datos:** `POST /automation/run?dryRun=true` → ver historial en `/runs`.
 - **Editar config sin redeploy:** `PUT /automation/settings` (quedan en BD).
 - **Backup/restore:** los `automation_*` viven en `etribunal_core`; se respaldan con el backup

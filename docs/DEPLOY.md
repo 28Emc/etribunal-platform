@@ -105,7 +105,7 @@ docker build -f services/ai-engine-service/Dockerfile    -t etribunal/ai-engine-
 | `CORE_DB_HOST` / `CORE_DB_PORT` / `CORE_DB_NAME` / `CORE_DB_USER` / `CORE_DB_PASS` | Sí | `5432` | PostgreSQL compartido `etribunal_core` |
 | `AI_API_KEY` | Sí | — | Google AI Studio key |
 | `AI_MODEL` | No | `gemini-2.0-flash` | Modelo Gemini |
-| `AUTOMATION_ENABLED` | No | `false` | Master switch de automatización |
+| `AUTOMATION_ENABLED` | No | `true` | Master switch de automatización (default activado) |
 | `AUTOMATION_DRY_RUN` | No | `true` | `true` = planifica sin ejecutar |
 
 > **Regla de oro:** `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` e `INTERNAL_API_KEY` deben **rotarse** respecto a los valores de desarrollo — nunca uses los defaults en producción.
