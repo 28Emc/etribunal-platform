@@ -74,7 +74,7 @@ etribunal:
     issuer: ${JWT_ISSUER:etribunal}
   automation:
     enabled: ${AUTOMATION_ENABLED:true}
-    dry-run: ${AUTOMATION_DRY_RUN:true}
+    dry-run: ${AUTOMATION_DRY_RUN:false}
     run-hour: ${AUTOMATION_RUN_HOUR:9}
     language: ${AUTOMATION_LANGUAGE:es}
     daily-cases-min: ${AUTOMATION_DAILY_CASES_MIN:1}

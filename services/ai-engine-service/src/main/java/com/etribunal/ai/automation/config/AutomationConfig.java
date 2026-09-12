@@ -16,7 +16,7 @@ import java.util.List;
 public class AutomationConfig {
 
     private boolean enabled = true;
-    private boolean dryRun = true;
+    private boolean dryRun = false;
     private int runHour = 9;
 
     @NotBlank

@@ -175,7 +175,7 @@ UPDATE users SET is_bot = true, automation_enabled = true WHERE username = '<tu_
 | Propiedad | Env | Default | Descripción |
 |-----------|-----|---------|-------------|
 | `enabled` | `AUTOMATION_ENABLED` | `true` | Master switch. Por defecto activado: cron + catch-up al arrancar. |
-| `dry-run` | `AUTOMATION_DRY_RUN` | `true` | Planifica/loguea sin persistir. |
+| `dry-run` | `AUTOMATION_DRY_RUN` | `false` | Los runs (cron/catch-up/API) son reales; fuerza dry solo con `?dryRun=true`. |
 | `run-hour` | `AUTOMATION_RUN_HOUR` | `9` | Hora del cron diario (09:00). |
 | `language` | `AUTOMATION_LANGUAGE` | `es` | Idioma de generación (solo español). |
 | `daily-cases-min/max` | `AUTOMATION_DAILY_CASES_MIN/MAX` | `1` / `5` | Rango de casos por día. |
