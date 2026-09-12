@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -58,9 +59,15 @@ public class BotAuthService {
     }
 
     private String findBotEmail(String botUserId) {
+        UUID userId;
+        try {
+            userId = UUID.fromString(botUserId);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("Bot user id no es un UUID válido: " + botUserId, e);
+        }
         List<String> emails = identityJdbcTemplate.queryForList(
                 "SELECT email FROM users WHERE id = ? AND is_bot = true AND deleted_at IS NULL",
-                String.class, botUserId);
+                String.class, userId);
         if (emails.isEmpty()) {
             throw new IllegalStateException("No se encontró un bot (is_bot=true) para el usuario " + botUserId);
         }
@@ -91,13 +98,16 @@ public class BotAuthService {
                     .bodyToMono(LoginResponse.class)
                     .block(Duration.ofSeconds(config.getHttpTimeoutSeconds()));
 
-            if (response == null || response.accessToken() == null) {
+            LoginResponse.LoginData loginData = response == null ? null : response.data();
+            if (loginData == null || loginData.accessToken() == null) {
                 throw new IllegalStateException("Login failed for " + email + ": empty response");
             }
 
-            Instant expiresAt = Instant.now().plusSeconds(response.expiresIn() != null ? response.expiresIn() : config.getTokenCacheTtlMinutes() * 60L);
+            Instant expiresAt = Instant.now().plusSeconds(loginData.expiresIn() != null
+                    ? loginData.expiresIn()
+                    : config.getTokenCacheTtlMinutes() * 60L);
             log.debug("Bot {} logged in, token expires at {}", email, expiresAt);
-            return new BotToken(response.accessToken(), expiresAt);
+            return new BotToken(loginData.accessToken(), expiresAt);
 
         } catch (WebClientResponseException e) {
             log.error("Login failed for {}: {} - {}", email, e.getStatusCode(), e.getResponseBodyAsString());
@@ -108,11 +118,17 @@ public class BotAuthService {
     // DTOs
     record LoginRequest(String email, String password) {}
 
+    /** Respuesta real del endpoint POST /auth/login de identity-service:
+     *  ApiResponse<TokenResponse> = { data: { access_token, refresh_token, expires_in, user } } */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record LoginResponse(
-            @JsonProperty("access_token") String accessToken,
-            @JsonProperty("refresh_token") String refreshToken,
-            @JsonProperty("expires_in") Long expiresIn
-    ) {}
+            @JsonProperty("data") LoginData data
+    ) {
+        record LoginData(
+                @JsonProperty("access_token") String accessToken,
+                @JsonProperty("refresh_token") String refreshToken,
+                @JsonProperty("expires_in") Long expiresIn
+        ) {}
+    }
     record BotToken(String accessToken, Instant expiresAt) {}
 }

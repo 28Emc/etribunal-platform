@@ -261,6 +261,8 @@ services:
       AUTOMATION_INTERVAL_MAX: ${AUTOMATION_INTERVAL_MAX:-180}
       AUTOMATION_WINDOW_HOURS: ${AUTOMATION_WINDOW_HOURS:-24}
       AUTOMATION_POOL_SIZE: ${AUTOMATION_POOL_SIZE:-0}
+      IDENTITY_URL: http://identity-service:8081/api
+      CORE_URL: http://gateway-service:8080/api
       ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     depends_on:
       floci-init:
