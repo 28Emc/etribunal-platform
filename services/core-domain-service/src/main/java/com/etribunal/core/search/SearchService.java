@@ -215,6 +215,7 @@ public class SearchService {
                 false,
                 false,
                 userReaction,
+                null,
                 new CaseResponse.ReactionsSummary(
                         new CaseResponse.ReactionsSummary.Counts(0L, 0L, 0L)));
     }

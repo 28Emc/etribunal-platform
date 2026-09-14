@@ -6,6 +6,7 @@ import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
 import com.etribunal.core.cases.dto.RespondSideBRequest;
 import com.etribunal.core.cases.dto.UpdateCaseRequest;
+import com.etribunal.core.comments.CommentRepository;
 import com.etribunal.core.config.FrontendUrlProperties;
 import com.etribunal.core.moderation.ModerationService;
 import com.etribunal.core.reactions.Emoji;
@@ -48,6 +49,7 @@ public class CaseService {
             "https://secure.gravatar.com/avatar/0?d=mp&f=y";
 
     private final CaseRepository caseRepository;
+    private final CommentRepository commentRepository;
     private final InternalUsersClient usersClient;
     private final CurrentUserResolver currentUser;
     private final FrontendUrlProperties frontendUrl;
@@ -61,6 +63,7 @@ public class CaseService {
 
     public CaseService(
             CaseRepository caseRepository,
+            CommentRepository commentRepository,
             InternalUsersClient usersClient,
             CurrentUserResolver currentUser,
             FrontendUrlProperties frontendUrl,
@@ -72,6 +75,7 @@ public class CaseService {
             AnalyticsService analyticsService,
             @Value("${etribunal.active-users.window-minutes:30}") int activeUsersWindowMinutes) {
         this.caseRepository = caseRepository;
+        this.commentRepository = commentRepository;
         this.usersClient = usersClient;
         this.currentUser = currentUser;
         this.frontendUrl = frontendUrl;
@@ -461,6 +465,7 @@ public class CaseService {
         Map<UUID, String> reactionMap = Map.of();
         Map<UUID, String> voteMap = Map.of();
         Map<UUID, Map<String, Long>> reactionCounts = new HashMap<>();
+        Map<UUID, Long> commentCounts = new HashMap<>();
 
         if (!caseIds.isEmpty()) {
             for (ReactionRepository.CaseReactionCount row : reactionRepository
@@ -468,6 +473,13 @@ public class CaseService {
                 reactionCounts
                         .computeIfAbsent(row.getTargetId(), k -> new HashMap<>())
                         .put(row.getEmoji().name(), row.getTotal());
+            }
+
+            // total_comments es la fuente de verdad: evita counters stale/desfasados
+            // para el trending y el feed (mismo enfoque que reactions_summary)
+            for (CommentRepository.CaseCommentCount row :
+                    commentRepository.countByCaseIdIn(caseIds)) {
+                commentCounts.put(row.getCaseId(), row.getTotal());
             }
         }
 
@@ -524,7 +536,7 @@ public class CaseService {
                     c.getVotesA(),
                     c.getVotesB(),
                     c.getVotesBothWrong(),
-                    c.getTotalComments(),
+                    Math.toIntExact(commentCounts.getOrDefault(c.getId(), 0L)),
                     c.getTotalViews(),
                     c.getTotalShares(),
                     c.getTotalAnchors(),
@@ -532,6 +544,7 @@ public class CaseService {
                     savedIds.contains(c.getId()),
                     sharedIds.contains(c.getId()),
                     reactionMap.get(c.getId()),
+                    voteMap.get(c.getId()),
                     toReactionsSummary(reactionCounts.get(c.getId()))));
         }
         return responses;

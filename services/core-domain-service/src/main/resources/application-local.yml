@@ -45,6 +45,9 @@ etribunal:
     url: ${FRONTEND_URL:http://localhost:3000}
   s3:
     endpoint: ${S3_ENDPOINT:http://localhost:4566}
+    # Base pública para URLs de objetos servidas al navegador. En local apunta a
+    # Floci desde el host; en producción sería CloudFront o el endpoint de S3.
+    public-endpoint: ${S3_PUBLIC_ENDPOINT:http://localhost:4566}
     region: ${AWS_REGION:us-east-1}
     access-key: ${AWS_ACCESS_KEY_ID:test}
     secret-key: ${AWS_SECRET_ACCESS_KEY:test}

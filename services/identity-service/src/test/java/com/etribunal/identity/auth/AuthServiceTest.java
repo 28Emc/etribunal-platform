@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -145,7 +146,7 @@ class AuthServiceTest {
     @Test
     void loginSuccessClearsAttemptsAndReturnsTokens() {
         when(valueOperations.get(AuthService.ATTEMPTS_PREFIX + "ana")).thenReturn(null);
-        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNullOrUsernameIgnoreCaseAndDeletedAtNull("ana", "ana"))
+        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNull("ana"))
                 .thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("Password1", "hashed")).thenReturn(true);
 
@@ -162,7 +163,7 @@ class AuthServiceTest {
         AtomicLong counter = new AtomicLong(0);
         when(valueOperations.increment(anyString()))
                 .thenAnswer(inv -> counter.incrementAndGet());
-        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNullOrUsernameIgnoreCaseAndDeletedAtNull("ana", "ana"))
+        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNull("ana"))
                 .thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("wrong", "hashed")).thenReturn(false);
 
@@ -211,6 +212,37 @@ class AuthServiceTest {
         assertThat(response.refreshToken()).isNotEqualTo(refreshToken);
         verify(redisTemplate).delete(AuthService.SESSION_PREFIX + existingUser.getId());
         verify(valueOperations).set(anyString(), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void refreshAcceptsPreviousJtiDuringRotation() {
+        // Cuando una pestaña rota el token pero otra aún usa el anterior,
+        // el refresh no debe revocar la sesión (grace period de 1 generación).
+        JwtTokenProvider provider =
+                new JwtTokenProvider(
+                        ACCESS_SECRET.getBytes(),
+                        REFRESH_SECRET.getBytes(),
+                        "etribunal",
+                        Duration.ofMinutes(15),
+                        Duration.ofDays(7));
+        UUID userId = UUID.randomUUID();
+        String refreshToken = provider.generateRefreshToken(userId, "ana_t");
+        String jti = provider.parseRefreshToken(refreshToken).orElseThrow().getJWTID();
+        UserEntity user = new UserEntity();
+        user.setId(userId);
+
+        setField(authService, "jwtTokenProvider", provider);
+        when(valueOperations.get(AuthService.SESSION_PREFIX + userId))
+                .thenReturn("jti-actual|" + jti);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        TokenResponse response = authService.refresh(new RefreshRequest(refreshToken));
+
+        assertThat(response.refreshToken()).isNotEqualTo(refreshToken);
+        verify(redisTemplate).delete(AuthService.SESSION_PREFIX + userId);
+        // La nueva sesión conserva el jti anterior para tolerar carreras
+        verify(valueOperations)
+                .set(eq(AuthService.SESSION_PREFIX + userId), anyString(), any(Duration.class));
     }
 
     @Test

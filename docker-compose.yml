@@ -208,6 +208,7 @@ services:
       INTERNAL_API_KEY: "dev-only-internal-token-1234"
       IDENTITY_BASE_URL: http://identity-service:8081/api
       S3_ENDPOINT: http://floci:4566
+      S3_PUBLIC_ENDPOINT: http://localhost:4566
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       S3_BUCKET: etribunal-media

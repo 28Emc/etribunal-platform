@@ -149,10 +149,22 @@ public class AuthService {
                                                 "Refresh token inválido o expirado"));
 
         String userId = claims.getSubject();
-        String storedJti = redis.opsForValue().get(SESSION_PREFIX + userId);
-        log.debug("Refresh: userId={}, tokenJti={}, storedJti={}", userId, claims.getJWTID(), storedJti);
-        if (storedJti == null || !storedJti.equals(claims.getJWTID())) {
-            log.warn("Refresh rejected: userId={}, tokenJti={}, storedJti={}", userId, claims.getJWTID(), storedJti);
+        String storageKey = SESSION_PREFIX + userId;
+        String storedJti = redis.opsForValue().get(storageKey);
+        String tokenJti = claims.getJWTID();
+        log.debug("Refresh: userId={}, tokenJti={}, storedJti={}", userId, tokenJti, storedJti);
+
+        if (storedJti == null || storedJti.isBlank()) {
+            log.warn("Refresh rejected: sin sesión activa userId={}, tokenJti={}", userId, tokenJti);
+            throw new UnauthorizedException("Sesión revocada");
+        }
+
+        // La sesión guarda "jtiActual|jtiAnterior": se acepta el jti actual o el
+        // inmediatamente anterior en rotación. Esto evita que otra pestaña/dispositivo
+        // con un refresh token ya rotado cierre la sesión completa ("Sesión revocada").
+        java.util.Set<String> validJtis = java.util.Set.of(storedJti.split("\\|"));
+        if (!validJtis.contains(tokenJti)) {
+            log.warn("Refresh rejected: userId={}, tokenJti={}, storedJti={}", userId, tokenJti, storedJti);
             throw new UnauthorizedException("Sesión revocada");
         }
 
@@ -164,8 +176,13 @@ public class AuthService {
             throw new UnauthorizedException("Cuenta inactiva");
         }
 
-        redis.delete(SESSION_PREFIX + userId);
-        return issueTokens(user);
+        // Mantener el jti "sobrante" (el otro de la lista) como anterior en la nueva
+        // sesión: así una petición que aún usa el token recién reemplazado no se cae.
+        String previousJti =
+                validJtis.stream().filter(j -> !j.equals(tokenJti)).findFirst().orElse(null);
+
+        redis.delete(storageKey);
+        return issueTokens(user, previousJti);
     }
 
     // ──────────────────────── Logout ────────────────────────
@@ -326,6 +343,10 @@ public class AuthService {
     }
 
     private TokenResponse issueTokens(UserEntity user) {
+        return issueTokens(user, null);
+    }
+
+    private TokenResponse issueTokens(UserEntity user, String previousJti) {
         List<String> roles = List.of(user.getRole());
         String accessToken =
                 jwtTokenProvider.generateAccessToken(user.getId(), user.getUsername(), roles);
@@ -339,10 +360,14 @@ public class AuthService {
                                 () ->
                                         new IllegalStateException(
                                                 "No se pudo validar el refresh emitido"));
+        String sessionValue =
+                previousJti == null || previousJti.isBlank()
+                        ? claims.getJWTID()
+                        : claims.getJWTID() + "|" + previousJti;
         redis.opsForValue()
                 .set(
                         SESSION_PREFIX + user.getId(),
-                        claims.getJWTID(),
+                        sessionValue,
                         jwtProperties.refreshTtl());
 
         return new TokenResponse(

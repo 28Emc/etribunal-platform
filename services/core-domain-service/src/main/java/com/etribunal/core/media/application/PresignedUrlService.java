@@ -23,6 +23,9 @@ public class PresignedUrlService {
     private final S3Presigner presigner;
     private final String bucket;
 
+    @org.springframework.beans.factory.annotation.Value("${etribunal.s3.public-endpoint:}")
+    private String publicEndpoint;
+
     public PresignedUrlService(S3Presigner presigner, @Qualifier("s3Bucket") String bucket) {
         this.presigner = presigner;
         this.bucket = bucket;
@@ -107,8 +110,12 @@ public class PresignedUrlService {
     }
 
     private String endpointUrl() {
-        // For local dev (Floci/LocalStack), return the endpoint
-        // In production, this would be the CloudFront or S3 URL
-        return "http://localhost:4566";
+        // Base pública alcanzable por el navegador: en local apunta a
+        // Floci/LocalStack desde el host; en producción a CloudFront o S3.
+        String base = publicEndpoint;
+        if (base == null || base.isBlank()) {
+            base = "http://localhost:4566";
+        }
+        return base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
     }
 }

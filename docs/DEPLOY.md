@@ -94,7 +94,8 @@ docker build -f services/ai-engine-service/Dockerfile    -t etribunal/ai-engine-
 | `IDENTITY_BASE_URL` | Sí | — | URL interna de identity (ej. `http://identity-service:8081`) |
 | `INTERNAL_API_KEY` | Sí | — | Debe coincidir con identity |
 | `FRONTEND_URL` | No | `http://localhost:3000` | Usada en invites/links |
-| `S3_ENDPOINT` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | Sí | `us-east-1` | S3 (o LocalStack/Floci) |
+| `S3_ENDPOINT` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | Sí | `us-east-1` | Endpoint del cliente S3 (en local: LocalStack/Floci; en prod: S3 real) |
+| `S3_PUBLIC_ENDPOINT` (`etribunal.s3.public-endpoint`) | Sí | — | Base **pública** de las URLs de media que ve el navegador (CDN/dominio en prod). NO debe ser el endpoint interno del cliente S3 |
 | `S3_BUCKET` | No | `etribunal-media` | Bucket de media |
 | `REDIS_HOST` | No | `localhost` | Redis |
 

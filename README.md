@@ -239,6 +239,34 @@ Respuesta esperada: `{"status":"UP",...}`.
 | AI Engine | `http://localhost:8083/swagger-ui.html` | `http://localhost:8083/actuator/health` |
 | Zipkin | `http://localhost:9411/zipkin/` | `http://localhost:9411/health` |
 
+### Media / S3 (avatares e imágenes)
+
+> ⚠️ **Local vs producción**: lo siguiente (endpoints `floci`, hosts `localhost`, backfill, CSP)
+> corresponde **solo a las pruebas en local** con Docker/Floci. **No describe producción**: allí la
+> plataforma se despliega de otra forma (S3/CDN real, dominios propios, variables secretas). Los
+> conceptos (separar endpoint del cliente S3 vs URL pública) se mantienen, pero los valores cambian.
+
+Las URLs de objetos que ve el navegador usan la variable `S3_PUBLIC_ENDPOINT`
+(`etribunal.s3.public-endpoint`), **distinta** del endpoint del cliente S3 (`S3_ENDPOINT`):
+
+```env
+S3_ENDPOINT=http://floci:4566          # interno: lo usa el cliente SDK para PUT/presign (hostname docker)
+S3_PUBLIC_ENDPOINT=http://localhost:4566  # público: base de las URLs que carga el navegador
+S3_BUCKET=etribunal-media
+```
+
+> ⚠️ Si las imágenes no renderizan (imagen rota en la UI pero el objeto existe en el bucket), es casi seguro
+> que una URL quedó armada con el endpoint interno (`floci:4566`). Usar siempre `S3_PUBLIC_ENDPOINT`
+> apuntando a un host alcanzable desde el navegador (en prod: CloudFront o el endpoint de S3) y, si
+> hubo datos previos, backfillear en DB `REPLACE(avatar_url, 'http://floci:4566/', 'http://localhost:4566/')`.
+
+- **Subida de avatar**: `POST /api/upload/avatar` (multipart `file`, ≤5MB, `image/jpeg|png|gif|webp`) → `{ "url": "<public>/etribunal-media/avatars/{uuid}.{ext}" }`.
+- **Imágenes de casos**: presigned upload (`/api/media/requestUpload` → PUT directo a S3) + `publicUrl` igual por `S3_PUBLIC_ENDPOINT`.
+- Objetos: `avatars/{uuid}.{ext}` y `cases/{uuid}.{ext}` en el bucket `etribunal-media`.
+- La migración `V16__backfill_case_counters.sql` (core-domain) rellena los contadores de casos y se aplica
+  sola al arrancar el servicio en el **perfil local**; en producción las migraciones se aplican por el
+  flujo de despliegue correspondiente (ver `docs/DEPLOY.md` y `docs/runbooks/`).
+
 ---
 
 ## Auto-arranque al encender la PC (Windows)
@@ -425,7 +453,7 @@ etribunal-platform/
 | [Architecture](docs/ARCHITECTURE.md) | Comunicación entre servicios, flujo de datos |
 | [Development](docs/DEVELOPMENT.md) | Setup local, debugging, Floci |
 | [Security](docs/SECURITY.md) | JWT, auth, rate limiting |
-| [Migration Strategy](docs/MIGRATION_STRATEGY.md) | Historia de la migración NestJS→Spring (completada) |
+| [Migration Strategy](docs/MIGRATION_STRATEGY.md) | Historia de cómo se evolucionó el backend a Spring Boot multi-servicio |
 | [Deploy](docs/DEPLOY.md) | Despliegue real: imágenes, variables de entorno, rollbacks |
 | [ADRs](docs/adr/) | Architecture Decision Records (001-010) |
 

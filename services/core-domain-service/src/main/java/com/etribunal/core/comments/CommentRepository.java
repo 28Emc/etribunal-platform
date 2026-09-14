@@ -7,8 +7,29 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface CommentRepository extends JpaRepository<CommentEntity, UUID> {
+
+    /**
+     * Conteo total de comentarios (raíz + respuestas, sin borrados) agrupado por
+     * caso. Fuente autoritativa para {@code total_comments}, igual que el legacy
+     * counter que incrementa 1 por comentario creado y resta 1+replies al borrar.
+     */
+    @Query("""
+            SELECT c.caseId AS caseId, COUNT(c) AS total
+            FROM CommentEntity c
+            WHERE c.caseId IN :caseIds AND c.deletedAt IS NULL
+            GROUP BY c.caseId
+            """)
+    List<CaseCommentCount> countByCaseIdIn(@Param("caseIds") Collection<UUID> caseIds);
+
+    interface CaseCommentCount {
+        UUID getCaseId();
+
+        long getTotal();
+    }
 
     List<CommentEntity> findByCaseIdAndParentIdIsNullAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
             UUID caseId, Pageable pageable);

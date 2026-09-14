@@ -339,6 +339,40 @@ curl http://localhost:4566/_localstack/health
 | `AWS_REGION` | `us-east-1` |
 | `S3_ENDPOINT` | `http://localhost:4566` |
 
+### Media y URLs públicas (S3)
+
+> ⚠️ **Local vs producción**: esta sección documenta el entorno **local** (Docker/Floci, hosts
+> `localhost`/`floci`, CSP con `http://*`, backfill de URLs). **Solo vale para pruebas en local**.
+> En **producción** la plataforma se despliega de otra forma (S3/CDN real, dominios propios,
+> variables secretas y flujos de migración propios); los conceptos de aquí se mantienen, pero los
+> valores y la mecánica (p. ej. autoplay de Flyway al arrancar) cambian según el despliegue.
+
+Las URLs de objetos que arma el backend para el **navegador** no deben usar el endpoint del
+cliente S3. Existen **dos variables**:
+
+| Variable | Uso |
+|----------|-----|
+| `S3_ENDPOINT` / `etribunal.s3.endpoint` | Endpoint del **cliente SDK** para PUT/presign (`http://floci:4566` interno en Docker, `http://localhost:4566` en modo externo) |
+| `S3_PUBLIC_ENDPOINT` / `etribunal.s3.public-endpoint` | Base **pública** de las URLs que carga el navegador (`http://localhost:4566` en local; CloudFront o S3 bucket en prod) |
+
+> ⚠️ **Regla de oro:** jamás armar una URL pública con `S3_ENDPOINT`. Si en la UI se ve la imagen
+> rota pero el objeto existe (GET directo al bucket lo lista), es que una URL quedó con el hostname
+> interno (`floci:4566`). Backfill sugerido para datos previos:
+> `UPDATE users SET avatar_url = REPLACE(avatar_url, 'http://floci:4566/', 'http://localhost:4566/');`
+
+- **Subida de avatar**: `POST /api/upload/avatar` (core-domain) — multipart `file`, ≤5MB,
+  `image/jpeg|png|gif|webp` → `{ "url": "<S3_PUBLIC_ENDPOINT>/etribunal-media/avatars/{uuid}.{ext}" }`.
+  Hay un `UploadController` anterior y el nuevo `AvatarController` (declara `consumes=multipart/form-data`);
+  para multipart gana el segundo (condición más específica).
+- **Imágenes de casos**: presigned upload (`/api/media/requestUpload` → PUT directo a S3) y `publicUrl`
+  construida igual con `S3_PUBLIC_ENDPOINT` (aplicado en `AvatarService`, `PresignedUrlService`,
+  `UploadService`).
+- **CSP del frontend** (`etribunal-ui/index.html`): `img-src` debe permitir el host de media
+  (`http://localhost:* http://floci:*` en local; `https:` cubre prod).
+- Migración `V16__backfill_case_counters.sql` (core-domain): rellena contadores de casos
+  (`total_comments`, `total_votes`, `votes_a/b/both_wrong`); Flyway la aplica sola al arrancar
+  (perfil `local`).
+
 ## Troubleshooting (Docker)
 
 | Síntoma | Causa raíz | Solución |

@@ -13,6 +13,7 @@ import com.etribunal.core.cases.dto.CaseResponse;
 import com.etribunal.core.cases.dto.CreateCaseRequest;
 import com.etribunal.core.cases.dto.RespondSideBRequest;
 import com.etribunal.core.analytics.AnalyticsService;
+import com.etribunal.core.comments.CommentRepository;
 import com.etribunal.core.config.FrontendUrlProperties;
 import com.etribunal.core.moderation.ModerationService;
 import com.etribunal.core.reactions.ReactionRepository;
@@ -61,6 +62,9 @@ class CaseServiceTest {
     private ReactionRepository reactionRepository;
 
     @Mock
+    private CommentRepository commentRepository;
+
+    @Mock
     private ModerationService moderationService;
 
     @Mock
@@ -73,7 +77,8 @@ class CaseServiceTest {
 
     @BeforeEach
     void setUp() {
-        caseService = new CaseService(caseRepository, usersClient, currentUserResolver,
+        caseService = new CaseService(caseRepository, commentRepository, usersClient,
+                currentUserResolver,
                 new FrontendUrlProperties("http://localhost:3000/"),
                 savedCaseRepository, caseShareRepository, voteRepository, reactionRepository,
                 moderationService, analyticsService, 30);

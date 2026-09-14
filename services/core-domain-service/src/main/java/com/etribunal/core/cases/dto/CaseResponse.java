@@ -37,6 +37,7 @@ public record CaseResponse(
         boolean is_saved,
         boolean is_shared,
         String user_reaction,
+        String user_vote,
         ReactionsSummary reactions_summary
 ) {
 

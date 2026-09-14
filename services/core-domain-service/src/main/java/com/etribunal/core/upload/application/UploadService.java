@@ -25,6 +25,9 @@ public class UploadService {
     private final String bucket;
     private final String endpoint;
 
+    @org.springframework.beans.factory.annotation.Value("${etribunal.s3.public-endpoint:}")
+    private String publicEndpoint;
+
     public UploadService(S3Client s3Client,
                          @Qualifier("s3Bucket") String bucket,
                          @Value("${etribunal.s3.endpoint:}") String endpoint) {
@@ -99,11 +102,15 @@ public class UploadService {
     }
 
     private String publicUrl(String storageKey) {
-        String base = endpoint.endsWith("/")
-                ? endpoint.substring(0, endpoint.length() - 1)
-                : endpoint;
-        if (base.isBlank()) {
+        String base = publicEndpoint;
+        if (base == null || base.isBlank()) {
+            base = endpoint;
+        }
+        if (base == null || base.isBlank()) {
             base = "http://localhost:4566";
+        }
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
         }
         return base + "/" + bucket + "/" + storageKey;
     }
