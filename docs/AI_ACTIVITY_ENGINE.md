@@ -14,8 +14,8 @@ Escribe directamente en la **BD compartida** `etribunal_core` (tablas `automatio
 pasar por los controllers de core-domain. Para que el resto del sistema observe la actividad
 publica eventos Kafka best-effort (ver ADR-010).
 
-> **Estado de fases** → ver `../PLAN_AI_ENGINE_ETRIBUNAL.md` (Fases 0-4 backend COMPLETADO,
-> Fase 4.3 panel frontend COMPLETADO, Fase 5 docs/tests).
+> **Estado de fases**: Fases 0-4 backend COMPLETADO, Fase 4.3 panel frontend COMPLETADO,
+> Fase 5 docs/tests.
 
 ---
 
