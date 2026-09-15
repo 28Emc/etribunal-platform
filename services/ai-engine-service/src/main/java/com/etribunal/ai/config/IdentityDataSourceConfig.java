@@ -6,8 +6,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
-import javax.sql.DataSource;
-
 /**
  * Segundo datasource de SOLO LECTURA hacia la BD de identity (etribunal_identity),
  * donde vive la tabla {@code users}. Se usa únicamente para consultar el pool de
@@ -28,12 +26,11 @@ public class IdentityDataSourceConfig {
 
     @Bean(name = "identityJdbcTemplate")
     public JdbcTemplate identityJdbcTemplate() {
-        DataSource ds = new DriverManagerDataSource() {{
-            setDriverClassName("org.postgresql.Driver");
-            setUrl(url);
-            setUsername(username);
-            setPassword(password);
-        }};
+        DriverManagerDataSource ds = new DriverManagerDataSource();
+        ds.setDriverClassName("org.postgresql.Driver");
+        ds.setUrl(url);
+        ds.setUsername(username);
+        ds.setPassword(password);
         return new JdbcTemplate(ds);
     }
 }

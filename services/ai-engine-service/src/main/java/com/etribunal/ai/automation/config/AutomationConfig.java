@@ -322,7 +322,9 @@ public class AutomationConfig {
         private String identityUrl = "http://localhost:8081/api";
         private String coreUrl = "http://localhost:8082/api";
         private String emailPattern = "bot%02d@etsocial.local";
-        private String password = "Bot@2026";
+
+        @NotBlank
+        private String password;
         private int poolSize = 25;
         private int tokenCacheTtlMinutes = 30;
         private int httpTimeoutSeconds = 10;

@@ -17,6 +17,7 @@ import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.*;
@@ -28,6 +29,7 @@ public class CaseGenerator {
     private static final int MAX_DUPLICATE_ATTEMPTS = 3;
     private static final int MODERATION_POLL_ATTEMPTS = 14;
     private static final long MODERATION_POLL_DELAY_MS = 150;
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final AIProvider aiProvider;
     private final AutomationConfig config;
@@ -247,7 +249,8 @@ public class CaseGenerator {
                 .replaceAll("[^a-z0-9\\s-]", "")
                 .replaceAll("\\s+", "-")
                 .replaceAll("-+", "-")
-                .replaceAll("^-|-$", "");
+                .replaceAll("^-+", "")
+                .replaceAll("-+$", "");
         return slug.length() > 100 ? slug.substring(0, 100) : slug;
     }
 
@@ -285,7 +288,7 @@ public class CaseGenerator {
                 log.warn("Side B response attempt {}/{} failed: {}", attempt, retries, e.getMessage());
             }
             // Brief backoff
-            try { Thread.sleep(100 * attempt); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
+            try { Thread.sleep(100L * attempt); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
         }
 
         // Fallback: convert to classic (type=classic, status=PUBLIC) so case is visible in feed
@@ -338,7 +341,7 @@ public class CaseGenerator {
 
     private String pickRandomUserId(List<UserSelector.BotUser> pool) {
         if (pool.isEmpty()) return null;
-        return pool.get(new Random().nextInt(pool.size())).id();
+        return pool.get(RANDOM.nextInt(pool.size())).id();
     }
 
     private String pickSideBUser(List<UserSelector.BotUser> pool, String authorId) {
@@ -346,12 +349,12 @@ public class CaseGenerator {
                 .filter(u -> !u.id().equals(authorId))
                 .toList();
         if (candidates.isEmpty()) return null;
-        return candidates.get(new Random().nextInt(candidates.size())).id();
+        return candidates.get(RANDOM.nextInt(candidates.size())).id();
     }
 
     private String computeHash(String title, String content) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-1");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
             String raw = (title + content).toLowerCase().trim();
             byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();

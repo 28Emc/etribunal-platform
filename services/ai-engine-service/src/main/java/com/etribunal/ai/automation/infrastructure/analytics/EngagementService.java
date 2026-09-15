@@ -48,12 +48,12 @@ public class EngagementService {
     /** Calcula el score ponderado 0-100 a partir de los conteos. Expuesto para tests. */
     public int calculateScore(int votes, int comments, int reactions, int shares, int saves, int views) {
         AutomationConfig.EngagementConfig e = config.getEngagement();
-        double weighted = votes * e.getVotesWeight()
-                + comments * e.getCommentsWeight()
-                + reactions * e.getReactionsWeight()
-                + shares * e.getSharesWeight()
-                + saves * e.getSavesWeight()
-                + views * e.getViewsWeight();
+        double weighted = (double) votes * e.getVotesWeight()
+                + (double) comments * e.getCommentsWeight()
+                + (double) reactions * e.getReactionsWeight()
+                + (double) shares * e.getSharesWeight()
+                + (double) saves * e.getSavesWeight()
+                + (double) views * e.getViewsWeight();
         // Normalización logarítmica para acotar a 0-100 sin que casos virales dominen
         double score = 100.0 * (1.0 - Math.exp(-weighted / 60.0));
         return (int) Math.round(score);

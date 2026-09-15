@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class InteractionExecutor {
@@ -138,7 +139,7 @@ public class InteractionExecutor {
         int windowMinutes = windowHours * 60;
         int effectiveInterval = Math.max(intervalMin,
                 Math.min(intervalMax, windowMinutes / Math.max(1, count)));
-        Random jitter = new Random();
+        ThreadLocalRandom jitter = ThreadLocalRandom.current();
         List<Instant> out = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             long offsetMinutes = (long) i * effectiveInterval + jitter.nextInt(Math.max(1, effectiveInterval / 3));
@@ -167,7 +168,7 @@ public class InteractionExecutor {
             }
         }
 
-        Random jitter = new Random();
+        ThreadLocalRandom jitter = ThreadLocalRandom.current();
         List<Instant> out = new ArrayList<>(count);
         long prevMinute = Long.MIN_VALUE;
         int minGap = Math.max(1, intervalMin);

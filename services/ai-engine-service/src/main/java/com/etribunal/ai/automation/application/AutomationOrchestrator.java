@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 public class AutomationOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(AutomationOrchestrator.class);
-    private static final long STALE_MS = 30 * 60 * 1000;
+    private static final long STALE_MS = 30L * 60 * 1000;
 
     private final AutomationConfig config;
     private final AutomationRunRepository runRepository;
@@ -418,7 +418,6 @@ public class AutomationOrchestrator {
                 .collect(Collectors.toList());
     }
 
-    @Transactional(readOnly = true)
     public Map<String, Object> getQueueStatus() {
         Instant dayStart = Instant.now().atZone(java.time.ZoneId.systemDefault())
                 .toLocalDate().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();

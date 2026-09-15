@@ -38,6 +38,9 @@ public class CoreApiClient {
                 .retrieve()
                 .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ApiResponse<VoteResponse>>() {})
                 .block(timeout);
+        if (response == null || response.data() == null) {
+            throw new IllegalStateException("vote: empty response from core API for case " + caseId);
+        }
         return UUID.fromString(response.data().case_id());
     }
 
@@ -62,6 +65,9 @@ public class CoreApiClient {
                 .retrieve()
                 .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ApiResponse<CommentResponse>>() {})
                 .block(timeout);
+        if (response == null || response.data() == null) {
+            throw new IllegalStateException("createComment: empty response from core API for case " + caseId);
+        }
         return response.data().id();
     }
 

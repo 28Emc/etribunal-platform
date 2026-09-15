@@ -5,10 +5,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementSetter;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -36,6 +38,19 @@ public class ActivityProfileService {
     public enum ProfilePhase { BOOTSTRAP, TRANSITION, STABLE }
 
     private static final int HOURS = 24;
+
+    private static final String COUNT_SQL_ALL =
+            "SELECT count(*) FROM interaction_logs il WHERE il.created_at >= now() - make_interval(days => ?)";
+    private static final String COUNT_SQL_ALL_EXCLUDING_BOTS =
+            "SELECT count(*) FROM interaction_logs il WHERE il.created_at >= now() - make_interval(days => ?)"
+            + " AND NOT (il.user_id = ANY(?))";
+    private static final String HOURLY_SQL_ALL =
+            "SELECT EXTRACT(HOUR FROM il.created_at)::int AS hour, count(*) AS cnt FROM interaction_logs il"
+            + " WHERE il.created_at >= now() - make_interval(days => ?) GROUP BY 1";
+    private static final String HOURLY_SQL_ALL_EXCLUDING_BOTS =
+            "SELECT EXTRACT(HOUR FROM il.created_at)::int AS hour, count(*) AS cnt FROM interaction_logs il"
+            + " WHERE il.created_at >= now() - make_interval(days => ?)"
+            + " AND NOT (il.user_id = ANY(?)) GROUP BY 1";
 
     private final JdbcTemplate jdbcTemplate;
     private final JdbcTemplate identityJdbcTemplate;
@@ -73,32 +88,8 @@ public class ActivityProfileService {
         try {
             AutomationConfig.ActivityConfig a = config.getActivity();
             List<String> botIds = safeBotIds();
-            String filter = botIds.isEmpty()
-                    ? "1 = 1"
-                    : "il.user_id NOT IN (" + String.join(",", botIds) + ")";
-
-            int realizedTotal = jdbcTemplate.queryForObject(
-                """
-                SELECT count(*)
-                FROM interaction_logs il
-                WHERE il.created_at >= now() - make_interval(days => ?)
-                  AND %s
-                """.formatted(filter),
-                Integer.class,
-                a.getLookbackDays()
-            );
-
-            Map<Integer, Integer> hourly = jdbcTemplate.query(
-                """
-                SELECT EXTRACT(HOUR FROM il.created_at)::int AS hour, count(*) AS cnt
-                FROM interaction_logs il
-                WHERE il.created_at >= now() - make_interval(days => ?)
-                  AND %s
-                GROUP BY 1
-                """.formatted(filter),
-                (rs, rowNum) -> Map.entry(rs.getInt("hour"), rs.getInt("cnt")),
-                a.getLookbackDays()
-            ).stream().collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            int realizedTotal = countInteractionsSince(a.getLookbackDays(), botIds);
+            Map<Integer, Integer> hourly = hourlyInteractionsSince(a.getLookbackDays(), botIds);
 
             double[] real = new double[HOURS];
             double realTotal = 0;
@@ -122,7 +113,13 @@ public class ActivityProfileService {
                     alpha = 1.0;
                     p = ProfilePhase.STABLE;
                 } else if (realizedTotal > a.getMinTransitionSamples()) {
-                    alpha = 0.5 + 0.5 * ((realizedTotal - a.getMinTransitionSamples()) / (double) Math.max(1, d));
+                    double fill;
+                    if (d == 0) {
+                        fill = 1.0;
+                    } else {
+                        fill = (double) (realizedTotal - a.getMinTransitionSamples()) / d;
+                    }
+                    alpha = 0.5 + 0.5 * fill;
                     alpha = Math.min(1.0, Math.max(0.0, alpha));
                     p = ProfilePhase.TRANSITION;
                 } else {
@@ -146,6 +143,55 @@ public class ActivityProfileService {
         } catch (Exception e) {
             log.warn("Could not refresh activity profile: {}", e.getMessage());
         }
+    }
+
+    private int countInteractionsSince(int lookbackDays, List<String> botIds) {
+        Integer count;
+        if (botIds.isEmpty()) {
+            count = jdbcTemplate.queryForObject(COUNT_SQL_ALL, Integer.class, lookbackDays);
+        } else {
+            count = jdbcTemplate.query(
+                    COUNT_SQL_ALL_EXCLUDING_BOTS,
+                    botFilterSetter(lookbackDays, botIds),
+                    rs -> rs.next() ? rs.getInt(1) : 0
+            );
+        }
+        return count == null ? 0 : count;
+    }
+
+    private Map<Integer, Integer> hourlyInteractionsSince(int lookbackDays, List<String> botIds) {
+        List<Map.Entry<Integer, Integer>> rows;
+        if (botIds.isEmpty()) {
+            rows = jdbcTemplate.query(
+                    HOURLY_SQL_ALL,
+                    (rs, rowNum) -> Map.entry(rs.getInt("hour"), rs.getInt("cnt")),
+                    lookbackDays
+            );
+        } else {
+            rows = jdbcTemplate.query(
+                    HOURLY_SQL_ALL_EXCLUDING_BOTS,
+                    botFilterSetter(lookbackDays, botIds),
+                    rs -> {
+                        List<Map.Entry<Integer, Integer>> entries = new java.util.ArrayList<>();
+                        while (rs.next()) {
+                            entries.add(Map.entry(rs.getInt("hour"), rs.getInt("cnt")));
+                        }
+                        return entries;
+                    }
+            );
+        }
+        if (rows == null) {
+            return Map.of();
+        }
+        return rows.stream().collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    private PreparedStatementSetter botFilterSetter(int lookbackDays, List<String> botIds) {
+        return ps -> {
+            ps.setInt(1, lookbackDays);
+            UUID[] ids = botIds.stream().map(UUID::fromString).toArray(UUID[]::new);
+            ps.setArray(2, ps.getConnection().createArrayOf("uuid", ids));
+        };
     }
 
     private void persist(double[] hourlyWeights) {

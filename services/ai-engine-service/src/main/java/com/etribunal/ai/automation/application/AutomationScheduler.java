@@ -30,7 +30,7 @@ public class AutomationScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(AutomationScheduler.class);
     private static final int TICK_BATCH = 5;
-    private static final long PROCESSING_STALE_MS = 10 * 60 * 1000;
+    private static final long PROCESSING_STALE_MS = 10L * 60 * 1000;
 
     private final AutomationOrchestrator orchestrator;
     private final InteractionExecutor executor;

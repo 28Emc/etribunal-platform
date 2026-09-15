@@ -66,8 +66,8 @@ public class LiveContextService {
     private final HttpClient httpClient;
     private final ReentrantLock cacheLock = new ReentrantLock();
 
-    private volatile List<String> cachedHeadlines = List.of();
-    private volatile Instant cacheExpiry = Instant.EPOCH;
+    private List<String> cachedHeadlines = List.of();
+    private Instant cacheExpiry = Instant.EPOCH;
 
     public LiveContextService(AutomationConfig config) {
         this.contextConfig = config.getContext();
