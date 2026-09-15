@@ -1,0 +1,32 @@
+# eTribunal — SonarQube (Community Build, self-managed)
+#
+# Overlay opcional sobre docker-compose.yml. Se usa junto con el compose base:
+#   docker compose -f docker-compose.yml -f docker-compose.sonarqube.yml \
+#     --profile sonarqube up -d
+# (o directamente con scripts\sonar-up.bat)
+#
+# Notas:
+#   - Imagen free: SonarQube Community Build (~1 GB). Requiere ~2-4 GB de RAM en Docker.
+#   - Los datos viven en volúmenes nombrados (se conservan entre `up`/`down`).
+#   - Sin healthcheck dentro del contenedor (la imagen no garantiza curl/wget):
+#     scripts\sonar-up.bat sondea /api/system/health desde el host.
+#   - Primer login: admin/admin → cambiar contraseña → crear token (SONAR_TOKEN).
+
+services:
+  sonarqube:
+    image: sonarqube:26.9.0.129388-community
+    container_name: etribunal-sonarqube
+    profiles: ["sonarqube"]
+    ports:
+      - "${SONAR_PORT:-9000}:9000"
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+      - sonarqube-logs:/opt/sonarqube/logs
+
+volumes:
+  sonarqube-data:
+  sonarqube-extensions:
+  sonarqube-logs:

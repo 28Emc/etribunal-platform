@@ -30,8 +30,8 @@ class AutomationSettingsServiceTest {
     void getSettings_returnsEnvDefaults() {
         Map<String, Object> settings = svc.getSettings();
 
-        assertThat(settings).containsEntry("enabled", false);
-        assertThat(settings).containsEntry("dryRun", true);
+        assertThat(settings).containsEntry("enabled", true);
+        assertThat(settings).containsEntry("dryRun", false);
         assertThat(settings).containsEntry("runHour", 9);
         assertThat(settings).containsKey("engagementWeights");
         assertThat(settings).containsKey("rssFeedUrls");

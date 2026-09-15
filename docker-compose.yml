@@ -12,6 +12,10 @@
 #   docker compose --profile zipkin up -d    # + Zipkin (tracing)
 #   docker compose --profile temporal up -d  # + Temporal + UI
 #
+# SonarQube (calidad de código) es otro overlay aparte:
+#   docker compose -f docker-compose.yml -f docker-compose.sonarqube.yml --profile sonarqube up -d
+#   (o scripts\sonar-up.bat — ver docs/SONARQUBE.md)
+#
 # Kafka: single-node KRaft, siempre activo en profile app (el ai-engine lo usa
 # como broker de eventos). Imagen apache/kafka:3.9.0 (404MB vs 849MB de cp-kafka).
 #   docker compose --profile kafka up -d     # (legacy — ya no necesario; kafka vive en app)

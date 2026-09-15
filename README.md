@@ -455,6 +455,7 @@ etribunal-platform/
 | [Security](docs/SECURITY.md) | JWT, auth, rate limiting |
 | [Migration Strategy](docs/MIGRATION_STRATEGY.md) | Historia de cómo se evolucionó el backend a Spring Boot multi-servicio |
 | [Deploy](docs/DEPLOY.md) | Despliegue real: imágenes, variables de entorno, rollbacks |
+| [SonarQube](docs/SONARQUBE.md) | Calidad de código + cobertura (servidor local + scanner backend/frontend) |
 | [ADRs](docs/adr/) | Architecture Decision Records (001-010) |
 
 ### Runbooks
