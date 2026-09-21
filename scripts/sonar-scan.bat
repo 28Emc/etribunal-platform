@@ -30,7 +30,7 @@ echo ============================================================
 
 echo.
 echo [1/3] Backend: build + tests + cobertura + sonar (7 modulos)...
-call gradlew.bat build sonarAll --console=plain
+call .\gradlew.bat build sonarAll -Dsonar.token=%SONAR_TOKEN% -Dsonar.host.url=%SONAR_HOST_URL% --console=plain
 if errorlevel 1 (
     echo [ERROR] Fallo el analisis del backend.
     exit /b 1
