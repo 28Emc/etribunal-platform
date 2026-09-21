@@ -2,8 +2,6 @@ package com.etribunal.ai.automation.infrastructure.api;
 
 import com.etribunal.ai.automation.config.AutomationConfig;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -16,10 +14,11 @@ import java.util.UUID;
 @Service
 public class CoreApiClient {
 
-    private static final Logger log = LoggerFactory.getLogger(CoreApiClient.class);
-
     private final WebClient webClient;
     private final Duration timeout;
+
+    private static final String AUTH_HEADER = "Authorization";
+    private static final String BEARER_PREFIX = "Bearer ";
 
     public CoreApiClient(WebClient.Builder webClientBuilder, AutomationConfig config) {
         this.timeout = Duration.ofSeconds(config.getBotAuth().getHttpTimeoutSeconds());
@@ -33,7 +32,7 @@ public class CoreApiClient {
         Map<String, String> body = Map.of("vote_type", option);
         ApiResponse<VoteResponse> response = webClient.post()
                 .uri("/cases/{caseId}/votes", caseId)
-                .header("Authorization", "Bearer " + token)
+                .header(AUTH_HEADER, BEARER_PREFIX + token)
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ApiResponse<VoteResponse>>() {})
@@ -47,7 +46,7 @@ public class CoreApiClient {
     public void deleteVote(String token, UUID caseId) {
         webClient.delete()
                 .uri("/cases/{caseId}/votes", caseId)
-                .header("Authorization", "Bearer " + token)
+                .header(AUTH_HEADER, BEARER_PREFIX + token)
                 .retrieve()
                 .toBodilessEntity()
                 .block(timeout);
@@ -60,7 +59,7 @@ public class CoreApiClient {
         body.put("is_anonymous", isAnonymous);
         ApiResponse<CommentResponse> response = webClient.post()
                 .uri("/cases/{caseId}/comments", caseId)
-                .header("Authorization", "Bearer " + token)
+                .header(AUTH_HEADER, BEARER_PREFIX + token)
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ApiResponse<CommentResponse>>() {})
@@ -74,7 +73,7 @@ public class CoreApiClient {
     public void deleteComment(String token, UUID commentId) {
         webClient.delete()
                 .uri("/comments/{commentId}", commentId)
-                .header("Authorization", "Bearer " + token)
+                .header(AUTH_HEADER, BEARER_PREFIX + token)
                 .retrieve()
                 .toBodilessEntity()
                 .block(timeout);
@@ -91,7 +90,7 @@ public class CoreApiClient {
         // ya que la reacción es un toggle (upsert).
         webClient.post()
                 .uri("/reactions")
-                .header("Authorization", "Bearer " + token)
+                .header(AUTH_HEADER, BEARER_PREFIX + token)
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ApiResponse<ReactionSummary>>() {})
@@ -107,7 +106,7 @@ public class CoreApiClient {
                         .queryParam("target_id", targetId.toString())
                         .queryParam("emoji", emoji)
                         .build())
-                .header("Authorization", "Bearer " + token)
+                .header(AUTH_HEADER, BEARER_PREFIX + token)
                 .retrieve()
                 .toBodilessEntity()
                 .block(timeout);

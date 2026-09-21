@@ -47,6 +47,7 @@ public class CaseService {
     public static final String MASKED_USERNAME = "Anonymous Judge";
     public static final String MASKED_AVATAR =
             "https://secure.gravatar.com/avatar/0?d=mp&f=y";
+    private static final String MSG_CASE_NOT_FOUND = "Caso no encontrado";
 
     private final CaseRepository caseRepository;
     private final CommentRepository commentRepository;
@@ -191,7 +192,7 @@ public class CaseService {
         CaseEntity entity = caseRepository.findById(id)
                 .filter(c -> c.getDeletedAt() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Caso no encontrado"));
+                        MSG_CASE_NOT_FOUND));
 
         currentUserId.ifPresent(
                 uid -> analyticsService.log(InteractionAction.VIEW.name(), id, uid));
@@ -234,7 +235,7 @@ public class CaseService {
 
         CaseEntity entity = caseRepository.findBySlugAndDeletedAtIsNull(slug)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Caso no encontrado"));
+                        MSG_CASE_NOT_FOUND));
 
         currentUserId.ifPresent(
                 uid -> analyticsService.log(InteractionAction.VIEW.name(), entity.getId(), uid));
@@ -304,7 +305,7 @@ public class CaseService {
         CaseEntity entity = caseRepository.findById(caseId)
                 .filter(c -> c.getDeletedAt() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Caso no encontrado"));
+                        MSG_CASE_NOT_FOUND));
 
         if (entity.getType() != CaseType.vote) {
             throw badRequest("Solo los casos de votación tienen invite link");
@@ -332,7 +333,7 @@ public class CaseService {
         CaseEntity entity = caseRepository.findById(caseId)
                 .filter(c -> c.getDeletedAt() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Caso no encontrado"));
+                        MSG_CASE_NOT_FOUND));
 
         boolean isSideA = entity.getSideAUserId().equals(userId);
         boolean isSideB = entity.getSideBUserId() != null
@@ -386,7 +387,7 @@ public class CaseService {
         CaseEntity entity = caseRepository.findById(caseId)
                 .filter(c -> c.getDeletedAt() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Caso no encontrado"));
+                        MSG_CASE_NOT_FOUND));
 
         if (entity.getReportStatus() != ReportStatus.REPORTED
                 || entity.getModerationStatus() != ModerationStatus.FLAGGED) {

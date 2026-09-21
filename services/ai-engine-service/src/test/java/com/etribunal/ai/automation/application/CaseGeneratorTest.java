@@ -19,8 +19,7 @@ class CaseGeneratorTest {
             sb.append(String.format("%02x", b));
         }
         String result = sb.toString();
-        assertThat(result).hasSize(40);
-        assertThat(result).matches("[0-9a-f]{40}");
+        assertThat(result).hasSize(40).matches("[0-9a-f]{40}");
     }
 
     @Test

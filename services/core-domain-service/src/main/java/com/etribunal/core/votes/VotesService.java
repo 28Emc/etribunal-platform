@@ -18,6 +18,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class VotesService {
 
+    private static final String KEY_VOTE_TYPE = "vote_type";
+
     private final VoteRepository voteRepository;
     private final CaseRepository caseRepository;
     private final NotificationService notificationService;
@@ -61,7 +63,7 @@ public class VotesService {
             applyDeltas(caseId, previous, -1);
             applyDeltas(caseId, voteType, +1);
             analyticsService.log(InteractionAction.VOTE.name(), caseId, userId,
-                    Map.of("vote_type", voteType.name(), "is_update", true));
+                    Map.of(KEY_VOTE_TYPE, voteType.name(), "is_update", true));
             return respond(caseId, voteType);
         }
 
@@ -72,7 +74,7 @@ public class VotesService {
         voteRepository.save(vote);
         applyDeltas(caseId, voteType, +1);
         analyticsService.log(InteractionAction.VOTE.name(), caseId, userId,
-                Map.of("vote_type", voteType.name(), "is_update", false));
+                Map.of(KEY_VOTE_TYPE, voteType.name(), "is_update", false));
 
         // Notify case author and Side B (if exists) about new vote
         if (isNewVote) {
@@ -147,7 +149,7 @@ public class VotesService {
 
         Map<String, Object> payload = Map.of(
                 "case_id", entity.getId().toString(),
-                "vote_type", voteType.name(),
+                KEY_VOTE_TYPE, voteType.name(),
                 "actor_id", voterId.toString());
 
         // Notify Side A (author)

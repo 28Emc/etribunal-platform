@@ -8,16 +8,16 @@ import com.etribunal.core.users.InternalUsersClient;
 import com.etribunal.core.users.UserSummary;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,11 +29,18 @@ public class SearchService {
     private static final String MASKED_USERNAME = "Anonymous Judge";
     private static final String MASKED_AVATAR =
             "https://secure.gravatar.com/avatar/0?d=mp&f=y";
+    private static final String KEY_USERS = "users";
+    private static final String KEY_CASES = "cases";
+    private static final String KEY_HAS_MORE = "hasMore";
 
     @PersistenceContext
     private EntityManager em;
 
     private final InternalUsersClient usersClient;
+
+    @Autowired
+    @Lazy
+    private SearchService self;
 
     public SearchService(InternalUsersClient usersClient) {
         this.usersClient = usersClient;
@@ -51,7 +58,7 @@ public class SearchService {
         }
 
         String safeQuery = query.trim();
-        int clampedTake = Math.min(Math.max(take, 1), MAX_TAKE);
+        int clampedTake = Math.clamp(take, 1, MAX_TAKE);
 
         // Native SQL: ts_rank + plainto_tsquery for Spanish stemming
         @SuppressWarnings("unchecked")
@@ -130,7 +137,7 @@ public class SearchService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> quickSearch(String query, UUID requesterId) {
-        return advancedSearch(query, "ALL", 0, 5, requesterId);
+        return self.advancedSearch(query, "ALL", 0, 5, requesterId);
     }
 
     /**
@@ -140,7 +147,7 @@ public class SearchService {
     @Transactional(readOnly = true)
     public Map<String, Object> advancedSearch(String query, String type, int skip,
                                               int take, UUID requesterId) {
-        int clampedTake = Math.min(Math.max(take, 1), MAX_TAKE);
+        int clampedTake = Math.clamp(take, 1, MAX_TAKE);
         int safeSkip = Math.max(skip, 0);
 
         String normalized = query == null ? "" : query.trim();
@@ -150,30 +157,30 @@ public class SearchService {
             searchType = "USERS";
         }
         if (normalized.length() < MIN_QUERY_LENGTH) {
-            return Map.of("users", List.of(), "cases", List.of(), "hasMore", false);
+            return Map.of(KEY_USERS, List.of(), KEY_CASES, List.of(), KEY_HAS_MORE, false);
         }
 
         if ("USERS".equalsIgnoreCase(searchType)) {
             List<Map<String, Object>> users =
                     usersClient.searchUsers(normalized, clampedTake, safeSkip, requesterId);
-            return Map.of("users", users, "cases", List.of(),
-                    "hasMore", users.size() == clampedTake);
+            return Map.of(KEY_USERS, users, KEY_CASES, List.of(),
+                    KEY_HAS_MORE, users.size() == clampedTake);
         }
 
         if ("CASES".equalsIgnoreCase(searchType)) {
-            List<CaseResponse> cases = search(normalized, safeSkip, clampedTake, requesterId).stream()
+            List<CaseResponse> cases = self.search(normalized, safeSkip, clampedTake, requesterId).stream()
                     .map(SearchResult::case_data)
                     .toList();
-            return Map.of("users", List.of(), "cases", cases,
-                    "hasMore", cases.size() == clampedTake);
+            return Map.of(KEY_USERS, List.of(), KEY_CASES, cases,
+                    KEY_HAS_MORE, cases.size() == clampedTake);
         }
 
         List<Map<String, Object>> users =
                 usersClient.searchUsers(normalized, 5, 0, requesterId);
-        List<CaseResponse> cases = search(normalized, 0, 5, requesterId).stream()
+        List<CaseResponse> cases = self.search(normalized, 0, 5, requesterId).stream()
                 .map(SearchResult::case_data)
                 .toList();
-        return Map.of("users", users, "cases", cases, "hasMore", false);
+        return Map.of(KEY_USERS, users, KEY_CASES, cases, KEY_HAS_MORE, false);
     }
 
     private CaseResponse toCaseResponse(CaseEntity c,

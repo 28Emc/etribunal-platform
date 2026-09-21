@@ -2,7 +2,6 @@ package com.etribunal.ai.automation.repository;
 
 import com.etribunal.ai.automation.domain.AutomationCaseEntity;
 import com.etribunal.ai.automation.domain.AutomationCaseStatus;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

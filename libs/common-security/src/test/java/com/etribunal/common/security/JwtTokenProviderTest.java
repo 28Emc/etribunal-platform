@@ -1,6 +1,7 @@
 package com.etribunal.common.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.nimbusds.jwt.JWTClaimsSet;
 import java.text.ParseException;
@@ -87,16 +88,17 @@ class JwtTokenProviderTest {
 
     @Test
     void secretsShorterThan32BytesRejected() {
-        try {
-            new JwtTokenProvider(
-                    "short".getBytes(),
-                    REFRESH_SECRET.getBytes(),
-                    "etribunal",
-                    Duration.ofMinutes(15),
-                    Duration.ofDays(7));
-            org.assertj.core.api.Assertions.fail("Debió lanzar IllegalArgumentException");
-        } catch (IllegalArgumentException expected) {
-            assertThat(expected).hasMessageContaining("JWT_ACCESS_SECRET");
-        }
+        byte[] shortSecret = "short".getBytes();
+        byte[] refreshSecret = REFRESH_SECRET.getBytes();
+        assertThatThrownBy(
+                        () ->
+                                new JwtTokenProvider(
+                                        shortSecret,
+                                        refreshSecret,
+                                        "etribunal",
+                                        Duration.ofMinutes(15),
+                                        Duration.ofDays(7)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("JWT_ACCESS_SECRET");
     }
 }

@@ -20,6 +20,9 @@ import java.util.UUID;
 public class ModerationService {
 
     private static final Logger log = LoggerFactory.getLogger(ModerationService.class);
+    private static final String PROVIDER_LOCAL = "LOCAL";
+    private static final String COMMENT_TYPE = "COMMENT";
+    private static final String CASE_IMAGE_TYPE = "CASE_IMAGE";
 
     private final ModerationProvider provider;
     private final ModerationQueue queue;
@@ -52,7 +55,7 @@ public class ModerationService {
                 (sideBContent != null ? sideBContent : "");
 
         return provider.moderateText(combined)
-                .doOnNext(result -> persistLogAndUpdateCase(caseId, "CASE", combined, result, "LOCAL"));
+                .doOnNext(result -> persistLogAndUpdateCase(caseId, "CASE", combined, result, PROVIDER_LOCAL));
     }
 
     /**
@@ -60,7 +63,7 @@ public class ModerationService {
      */
     public Mono<ModerationResult> moderateCommentSync(UUID commentId, String content) {
         return provider.moderateText(content)
-                .doOnNext(result -> persistLogAndUpdateComment(commentId, content, result, "LOCAL"));
+                .doOnNext(result -> persistLogAndUpdateComment(commentId, content, result, PROVIDER_LOCAL));
     }
 
     /**
@@ -68,7 +71,7 @@ public class ModerationService {
      */
     public Mono<ModerationResult> moderateCaseImageSync(UUID imageId, String imageUrl) {
         return provider.moderateImage(imageUrl)
-                .doOnNext(result -> persistLogAndUpdateCaseImage(imageId, imageUrl, result, "LOCAL"));
+                .doOnNext(result -> persistLogAndUpdateCaseImage(imageId, imageUrl, result, PROVIDER_LOCAL));
     }
 
     /**
@@ -83,12 +86,12 @@ public class ModerationService {
     }
 
     public void moderateCommentAsync(UUID commentId, String content) {
-        ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob("COMMENT", commentId, content);
+        ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob(COMMENT_TYPE, commentId, content);
         queue.enqueue(job);
     }
 
     public void moderateCaseImageAsync(UUID imageId, String imageUrl) {
-        ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob("CASE_IMAGE", imageId, imageUrl);
+        ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob(CASE_IMAGE_TYPE, imageId, imageUrl);
         queue.enqueue(job);
     }
 
@@ -107,23 +110,23 @@ public class ModerationService {
                         CaseEntity caseEntity = caseRepository.findById(currentJob.targetId()).orElse(null);
                         if (caseEntity != null) {
                             provider.moderateText(currentJob.contentText())
-                                    .doOnNext(result -> persistLogAndUpdateCase(currentJob.targetId(), "CASE", currentJob.contentText(), result, "LOCAL"))
+                                    .doOnNext(result -> persistLogAndUpdateCase(currentJob.targetId(), "CASE", currentJob.contentText(), result, PROVIDER_LOCAL))
                                     .subscribe();
                         }
                     }
-                    case "COMMENT" -> {
+                    case COMMENT_TYPE -> {
                         CommentEntity comment = commentRepository.findById(currentJob.targetId()).orElse(null);
                         if (comment != null) {
                             provider.moderateText(currentJob.contentText())
-                                    .doOnNext(result -> persistLogAndUpdateComment(currentJob.targetId(), currentJob.contentText(), result, "LOCAL"))
+                                    .doOnNext(result -> persistLogAndUpdateComment(currentJob.targetId(), currentJob.contentText(), result, PROVIDER_LOCAL))
                                     .subscribe();
                         }
                     }
-                    case "CASE_IMAGE" -> {
+                    case CASE_IMAGE_TYPE -> {
                         CaseImageEntity image = caseImageRepository.findById(currentJob.targetId()).orElse(null);
                         if (image != null) {
                             provider.moderateImage(currentJob.contentText())
-                                    .doOnNext(result -> persistLogAndUpdateCaseImage(currentJob.targetId(), currentJob.contentText(), result, "LOCAL"))
+                                    .doOnNext(result -> persistLogAndUpdateCaseImage(currentJob.targetId(), currentJob.contentText(), result, PROVIDER_LOCAL))
                                     .subscribe();
                         }
                     }
@@ -161,7 +164,7 @@ public class ModerationService {
 
     private void persistLogAndUpdateComment(UUID commentId, String content, ModerationResult result, String providerName) {
         ModerationLogEntity logEntity = new ModerationLogEntity();
-        logEntity.setTargetType("COMMENT");
+        logEntity.setTargetType(COMMENT_TYPE);
         logEntity.setTargetId(commentId);
         logEntity.setContentText(content);
         logEntity.setModerationStatus(result.status());
@@ -181,7 +184,7 @@ public class ModerationService {
 
     private void persistLogAndUpdateCaseImage(UUID imageId, String imageUrl, ModerationResult result, String providerName) {
         ModerationLogEntity logEntity = new ModerationLogEntity();
-        logEntity.setTargetType("CASE_IMAGE");
+        logEntity.setTargetType(CASE_IMAGE_TYPE);
         logEntity.setTargetId(imageId);
         logEntity.setContentText(imageUrl);
         logEntity.setModerationStatus(result.status());

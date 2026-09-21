@@ -69,7 +69,7 @@ public class FeatureFlagService {
      */
     public Mono<Boolean> setPercentage(String service, String route, int percentage) {
         String key = KEY_PREFIX + service + ":" + route;
-        int clamped = Math.max(0, Math.min(100, percentage));
+        int clamped = Math.clamp(percentage, 0, 100);
         return redis.opsForValue().set(key, String.valueOf(clamped))
                 .map(v -> {
                     log.info("Canary flag set: {} {} → {}%", service, route, clamped);

@@ -17,8 +17,7 @@ class LiveContextServiceTest {
 
         String ctx = svc.buildContextFor(LocalDate.of(2026, 9, 3));
 
-        assertThat(ctx).contains("Fecha actual:");
-        assertThat(ctx).contains("Estación: verano"); // 3 sep → verano (hemisferio norte)
+        assertThat(ctx).contains("Fecha actual:").contains("Estación: verano"); // 3 sep → verano (hemisferio norte)
     }
 
     @Test
@@ -28,8 +27,7 @@ class LiveContextServiceTest {
 
         String ctx = svc.buildContextFor(LocalDate.of(2026, 12, 25));
 
-        assertThat(ctx).contains("Estación: invierno");
-        assertThat(ctx).contains("Hoy: Navidad");
+        assertThat(ctx).contains("Estación: invierno").contains("Hoy: Navidad");
     }
 
     @Test
@@ -53,8 +51,7 @@ class LiveContextServiceTest {
         // No debe lanzar; continúa con fecha/estación y sin noticias
         String ctx = svc.buildContextFor(LocalDate.of(2026, 9, 3));
 
-        assertThat(ctx).contains("Fecha actual:");
-        assertThat(ctx).doesNotContain("Noticias recientes");
+        assertThat(ctx).contains("Fecha actual:").doesNotContain("Noticias recientes");
     }
 
     @Test

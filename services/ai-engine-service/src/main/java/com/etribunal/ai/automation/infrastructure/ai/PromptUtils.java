@@ -6,6 +6,8 @@ public final class PromptUtils {
 
     private PromptUtils() {}
 
+    private static final String PLACEHOLDER_TITLE = "{title}";
+
     public static final String MODERATION_SAFE_WRITING = """
         REGLAS DE SEGURIDAD OBLIGATORIAS (cumple SIEMPRE):
         1. NO generes contenido sexualmente explícito, violento gráfico, apología del odio, autolesiones, actividades ilegales, doxxing, PII real, instrucciones de armas o promoción de trastornos alimenticios.
@@ -96,7 +98,7 @@ public final class PromptUtils {
             
             NO uses "sideA"/"sideB" ni otros nombres de campo. Distribuye stances (pro-A, pro-B, neutral) según el caso.
             """.formatted("{interactionCount}", "{availableUsers}", "{maxPerUser}", MODERATION_SAFE_WRITING,
-                "{title}", "{sideA}", "{sideB}", "{category}");
+                PLACEHOLDER_TITLE, "{sideA}", "{sideB}", "{category}");
     }
 
     public static String commentGenerationPrompt(String language, int intensity) {
@@ -114,7 +116,7 @@ public final class PromptUtils {
             
             El comentario debe ser coherente con la postura, ≤ 1000 chars, en %s.
             Responde SOLO con JSON: { "content": "..." }
-            """.formatted(toneDirective, MODERATION_SAFE_WRITING, "{title}", "{sideA}", "{sideB}", "{stance}", intensity, language);
+            """.formatted(toneDirective, MODERATION_SAFE_WRITING, PLACEHOLDER_TITLE, "{sideA}", "{sideB}", "{stance}", intensity, language);
     }
 
     public static String replyGenerationPrompt(String language, int intensity) {
@@ -131,6 +133,6 @@ public final class PromptUtils {
             
             La respuesta debe responder al comentario padre, ser coherente con la postura, ≤ 1000 chars, en %s.
             Responde SOLO con JSON: { "content": "..." }
-            """.formatted(toneDirective, MODERATION_SAFE_WRITING, "{title}", "{parentComment}", "{stance}", intensity, language);
+            """.formatted(toneDirective, MODERATION_SAFE_WRITING, PLACEHOLDER_TITLE, "{parentComment}", "{stance}", intensity, language);
     }
 }

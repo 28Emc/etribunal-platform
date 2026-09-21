@@ -19,7 +19,7 @@ public class TranslationController {
         this.translationService = translationService;
     }
 
-    // POST /translations/cases/{caseId} → { id, sourceLanguage, targetLanguage, title, sideA, ... }
+    // Traduce el caso indicado a un idioma destino.
     @PostMapping("/translations/cases/{caseId}")
     public ResponseEntity<ApiResponse<TranslationService.TranslatedCaseResponse>> translateCase(
             @PathVariable UUID caseId,
@@ -28,7 +28,7 @@ public class TranslationController {
                 translationService.translateCase(caseId, extractLanguage(body))));
     }
 
-    // POST /translations/comments/{commentId} → { id, commentId, sourceLanguage, targetLanguage, content }
+    // Traduce el comentario indicado a un idioma destino.
     @PostMapping("/translations/comments/{commentId}")
     public ResponseEntity<ApiResponse<TranslationService.TranslatedCommentResponse>> translateComment(
             @PathVariable UUID commentId,

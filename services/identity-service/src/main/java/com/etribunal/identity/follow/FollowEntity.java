@@ -11,7 +11,6 @@ import jakarta.persistence.MapsId;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
-import java.util.UUID;
 
 @Entity
 @Table(name = "followers")

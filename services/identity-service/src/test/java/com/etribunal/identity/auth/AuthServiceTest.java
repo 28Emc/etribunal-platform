@@ -126,8 +126,9 @@ class AuthServiceTest {
     void registerRejectsDuplicateEmail() {
         when(userRepository.existsByEmailIgnoreCase("ana@test.com")).thenReturn(true);
 
-        assertThatThrownBy(
-                        () -> authService.register(new RegisterRequest("ana@test.com", "other", "Password1", null)))
+        RegisterRequest registerRequest =
+                new RegisterRequest("ana@test.com", "other", "Password1", null);
+        assertThatThrownBy(() -> authService.register(registerRequest))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("email");
     }
@@ -137,8 +138,9 @@ class AuthServiceTest {
         when(userRepository.existsByEmailIgnoreCase("nueva@test.com")).thenReturn(false);
         when(userRepository.existsByUsernameIgnoreCase("ana_t")).thenReturn(true);
 
-        assertThatThrownBy(
-                        () -> authService.register(new RegisterRequest("nueva@test.com", "ana_t", "Password1", null)))
+        RegisterRequest registerRequest =
+                new RegisterRequest("nueva@test.com", "ana_t", "Password1", null);
+        assertThatThrownBy(() -> authService.register(registerRequest))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("username");
     }
@@ -167,7 +169,8 @@ class AuthServiceTest {
                 .thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("wrong", "hashed")).thenReturn(false);
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("ana", "wrong")))
+        LoginRequest request = new LoginRequest("ana", "wrong");
+        assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("Credenciales inválidas");
 
@@ -180,7 +183,8 @@ class AuthServiceTest {
         when(valueOperations.get(AuthService.ATTEMPTS_PREFIX + "ana@test.com")).thenReturn("5");
         when(redisTemplate.getExpire(AuthService.ATTEMPTS_PREFIX + "ana@test.com")).thenReturn(600L);
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("ana@test.com", "anything")))
+        LoginRequest request = new LoginRequest("ana@test.com", "anything");
+        assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("bloqueada");
 
@@ -260,7 +264,8 @@ class AuthServiceTest {
 
         when(valueOperations.get(AuthService.SESSION_PREFIX + userId)).thenReturn("otro-jti");
 
-        assertThatThrownBy(() -> authService.refresh(new RefreshRequest(refreshToken)))
+        RefreshRequest request = new RefreshRequest(refreshToken);
+        assertThatThrownBy(() -> authService.refresh(request))
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("revocada");
     }
@@ -291,11 +296,9 @@ class AuthServiceTest {
         when(userRepository.findById(existingUser.getId())).thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("WrongPass1", "hashed")).thenReturn(false);
 
-        assertThatThrownBy(
-                        () ->
-                                authService.changePassword(
-                                        existingUser.getId(),
-                                        new ChangePasswordRequest("WrongPass1", "NewPass1")))
+        UUID userId = existingUser.getId();
+        ChangePasswordRequest request = new ChangePasswordRequest("WrongPass1", "NewPass1");
+        assertThatThrownBy(() -> authService.changePassword(userId, request))
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("incorrecta");
     }
@@ -305,11 +308,9 @@ class AuthServiceTest {
         existingUser.setPasswordHash(null);
         when(userRepository.findById(existingUser.getId())).thenReturn(Optional.of(existingUser));
 
-        assertThatThrownBy(
-                        () ->
-                                authService.changePassword(
-                                        existingUser.getId(),
-                                        new ChangePasswordRequest("Old", "NewPass1")))
+        UUID userId = existingUser.getId();
+        ChangePasswordRequest request = new ChangePasswordRequest("Old", "NewPass1");
+        assertThatThrownBy(() -> authService.changePassword(userId, request))
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("sociales");
     }
@@ -364,10 +365,8 @@ class AuthServiceTest {
         when(userRepository.findByResetToken("expired-token"))
                 .thenReturn(Optional.of(existingUser));
 
-        assertThatThrownBy(
-                        () ->
-                                authService.resetPassword(
-                                        new ResetPasswordRequest("expired-token", "NewPass1")))
+        ResetPasswordRequest request = new ResetPasswordRequest("expired-token", "NewPass1");
+        assertThatThrownBy(() -> authService.resetPassword(request))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("expirado");
     }
@@ -376,10 +375,8 @@ class AuthServiceTest {
     void resetPasswordRejectsInvalidToken() {
         when(userRepository.findByResetToken("bad-token")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(
-                        () ->
-                                authService.resetPassword(
-                                        new ResetPasswordRequest("bad-token", "NewPass1")))
+        ResetPasswordRequest request = new ResetPasswordRequest("bad-token", "NewPass1");
+        assertThatThrownBy(() -> authService.resetPassword(request))
                 .isInstanceOf(BadRequestException.class);
     }
 

@@ -1,19 +1,10 @@
 package com.etribunal.core.media.application;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
 class PresignedUrlServiceTest {
-
-    @Test
-    void extractExtension_returnsExtensionFromFilename() {
-        // Can't test private method directly, but we can test the validation
-        // through the public API behavior
-        PresignedUrlService service = new PresignedUrlService(null, "test-bucket");
-        // The extension extraction is internal; validation tests cover the flow
-    }
 
     @Test
     void validateContentType_throwsOnNull() {

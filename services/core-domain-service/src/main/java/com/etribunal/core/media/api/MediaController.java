@@ -1,7 +1,6 @@
 package com.etribunal.core.media.api;
 
 import com.etribunal.core.media.application.MediaService;
-import com.etribunal.core.media.application.PresignedUrlService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;

@@ -22,8 +22,6 @@ public class LocalModerationProvider implements ModerationProvider {
 
     private static final Logger log = LoggerFactory.getLogger(LocalModerationProvider.class);
 
-    private static final double MIN_RISK_SCORE = 0.5;
-
     @Value("classpath:moderation/moderation-dictionaries.json")
     private Resource dictionaryResource;
 

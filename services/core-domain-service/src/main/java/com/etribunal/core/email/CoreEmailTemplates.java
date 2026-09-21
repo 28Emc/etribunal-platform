@@ -6,6 +6,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class CoreEmailTemplates {
 
+    private static final String CASE_PATH = "/cases/";
+    private static final String VER_CASO = "Ver Caso";
+
     private final String appUrl;
     private final String moderatorEmail;
 
@@ -22,8 +25,8 @@ public class CoreEmailTemplates {
                 "Tu caso <strong>" + escapeHtml(caseTitle) + "</strong> ha sido reportado por un moderador.",
                 "Motivo: " + escapeHtml(reportReason),
                 "",
-                appUrl + "/cases/" + caseTitle,
-                "Ver Caso");
+                appUrl + CASE_PATH + caseTitle,
+                VER_CASO);
     }
 
     public String caseReportedToModeratorBody(String caseTitle, String sideAContent, String caseType, String category, String creatorUsername, String caseId, java.util.List<String> imageUrls) {
@@ -45,8 +48,8 @@ public class CoreEmailTemplates {
                         "<p style=\"color: #666; font-size: 16px; background: #f5f5f5; padding: 12px; border-radius: 8px;\">" + escapeHtml(sideAContent) + "</p>" +
                         "<p style=\"color: #666; font-size: 16px;\"><strong>Imágenes adjuntas (" + (imageUrls != null ? imageUrls.size() : 0) + "):</strong></p>" +
                         "<ul style=\"color: #666; font-size: 14px;\">" + imagesHtml + "</ul>",
-                appUrl + "/cases/" + caseId,
-                "Ver Caso");
+                appUrl + CASE_PATH + caseId,
+                VER_CASO);
     }
 
     public String caseEditedAfterReportBody(String caseTitle, String caseId) {
@@ -55,8 +58,8 @@ public class CoreEmailTemplates {
                 "El caso <strong>" + escapeHtml(caseTitle) + "</strong> que reportaste ha sido editado por su creador.",
                 "Por favor revisa los cambios y toma las acciones necesarias.",
                 "",
-                appUrl + "/cases/" + caseId,
-                "Ver Caso");
+                appUrl + CASE_PATH + caseId,
+                VER_CASO);
     }
 
     private String htmlWrapper(String title, String greeting, String bodyText, String extraBody, String buttonUrl, String buttonText) {

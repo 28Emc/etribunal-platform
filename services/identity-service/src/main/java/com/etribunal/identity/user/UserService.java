@@ -25,6 +25,13 @@ public class UserService {
     static final String ANON_USERNAME = "Anonymous Judge";
     static final String ANON_AVATAR = "https://secure.gravatar.com/avatar/0?d=mp&f=y";
 
+    private static final String MSG_USER_NOT_FOUND = "Usuario no encontrado";
+    private static final String KEY_FOLLOWING = "following";
+    private static final String KEY_CREATED_AT = "created_at";
+    private static final String KEY_USERNAME = "username";
+    private static final String KEY_AVATAR_URL = "avatar_url";
+    private static final String KEY_IS_ANONYMOUS = "is_anonymous";
+
     private final UserRepository userRepository;
     private final FollowRepository followRepository;
     private final InternalNotificationsClient notificationsClient;
@@ -48,7 +55,7 @@ public class UserService {
         UserEntity user =
                 userRepository
                         .findByUsernameAndDeletedAtNull(username)
-                        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+                        .orElseThrow(() -> new NotFoundException(MSG_USER_NOT_FOUND));
 
         Map<String, Object> view = maskedPublicView(user, requesterId);
         view.put("is_following", requesterId != null && isFollowing(requesterId, user.getId()));
@@ -62,7 +69,7 @@ public class UserService {
         UserEntity user =
                 userRepository
                         .findByIdAndDeletedAtNull(userId)
-                        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+                        .orElseThrow(() -> new NotFoundException(MSG_USER_NOT_FOUND));
 
         if (dto.username() != null && !dto.username().equalsIgnoreCase(user.getUsername())) {
             if (userRepository.existsByUsernameIgnoreCase(dto.username())) {
@@ -92,12 +99,12 @@ public class UserService {
         UserEntity target =
                 userRepository
                         .findByUsernameAndDeletedAtNull(targetUsername)
-                        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+                        .orElseThrow(() -> new NotFoundException(MSG_USER_NOT_FOUND));
 
         UserEntity follower =
                 userRepository
                         .findByIdAndDeletedAtNull(followerId)
-                        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+                        .orElseThrow(() -> new NotFoundException(MSG_USER_NOT_FOUND));
 
         if (Boolean.TRUE.equals(follower.getIsAnonymous())) {
             throw new BadRequestException("No puedes seguir a otros usuarios siendo anónimo");
@@ -109,7 +116,7 @@ public class UserService {
         FollowId id = new FollowId(followerId, target.getId());
         if (followRepository.existsById(id)) {
             followRepository.deleteById(id);
-            return Map.of("following", false);
+            return Map.of(KEY_FOLLOWING, false);
         }
         followRepository.save(new FollowEntity(follower, target));
 
@@ -121,7 +128,7 @@ public class UserService {
                 Map.of("follower_id", followerId.toString(),
                        "follower_username", follower.getUsername()));
 
-        return Map.of("following", true);
+        return Map.of(KEY_FOLLOWING, true);
     }
 
     @Transactional(readOnly = true)
@@ -129,7 +136,7 @@ public class UserService {
         UserEntity user =
                 userRepository
                         .findByUsernameAndDeletedAtNull(username)
-                        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+                        .orElseThrow(() -> new NotFoundException(MSG_USER_NOT_FOUND));
 
         return followRepository
                 .findByFollowingIdOrderByCreatedAtDesc(user.getId(), Pageable.unpaged())
@@ -138,7 +145,7 @@ public class UserService {
                         f -> {
                             Map<String, Object> row = new LinkedHashMap<>();
                             row.put("follower", maskedPublicView(f.getFollower(), requesterId));
-                            row.put("created_at", f.getCreatedAt());
+                            row.put(KEY_CREATED_AT, f.getCreatedAt());
                             return row;
                         })
                 .toList();
@@ -149,7 +156,7 @@ public class UserService {
         UserEntity user =
                 userRepository
                         .findByUsernameAndDeletedAtNull(username)
-                        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+                        .orElseThrow(() -> new NotFoundException(MSG_USER_NOT_FOUND));
 
         return followRepository
                 .findByFollowerIdOrderByCreatedAtDesc(user.getId(), Pageable.unpaged())
@@ -157,8 +164,8 @@ public class UserService {
                 .map(
                         f -> {
                             Map<String, Object> row = new LinkedHashMap<>();
-                            row.put("following", maskedPublicView(f.getFollowing(), requesterId));
-                            row.put("created_at", f.getCreatedAt());
+                            row.put(KEY_FOLLOWING, maskedPublicView(f.getFollowing(), requesterId));
+                            row.put(KEY_CREATED_AT, f.getCreatedAt());
                             return row;
                         })
                 .toList();
@@ -173,19 +180,14 @@ public class UserService {
                             UserEntity u = f.getFollowing();
                             Map<String, Object> row = new LinkedHashMap<>();
                             row.put("id", u.getId());
-                            row.put("username", u.getUsername());
-                            row.put("avatar_url", u.getAvatarUrl());
-                            row.put("is_anonymous", u.getIsAnonymous());
+                            row.put(KEY_USERNAME, u.getUsername());
+                            row.put(KEY_AVATAR_URL, u.getAvatarUrl());
+                            row.put(KEY_IS_ANONYMOUS, u.getIsAnonymous());
                             row.put("bio", u.getBio());
                             row.put("followers_count", followRepository.countByFollowingId(u.getId()));
                             return row;
                         })
                 .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<Map<String, Object>> searchUsers(String query, UUID requesterId, int take) {
-        return searchUsers(query, requesterId, take, 0);
     }
 
     @Transactional(readOnly = true)
@@ -195,7 +197,7 @@ public class UserService {
         if (normalized.length() < 2) {
             return List.of();
         }
-        int clamped = Math.min(Math.max(take, 1), 50);
+        int clamped = Math.clamp(take, 1, 50);
         int safeSkip = Math.max(skip, 0);
         int page = safeSkip / clamped;
         return userRepository.searchByUsername(normalized, PageRequest.of(page, clamped)).stream()
@@ -207,7 +209,7 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> topJudges(int limit, UUID currentUserId) {
-        int clamped = Math.min(Math.max(limit, 1), 50);
+        int clamped = Math.clamp(limit, 1, 50);
         List<UserEntity> users = userRepository.findTopJudges(PageRequest.of(0, clamped + 1));
 
         var followingIds =
@@ -228,9 +230,9 @@ public class UserService {
                         u -> {
                             Map<String, Object> row = new LinkedHashMap<>();
                             row.put("id", u.getId());
-                            row.put("username", u.getUsername());
-                            row.put("avatar_url", u.getAvatarUrl());
-                            row.put("is_anonymous", u.getIsAnonymous());
+                            row.put(KEY_USERNAME, u.getUsername());
+                            row.put(KEY_AVATAR_URL, u.getAvatarUrl());
+                            row.put(KEY_IS_ANONYMOUS, u.getIsAnonymous());
                             row.put("followers_count", followRepository.countByFollowingId(u.getId()));
                             if (currentUserId != null) {
                                 row.put("is_following", followingIds.contains(u.getId()));
@@ -245,7 +247,7 @@ public class UserService {
         UserEntity user =
                 userRepository
                         .findByUsernameAndDeletedAtNull(username)
-                        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+                        .orElseThrow(() -> new NotFoundException(MSG_USER_NOT_FOUND));
 
         if (!user.getId().equals(userId)) {
             throw new BadRequestException("No puedes eliminar la cuenta de otro usuario");
@@ -268,22 +270,22 @@ public class UserService {
     private UserEntity requireUser(UUID userId) {
         return userRepository
                 .findByIdAndDeletedAtNull(userId)
-                .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+                .orElseThrow(() -> new NotFoundException(MSG_USER_NOT_FOUND));
     }
 
     private Map<String, Object> ownView(UserEntity user) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", user.getId());
-        view.put("username", user.getUsername());
+        view.put(KEY_USERNAME, user.getUsername());
         view.put("email", user.getEmail());
-        view.put("avatar_url", user.getAvatarUrl());
+        view.put(KEY_AVATAR_URL, user.getAvatarUrl());
         view.put("bio", user.getBio());
         view.put("display_name", user.getDisplayName());
-        view.put("is_anonymous", user.getIsAnonymous());
+        view.put(KEY_IS_ANONYMOUS, user.getIsAnonymous());
         view.put("receive_notifications", user.getReceiveNotifications());
         view.put("language", user.getLanguage());
         view.put("role", user.getRole());
-        view.put("created_at", user.getCreatedAt());
+        view.put(KEY_CREATED_AT, user.getCreatedAt());
         view.put("hasPassword", user.getPasswordHash() != null && !user.getPasswordHash().isEmpty());
         return view;
     }
@@ -294,19 +296,19 @@ public class UserService {
                         && !user.getId().equals(requesterId);
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", user.getId());
-        view.put("username", hideIdentity ? ANON_USERNAME : user.getUsername());
-        view.put("avatar_url", hideIdentity ? ANON_AVATAR : user.getAvatarUrl());
+        view.put(KEY_USERNAME, hideIdentity ? ANON_USERNAME : user.getUsername());
+        view.put(KEY_AVATAR_URL, hideIdentity ? ANON_AVATAR : user.getAvatarUrl());
         view.put("bio", hideIdentity ? null : user.getBio());
-        view.put("is_anonymous", user.getIsAnonymous());
-        view.put("created_at", user.getCreatedAt());
+        view.put(KEY_IS_ANONYMOUS, user.getIsAnonymous());
+        view.put(KEY_CREATED_AT, user.getCreatedAt());
         return view;
     }
 
     private Map<String, Object> searchView(UserEntity user) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", user.getId());
-        view.put("username", user.getUsername());
-        view.put("avatar_url", user.getAvatarUrl());
+        view.put(KEY_USERNAME, user.getUsername());
+        view.put(KEY_AVATAR_URL, user.getAvatarUrl());
         view.put("bio", user.getBio());
         return view;
     }

@@ -29,6 +29,10 @@ import org.springframework.web.server.ResponseStatusException;
 public class CommentService {
 
     private static final int MAX_DEPTH = 2;
+    private static final String KEY_COMMENT_ID = "comment_id";
+    private static final String KEY_CASE_ID = "case_id";
+    private static final String KEY_CASE_TITLE = "case_title";
+    private static final String KEY_ACTOR_ID = "actor_id";
 
     private final CommentRepository commentRepository;
     private final CaseRepository caseRepository;
@@ -62,7 +66,7 @@ public class CommentService {
     public CommentPage getCommentsCursor(UUID caseId, String before, String after,
                                          Integer limit) {
         requireCase(caseId);
-        int pageSize = Math.min(Math.max(limit != null ? limit : 20, 1), 100);
+        int pageSize = Math.clamp(limit != null ? limit : 20, 1, 100);
         Pageable pageable = PageRequest.of(0, pageSize + 1);
 
         List<CommentEntity> top;
@@ -138,7 +142,7 @@ public class CommentService {
         caseRepository.adjustCommentCounter(caseId, 1);
 
         Map<String, Object> metadata = new java.util.HashMap<>();
-        metadata.put("comment_id",
+        metadata.put(KEY_COMMENT_ID,
                 saved.getId() != null ? saved.getId().toString() : null);
         metadata.put("is_reply", parentId != null);
         analyticsService.log(InteractionAction.COMMENT.name(), caseId, userId,
@@ -157,19 +161,19 @@ public class CommentService {
         if (c.getSideAUserId() != null && !c.getSideAUserId().equals(actorId)) {
             notificationService.createNotification(c.getSideAUserId(), actorId,
                     NotificationType.NEW_COMMENT,
-                    Map.of("case_id", c.getId().toString(),
-                           "case_title", c.getTitle(),
-                           "comment_id", saved.getId().toString(),
-                           "actor_id", actorId.toString()));
+                    Map.of(KEY_CASE_ID, c.getId().toString(),
+                           KEY_CASE_TITLE, c.getTitle(),
+                           KEY_COMMENT_ID, saved.getId().toString(),
+                           KEY_ACTOR_ID, actorId.toString()));
         }
         // Notificar a Side B
         if (c.getSideBUserId() != null && !c.getSideBUserId().equals(actorId)) {
             notificationService.createNotification(c.getSideBUserId(), actorId,
                     NotificationType.NEW_COMMENT,
-                    Map.of("case_id", c.getId().toString(),
-                           "case_title", c.getTitle(),
-                           "comment_id", saved.getId().toString(),
-                           "actor_id", actorId.toString()));
+                    Map.of(KEY_CASE_ID, c.getId().toString(),
+                           KEY_CASE_TITLE, c.getTitle(),
+                           KEY_COMMENT_ID, saved.getId().toString(),
+                           KEY_ACTOR_ID, actorId.toString()));
         }
         // Si es respuesta, notificar al autor del comentario padre
         if (parentId != null) {
@@ -177,10 +181,10 @@ public class CommentService {
                 if (!parent.getUserId().equals(actorId)) {
                     notificationService.createNotification(parent.getUserId(), actorId,
                             NotificationType.NEW_COMMENT,
-                            Map.of("case_id", c.getId().toString(),
-                                   "case_title", c.getTitle(),
-                                   "comment_id", saved.getId().toString(),
-                                   "actor_id", actorId.toString()));
+                            Map.of(KEY_CASE_ID, c.getId().toString(),
+                                   KEY_CASE_TITLE, c.getTitle(),
+                                   KEY_COMMENT_ID, saved.getId().toString(),
+                                   KEY_ACTOR_ID, actorId.toString()));
                 }
             });
         }

@@ -17,7 +17,6 @@ import com.etribunal.core.comments.CommentRepository;
 import com.etribunal.core.config.FrontendUrlProperties;
 import com.etribunal.core.moderation.ModerationService;
 import com.etribunal.core.reactions.ReactionRepository;
-import com.etribunal.core.reactions.ReactionTarget;
 import com.etribunal.core.saved.CaseShareRepository;
 import com.etribunal.core.saved.SavedCaseRepository;
 import com.etribunal.core.security.CurrentUserResolver;

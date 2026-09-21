@@ -26,7 +26,6 @@ import java.util.*;
 public class CaseGenerator {
 
     private static final Logger log = LoggerFactory.getLogger(CaseGenerator.class);
-    private static final int MAX_DUPLICATE_ATTEMPTS = 3;
     private static final int MODERATION_POLL_ATTEMPTS = 14;
     private static final long MODERATION_POLL_DELAY_MS = 150;
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -36,7 +35,6 @@ public class CaseGenerator {
     private final AutomationCaseRepository caseRepository;
     private final AutomationRunRepository runRepository;
     private final JdbcTemplate jdbcTemplate;
-    private final UserSelector userSelector;
     private final AutomationEventPublisher eventPublisher;
     private final EngagementService engagementService;
     private final LiveContextService liveContextService;
@@ -47,7 +45,6 @@ public class CaseGenerator {
             AutomationCaseRepository caseRepository,
             AutomationRunRepository runRepository,
             JdbcTemplate jdbcTemplate,
-            UserSelector userSelector,
             AutomationEventPublisher eventPublisher,
             EngagementService engagementService,
             LiveContextService liveContextService
@@ -57,7 +54,6 @@ public class CaseGenerator {
         this.caseRepository = caseRepository;
         this.runRepository = runRepository;
         this.jdbcTemplate = jdbcTemplate;
-        this.userSelector = userSelector;
         this.eventPublisher = eventPublisher;
         this.engagementService = engagementService;
         this.liveContextService = liveContextService;

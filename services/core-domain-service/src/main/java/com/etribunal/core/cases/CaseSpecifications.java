@@ -4,7 +4,6 @@ import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -51,7 +50,7 @@ public final class CaseSpecifications {
     }
 
     static Pageable pageable(int skip, int take, boolean trending) {
-        int limit = Math.min(Math.max(take, 1), 50);
+        int limit = Math.clamp(take, 1, 50);
         Sort sort = trending
                 ? Sort.by(Sort.Direction.DESC, "totalVotes")
                 : Sort.by(Sort.Direction.DESC, "createdAt");

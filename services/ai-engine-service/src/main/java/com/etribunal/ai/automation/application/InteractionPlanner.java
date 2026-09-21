@@ -10,13 +10,13 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class InteractionPlanner {
 
     private static final Logger log = LoggerFactory.getLogger(InteractionPlanner.class);
     private static final int MAX_VALIDATION_ATTEMPTS = 2;
+    private static final String INTERACTION_PREFIX = "Interaction ";
 
     private final AIProvider aiProvider;
     private final AutomationConfig config;
@@ -114,32 +114,32 @@ public class InteractionPlanner {
         for (int i = 0; i < plan.interactions().size(); i++) {
             PlannedInteraction pi = plan.interactions().get(i);
             if (pi.type() == null) {
-                errors.add("Interaction " + i + ": missing type");
+                errors.add(INTERACTION_PREFIX + i + ": missing type");
                 continue;
             }
 
             switch (pi.type()) {
                 case COMMENT -> {
                     if (pi.content() == null || pi.content().isBlank()) {
-                        errors.add("Interaction " + i + ": COMMENT requires content");
+                        errors.add(INTERACTION_PREFIX + i + ": COMMENT requires content");
                     }
                 }
                 case REPLY -> {
                     if (pi.content() == null || pi.content().isBlank()) {
-                        errors.add("Interaction " + i + ": REPLY requires content");
+                        errors.add(INTERACTION_PREFIX + i + ": REPLY requires content");
                     }
                     if (pi.replyToIndex() == null || pi.replyToIndex() < 0 || pi.replyToIndex() >= i) {
-                        errors.add("Interaction " + i + ": REPLY requires valid replyToIndex < " + i);
+                        errors.add(INTERACTION_PREFIX + i + ": REPLY requires valid replyToIndex < " + i);
                     }
                 }
                 case REACTION -> {
                     if (pi.reaction() == null || !List.of("LIKE", "LOVE", "ANGRY").contains(pi.reaction())) {
-                        errors.add("Interaction " + i + ": REACTION requires valid emoji (LIKE/LOVE/ANGRY)");
+                        errors.add(INTERACTION_PREFIX + i + ": REACTION requires valid emoji (LIKE/LOVE/ANGRY)");
                     }
                 }
                 case VOTE -> {
                     if (pi.option() == null || !List.of("A", "B", "BOTH_WRONG").contains(pi.option())) {
-                        errors.add("Interaction " + i + ": VOTE requires valid option (A/B/BOTH_WRONG)");
+                        errors.add(INTERACTION_PREFIX + i + ": VOTE requires valid option (A/B/BOTH_WRONG)");
                     }
                 }
             }

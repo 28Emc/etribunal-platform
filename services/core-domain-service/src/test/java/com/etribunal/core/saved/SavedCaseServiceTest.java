@@ -13,8 +13,6 @@ import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.CaseStatus;
 import com.etribunal.core.cases.CaseType;
-import com.etribunal.core.users.InternalUsersClient;
-import com.etribunal.core.users.UserSummary;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -39,9 +37,6 @@ class SavedCaseServiceTest {
     private CaseRepository caseRepository;
 
     @Mock
-    private InternalUsersClient usersClient;
-
-    @Mock
     private AnalyticsService analyticsService;
 
     private SavedCaseService savedCaseService;
@@ -52,7 +47,7 @@ class SavedCaseServiceTest {
     @BeforeEach
     void setUp() {
         savedCaseService = new SavedCaseService(savedCaseRepository, caseShareRepository,
-                caseRepository, usersClient, analyticsService);
+                caseRepository, analyticsService);
         lenient().when(caseRepository.findById(caseId))
                 .thenReturn(Optional.of(publicCase()));
     }

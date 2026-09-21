@@ -1,7 +1,6 @@
 package com.etribunal.ai.automation.api;
 
 import com.etribunal.ai.automation.application.AutomationOrchestrator;
-import com.etribunal.ai.automation.application.AutomationScheduler;
 import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.infrastructure.settings.AutomationSettingsService;
@@ -21,7 +20,6 @@ public class AutomationController {
     private static final Logger log = LoggerFactory.getLogger(AutomationController.class);
 
     private final AutomationOrchestrator orchestrator;
-    private final AutomationScheduler scheduler;
     private final AutomationSettingsService settingsService;
     private final EngagementService engagementService;
     private final AutomationConfig config;
@@ -30,7 +28,6 @@ public class AutomationController {
 
     public AutomationController(
             AutomationOrchestrator orchestrator,
-            AutomationScheduler scheduler,
             AutomationSettingsService settingsService,
             EngagementService engagementService,
             AutomationConfig config,
@@ -38,7 +35,6 @@ public class AutomationController {
             AutomationWebSocketController wsController
     ) {
         this.orchestrator = orchestrator;
-        this.scheduler = scheduler;
         this.settingsService = settingsService;
         this.engagementService = engagementService;
         this.config = config;

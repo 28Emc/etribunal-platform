@@ -1,9 +1,6 @@
 package com.etribunal.ai.automation.infrastructure.ai;
 
-import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.AIProvider;
-import com.etribunal.ai.automation.domain.AiError;
-import com.etribunal.ai.automation.domain.AiErrorCode;
 import com.etribunal.ai.automation.domain.dtos.*;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -11,7 +8,6 @@ import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -22,12 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @ConditionalOnProperty(prefix = "etribunal.automation.ai", name = "provider", havingValue = "mock", matchIfMissing = true)
 public class MockAIProvider implements AIProvider {
 
-    private final AutomationConfig automationConfig;
     private final AtomicInteger callCounter = new AtomicInteger(0);
-
-    public MockAIProvider(AutomationConfig automationConfig) {
-        this.automationConfig = automationConfig;
-    }
 
     @Override
     public Mono<GeneratedCase> generateCase(GenerateCaseInput input) {

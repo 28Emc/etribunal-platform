@@ -65,8 +65,8 @@ class AutomationControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).containsKey("runId");
-        assertThat(response.getBody().get("started")).isEqualTo(true);
-        assertThat(response.getBody().get("status")).isEqualTo("RUNNING");
+        assertThat(response.getBody()).containsEntry("started", true);
+        assertThat(response.getBody()).containsEntry("status", "RUNNING");
     }
 
     @Test
@@ -79,7 +79,7 @@ class AutomationControllerTest {
         ResponseEntity<Map<String, Object>> response = controller.startRun(ADMIN, true);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-        assertThat(response.getBody().get("started")).isEqualTo(true);
+        assertThat(response.getBody()).containsEntry("started", true);
     }
 
     @Test
@@ -102,7 +102,7 @@ class AutomationControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).containsKey("status");
-        assertThat(response.getBody().get("status")).isEqualTo("ok");
+        assertThat(response.getBody()).containsEntry("status", "ok");
     }
 
     @Test

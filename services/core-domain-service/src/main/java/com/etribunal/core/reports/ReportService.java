@@ -2,14 +2,11 @@ package com.etribunal.core.reports;
 
 import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
-import com.etribunal.core.cases.CaseStatus;
-import com.etribunal.core.cases.ModerationStatus;
 import com.etribunal.core.notifications.NotificationService;
 import com.etribunal.common.domain.notification.NotificationType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;

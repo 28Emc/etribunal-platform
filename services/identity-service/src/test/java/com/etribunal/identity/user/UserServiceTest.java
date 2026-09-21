@@ -10,7 +10,6 @@ import static org.mockito.Mockito.when;
 
 import com.etribunal.common.domain.exception.BadRequestException;
 import com.etribunal.common.domain.exception.ConflictException;
-import com.etribunal.common.domain.exception.NotFoundException;
 import com.etribunal.identity.follow.FollowEntity;
 import com.etribunal.identity.follow.FollowId;
 import com.etribunal.identity.follow.FollowRepository;
@@ -68,8 +67,8 @@ class UserServiceTest {
 
         var view = userService.myProfile(userA.getId());
 
-        assertThat(view.get("hasPassword")).isEqualTo(Boolean.TRUE);
-        assertThat(view.get("email")).isEqualTo("ana@test.com");
+        assertThat(view).containsEntry("hasPassword", Boolean.TRUE);
+        assertThat(view).containsEntry("email", "ana@test.com");
         assertThat(view.toString()).doesNotContain("hashed");
     }
 
@@ -83,11 +82,11 @@ class UserServiceTest {
 
         var view = userService.profile("ghost_1", userA.getId());
 
-        assertThat(view.get("username")).isEqualTo(UserService.ANON_USERNAME);
-        assertThat(view.get("avatar_url")).isEqualTo(UserService.ANON_AVATAR);
+        assertThat(view).containsEntry("username", UserService.ANON_USERNAME);
+        assertThat(view).containsEntry("avatar_url", UserService.ANON_AVATAR);
         assertThat(view.get("bio")).isNull();
-        assertThat(view.get("followersCount")).isEqualTo(3L);
-        assertThat(view.get("is_following")).isEqualTo(Boolean.FALSE);
+        assertThat(view).containsEntry("followersCount", 3L);
+        assertThat(view).containsEntry("is_following", Boolean.FALSE);
     }
 
     @Test
@@ -100,7 +99,7 @@ class UserServiceTest {
 
         var view = userService.profile("ghost_1", anon.getId());
 
-        assertThat(view.get("username")).isEqualTo("ghost_1");
+        assertThat(view).containsEntry("username", "ghost_1");
     }
 
     @Test
@@ -109,10 +108,10 @@ class UserServiceTest {
                 .thenReturn(Optional.of(userA));
         when(userRepository.existsByUsernameIgnoreCase("beto_j")).thenReturn(true);
 
-        assertThatThrownBy(
-                        () ->
-                                userService.updateProfile(
-                                        userA.getId(), new UpdateProfileRequest(null, null, "beto_j", null, null)))
+        UUID id = userA.getId();
+        UpdateProfileRequest request =
+                new UpdateProfileRequest(null, null, "beto_j", null, null);
+        assertThatThrownBy(() -> userService.updateProfile(id, request))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("username");
     }
@@ -127,10 +126,10 @@ class UserServiceTest {
                         userA.getId(),
                         new UpdateProfileRequest("nueva bio", "https://x/y.png", null, true, "en"));
 
-        assertThat(view.get("bio")).isEqualTo("nueva bio");
-        assertThat(view.get("avatar_url")).isEqualTo("https://x/y.png");
-        assertThat(view.get("is_anonymous")).isEqualTo(true);
-        assertThat(view.get("language")).isEqualTo("en");
+        assertThat(view).containsEntry("bio", "nueva bio");
+        assertThat(view).containsEntry("avatar_url", "https://x/y.png");
+        assertThat(view).containsEntry("is_anonymous", true);
+        assertThat(view).containsEntry("language", "en");
     }
 
     @Test
@@ -140,7 +139,8 @@ class UserServiceTest {
         when(userRepository.findByIdAndDeletedAtNull(userA.getId()))
                 .thenReturn(Optional.of(userA));
 
-        assertThatThrownBy(() -> userService.toggleFollow(userA.getId(), "ana_t"))
+        UUID id = userA.getId();
+        assertThatThrownBy(() -> userService.toggleFollow(id, "ana_t"))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("ti mismo");
     }
@@ -152,7 +152,8 @@ class UserServiceTest {
                 .thenReturn(Optional.of(userB));
         when(userRepository.findByIdAndDeletedAtNull(anon.getId())).thenReturn(Optional.of(anon));
 
-        assertThatThrownBy(() -> userService.toggleFollow(anon.getId(), "beto_j"))
+        UUID id = anon.getId();
+        assertThatThrownBy(() -> userService.toggleFollow(id, "beto_j"))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("anónimo");
     }
@@ -180,7 +181,8 @@ class UserServiceTest {
         when(userRepository.findByUsernameAndDeletedAtNull("beto_j"))
                 .thenReturn(Optional.of(userB));
 
-        assertThatThrownBy(() -> userService.softDelete(userA.getId(), "beto_j"))
+        UUID id = userA.getId();
+        assertThatThrownBy(() -> userService.softDelete(id, "beto_j"))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("otro usuario");
 
@@ -202,7 +204,7 @@ class UserServiceTest {
 
     @Test
     void searchRequiresMinTwoChars() {
-        assertThat(userService.searchUsers("a", null, 8)).isEmpty();
+        assertThat(userService.searchUsers("a", null, 8, 0)).isEmpty();
         verify(userRepository, never()).searchByUsername(any(), any());
     }
 
@@ -215,7 +217,7 @@ class UserServiceTest {
         var result = userService.topJudges(10, userA.getId());
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).get("username")).isEqualTo("carl_m");
-        assertThat(result.get(0).get("followers_count")).isEqualTo(9L);
+        assertThat(result.get(0)).containsEntry("username", "carl_m");
+        assertThat(result.get(0)).containsEntry("followers_count", 9L);
     }
 }

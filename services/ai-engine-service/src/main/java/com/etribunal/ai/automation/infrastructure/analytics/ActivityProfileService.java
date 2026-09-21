@@ -120,7 +120,7 @@ public class ActivityProfileService {
                         fill = (double) (realizedTotal - a.getMinTransitionSamples()) / d;
                     }
                     alpha = 0.5 + 0.5 * fill;
-                    alpha = Math.min(1.0, Math.max(0.0, alpha));
+                    alpha = Math.clamp(alpha, 0.0, 1.0);
                     p = ProfilePhase.TRANSITION;
                 } else {
                     alpha = 0.0;

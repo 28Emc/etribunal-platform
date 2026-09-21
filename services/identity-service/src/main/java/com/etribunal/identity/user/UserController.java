@@ -37,7 +37,7 @@ public class UserController {
             @RequestParam(name = "take", defaultValue = "8") int take,
             @AuthenticationPrincipal AuthenticatedUser principal) {
         return ResponseEntity.ok(
-                ApiResponse.ok(userService.searchUsers(q, userIdOrNull(principal), take)));
+                        ApiResponse.ok(userService.searchUsers(q, userIdOrNull(principal), take, 0)));
     }
 
     @GetMapping("/top-judges")

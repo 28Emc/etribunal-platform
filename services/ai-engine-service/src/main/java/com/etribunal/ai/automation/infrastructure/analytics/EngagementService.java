@@ -60,7 +60,7 @@ public class EngagementService {
     }
 
     /** Devuelve los casos generados por IA de mejor score, recientes. Vacío si no hay datos. */
-    public List<CasePerformance> findTopPerformingCases(int topN) {        int limit = Math.max(1, Math.min(50, topN));
+    public List<CasePerformance> findTopPerformingCases(int topN) {        int limit = Math.clamp(topN, 1, 50);
         try {
             return jdbcTemplate.query(
                 """

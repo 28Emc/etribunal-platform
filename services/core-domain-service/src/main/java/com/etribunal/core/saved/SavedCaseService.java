@@ -4,8 +4,6 @@ import com.etribunal.core.analytics.AnalyticsService;
 import com.etribunal.core.analytics.InteractionAction;
 import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
-import com.etribunal.core.users.InternalUsersClient;
-import com.etribunal.core.users.UserSummary;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,18 +23,15 @@ public class SavedCaseService {
     private final SavedCaseRepository savedCaseRepository;
     private final CaseShareRepository caseShareRepository;
     private final CaseRepository caseRepository;
-    private final InternalUsersClient usersClient;
     private final AnalyticsService analyticsService;
 
     public SavedCaseService(SavedCaseRepository savedCaseRepository,
                             CaseShareRepository caseShareRepository,
                             CaseRepository caseRepository,
-                            InternalUsersClient usersClient,
                             AnalyticsService analyticsService) {
         this.savedCaseRepository = savedCaseRepository;
         this.caseShareRepository = caseShareRepository;
         this.caseRepository = caseRepository;
-        this.usersClient = usersClient;
         this.analyticsService = analyticsService;
     }
 

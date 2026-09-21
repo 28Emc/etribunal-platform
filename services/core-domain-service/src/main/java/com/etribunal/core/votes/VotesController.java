@@ -71,7 +71,7 @@ public class VotesController {
             HttpServletRequest request) {
         UUID userId = currentUser.requiredUserId(request);
         int page = Math.max(skip != null ? skip : 0, 0);
-        int size = Math.min(Math.max(take != null ? take : 20, 1), 100);
+        int size = Math.clamp(take != null ? take : 20, 1, 100);
         return ResponseEntity.ok(ApiResponse.ok(
                 caseService.getCasesVotedByUser(userId, page, size)));
     }

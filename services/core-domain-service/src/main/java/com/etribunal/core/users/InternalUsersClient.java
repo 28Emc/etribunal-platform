@@ -23,11 +23,9 @@ public class InternalUsersClient {
             };
 
     private final RestClient restClient;
-    private final InternalApiProperties properties;
 
     public InternalUsersClient(RestClient.Builder builder,
                                InternalApiProperties properties) {
-        this.properties = properties;
         this.restClient = builder
                 .baseUrl(properties.identityBaseUrl())
                 .defaultHeader("X-Internal-Token", properties.token())

@@ -14,7 +14,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -57,9 +56,9 @@ class MediaServiceTest {
         UUID caseId = UUID.randomUUID();
         when(imageRepository.countByCaseId(caseId)).thenReturn(5L);
 
-        assertThatThrownBy(() -> mediaService.requestUpload(
-                caseId, "A",
-                new MediaService.UploadRequest("image/jpeg", "photo.jpg", 1024)))
+        MediaService.UploadRequest request =
+                new MediaService.UploadRequest("image/jpeg", "photo.jpg", 1024);
+        assertThatThrownBy(() -> mediaService.requestUpload(caseId, "A", request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Maximum 5 images");
     }

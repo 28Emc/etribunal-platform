@@ -22,12 +22,9 @@ import org.springframework.scheduling.support.CronTrigger;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalTime;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ScheduledFuture;
 
 @ExtendWith(MockitoExtension.class)
 class AutomationSchedulerTest {

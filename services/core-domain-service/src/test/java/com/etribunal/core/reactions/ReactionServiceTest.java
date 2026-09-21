@@ -158,7 +158,7 @@ class ReactionServiceTest {
                 })
                 .anySatisfy(r -> {
                     assertThat(r.emoji()).isEqualTo("LOVE");
-                    assertThat(r.count()).isEqualTo(0);
+                    assertThat(r.count()).isZero();
                 });
         assertThat(summary.user_reaction()).isEqualTo("LIKE");
     }

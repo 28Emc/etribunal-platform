@@ -6,7 +6,6 @@ import com.etribunal.ai.automation.infrastructure.analytics.ActivityProfileServi
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
 import com.etribunal.ai.automation.repository.AutomationRunRepository;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +22,6 @@ import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 public class AutomationScheduler {
@@ -86,7 +84,7 @@ public class AutomationScheduler {
             log.info("Automation disabled (AI_ENABLED=false), no daily run scheduled");
             return;
         }
-        int hour = Math.max(0, Math.min(23, config.getRunHour()));
+        int hour = Math.clamp(config.getRunHour(), 0, 23);
         String cron = "0 0 " + hour + " * * *";
         taskScheduler.schedule(this::dailyRun, new CronTrigger(cron));
         log.info("Daily automation run scheduled at {}:00 ({})", hour, cron);

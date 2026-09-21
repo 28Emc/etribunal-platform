@@ -1,8 +1,6 @@
 package com.etribunal.ai.automation.application;
 
 import com.etribunal.ai.automation.api.AutomationWebSocketController;
-import com.etribunal.ai.automation.application.CaseGenerator;
-import com.etribunal.ai.automation.application.UserSelector;
 import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.domain.AutomationRunEntity;
 import com.etribunal.ai.automation.domain.AutomationRunStatus;
@@ -144,7 +142,7 @@ class AutomationOrchestratorTest {
 
         assertThat(run.getStatus()).isEqualTo(AutomationRunStatus.COMPLETED);
         assertThat(run.getCasesCreated()).isEqualTo(5);
-        assertThat(run.getCasesFailed()).isEqualTo(0);
+        assertThat(run.getCasesFailed()).isZero();
         verify(runRepository).save(run);
     }
 
@@ -175,7 +173,7 @@ class AutomationOrchestratorTest {
         orchestrator.finishRun(runId, 0, 5);
 
         assertThat(run.getStatus()).isEqualTo(AutomationRunStatus.FAILED);
-        assertThat(run.getCasesCreated()).isEqualTo(0);
+        assertThat(run.getCasesCreated()).isZero();
         assertThat(run.getCasesFailed()).isEqualTo(5);
         verify(runRepository).save(run);
     }

@@ -2,7 +2,6 @@ package com.etribunal.ai.automation.infrastructure.ai;
 
 import com.etribunal.ai.automation.domain.AiError;
 import com.etribunal.ai.automation.domain.AiErrorCode;
-import com.etribunal.ai.automation.domain.dtos.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import reactor.core.publisher.Mono;

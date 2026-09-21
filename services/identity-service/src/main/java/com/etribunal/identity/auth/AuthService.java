@@ -34,6 +34,7 @@ import org.springframework.stereotype.Service;
 public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+    private static final String MSG_USER_NOT_FOUND = "Usuario no encontrado";
 
     static final String ATTEMPTS_PREFIX = "auth:attempts:";
     static final String SESSION_PREFIX = "auth:session:";
@@ -171,7 +172,7 @@ public class AuthService {
         UserEntity user =
                 userRepository
                         .findById(UUID.fromString(userId))
-                        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+                        .orElseThrow(() -> new NotFoundException(MSG_USER_NOT_FOUND));
         if (!user.isActive()) {
             throw new UnauthorizedException("Cuenta inactiva");
         }
@@ -198,7 +199,7 @@ public class AuthService {
                 .findById(userId)
                 .filter(UserEntity::isActive)
                 .map(UserResponse::from)
-                .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+                .orElseThrow(() -> new NotFoundException(MSG_USER_NOT_FOUND));
     }
 
     // ──────────────────────── Change Password ────────────────────────
@@ -207,7 +208,7 @@ public class AuthService {
         UserEntity user =
                 userRepository
                         .findById(userId)
-                        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+                        .orElseThrow(() -> new NotFoundException(MSG_USER_NOT_FOUND));
 
         if (user.getPasswordHash() == null) {
             throw new UnauthorizedException(

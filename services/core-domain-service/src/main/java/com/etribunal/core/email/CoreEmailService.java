@@ -4,7 +4,6 @@ import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.domain.CaseImageEntity;
 import com.etribunal.core.cases.repository.CaseImageRepository;
-import com.etribunal.core.reports.ReportStatus;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

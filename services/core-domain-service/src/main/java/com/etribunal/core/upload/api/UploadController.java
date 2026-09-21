@@ -18,7 +18,7 @@ public class UploadController {
         this.uploadService = uploadService;
     }
 
-    // POST /upload/image → { url, public_id } (contrato legacy Cloudinary)
+    // Sube la imagen de un caso y devuelve su URL y public_id.
     @PostMapping("/upload/image")
     public ResponseEntity<ApiResponse<Map<String, String>>> uploadImage(
             @RequestParam("file") MultipartFile file) {
@@ -28,7 +28,7 @@ public class UploadController {
                 "public_id", result.publicId())));
     }
 
-    // POST /upload/avatar → { url }
+    // Sube el avatar del usuario y devuelve su URL.
     @PostMapping("/upload/avatar")
     public ResponseEntity<ApiResponse<Map<String, String>>> uploadAvatar(
             @RequestParam("file") MultipartFile file) {

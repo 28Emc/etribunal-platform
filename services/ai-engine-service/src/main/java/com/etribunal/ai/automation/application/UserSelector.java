@@ -1,6 +1,5 @@
 package com.etribunal.ai.automation.application;
 
-import com.etribunal.ai.automation.config.AutomationConfig;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;

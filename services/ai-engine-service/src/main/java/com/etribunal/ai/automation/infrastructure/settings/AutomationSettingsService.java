@@ -32,24 +32,45 @@ public class AutomationSettingsService {
     private static final Logger log = LoggerFactory.getLogger(AutomationSettingsService.class);
     private static final String TABLE = "automation_settings";
 
+    private static final String KEY_ENABLED = "enabled";
+    private static final String KEY_DRY_RUN = "dryRun";
+    private static final String KEY_ACTIVITY_WEIGHTED = "activityWeighted";
+    private static final String KEY_ENGAGEMENT_ENABLED = "engagementEnabled";
+    private static final String KEY_RUN_HOUR = "runHour";
+    private static final String KEY_DAILY_CASES_MIN = "dailyCasesMin";
+    private static final String KEY_DAILY_CASES_MAX = "dailyCasesMax";
+    private static final String KEY_USERS_PER_CASE_MIN = "usersPerCaseMin";
+    private static final String KEY_USERS_PER_CASE_MAX = "usersPerCaseMax";
+    private static final String KEY_MAX_INTERACTIONS_PER_USER_PER_CASE_MIN = "maxInteractionsPerUserPerCaseMin";
+    private static final String KEY_MAX_INTERACTIONS_PER_USER_PER_CASE_MAX = "maxInteractionsPerUserPerCaseMax";
+    private static final String KEY_INTENSITY_MIN = "intensityMin";
+    private static final String KEY_INTENSITY_MAX = "intensityMax";
+    private static final String KEY_SCHEDULING_INTERVAL_MIN = "schedulingIntervalMin";
+    private static final String KEY_SCHEDULING_INTERVAL_MAX = "schedulingIntervalMax";
+    private static final String KEY_SCHEDULING_WINDOW_HOURS = "schedulingWindowHours";
+    private static final String KEY_DAILY_POOL_SIZE = "dailyPoolSize";
+    private static final String KEY_ENGAGEMENT_TOP_EXAMPLES = "engagementTopExamples";
+    private static final String KEY_ENGAGEMENT_EVALUATION_DAYS = "engagementEvaluationDays";
+    private static final String KEY_RSS_FEED_URLS = "rssFeedUrls";
+
     private static final Set<String> BOOL_KEYS = Set.of(
-            "enabled", "dryRun", "activityWeighted", "engagementEnabled"
+            KEY_ENABLED, KEY_DRY_RUN, KEY_ACTIVITY_WEIGHTED, KEY_ENGAGEMENT_ENABLED
     );
 
     private static final Set<String> INT_KEYS = Set.of(
-            "runHour",
-            "dailyCasesMin", "dailyCasesMax",
-            "usersPerCaseMin", "usersPerCaseMax",
-            "maxInteractionsPerUserPerCaseMin", "maxInteractionsPerUserPerCaseMax",
-            "intensityMin", "intensityMax",
-            "schedulingIntervalMin", "schedulingIntervalMax",
-            "schedulingWindowHours", "dailyPoolSize",
-            "engagementTopExamples", "engagementEvaluationDays",
+            KEY_RUN_HOUR,
+            KEY_DAILY_CASES_MIN, KEY_DAILY_CASES_MAX,
+            KEY_USERS_PER_CASE_MIN, KEY_USERS_PER_CASE_MAX,
+            KEY_MAX_INTERACTIONS_PER_USER_PER_CASE_MIN, KEY_MAX_INTERACTIONS_PER_USER_PER_CASE_MAX,
+            KEY_INTENSITY_MIN, KEY_INTENSITY_MAX,
+            KEY_SCHEDULING_INTERVAL_MIN, KEY_SCHEDULING_INTERVAL_MAX,
+            KEY_SCHEDULING_WINDOW_HOURS, KEY_DAILY_POOL_SIZE,
+            KEY_ENGAGEMENT_TOP_EXAMPLES, KEY_ENGAGEMENT_EVALUATION_DAYS,
             "engagementVotesWeight", "engagementCommentsWeight", "engagementReactionsWeight",
             "engagementSharesWeight", "engagementSavesWeight", "engagementViewsWeight"
     );
 
-    private static final Set<String> STRING_ARR_KEYS = Set.of("rssFeedUrls");
+    private static final Set<String> STRING_ARR_KEYS = Set.of(KEY_RSS_FEED_URLS);
 
     private final JdbcTemplate jdbcTemplate;
     private final AutomationConfig config;
@@ -88,24 +109,24 @@ public class AutomationSettingsService {
     /** Devuelve el payload completo de settings (efectivos, BD + env como baseline). */
     public Map<String, Object> getSettings() {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("enabled", config.isEnabled());
-        result.put("dryRun", config.isDryRun());
-        result.put("runHour", config.getRunHour());
+        result.put(KEY_ENABLED, config.isEnabled());
+        result.put(KEY_DRY_RUN, config.isDryRun());
+        result.put(KEY_RUN_HOUR, config.getRunHour());
         result.put("language", config.getLanguage());
-        result.put("dailyCasesMin", config.getDailyCasesMin());
-        result.put("dailyCasesMax", config.getDailyCasesMax());
-        result.put("usersPerCaseMin", config.getUsersPerCaseMin());
-        result.put("usersPerCaseMax", config.getUsersPerCaseMax());
-        result.put("maxInteractionsPerUserPerCaseMin", config.getMaxInteractionsPerUserPerCaseMin());
-        result.put("maxInteractionsPerUserPerCaseMax", config.getMaxInteractionsPerUserPerCaseMax());
-        result.put("intensityMin", config.getIntensityMin());
-        result.put("intensityMax", config.getIntensityMax());
-        result.put("schedulingIntervalMin", config.getSchedulingIntervalMin());
-        result.put("schedulingIntervalMax", config.getSchedulingIntervalMax());
-        result.put("schedulingWindowHours", config.getSchedulingWindowHours());
-        result.put("dailyPoolSize", config.getDailyPoolSize());
-        result.put("activityWeighted", config.getActivity().isWeighted());
-        result.put("engagementEnabled", config.getEngagement().isEnabled());
+        result.put(KEY_DAILY_CASES_MIN, config.getDailyCasesMin());
+        result.put(KEY_DAILY_CASES_MAX, config.getDailyCasesMax());
+        result.put(KEY_USERS_PER_CASE_MIN, config.getUsersPerCaseMin());
+        result.put(KEY_USERS_PER_CASE_MAX, config.getUsersPerCaseMax());
+        result.put(KEY_MAX_INTERACTIONS_PER_USER_PER_CASE_MIN, config.getMaxInteractionsPerUserPerCaseMin());
+        result.put(KEY_MAX_INTERACTIONS_PER_USER_PER_CASE_MAX, config.getMaxInteractionsPerUserPerCaseMax());
+        result.put(KEY_INTENSITY_MIN, config.getIntensityMin());
+        result.put(KEY_INTENSITY_MAX, config.getIntensityMax());
+        result.put(KEY_SCHEDULING_INTERVAL_MIN, config.getSchedulingIntervalMin());
+        result.put(KEY_SCHEDULING_INTERVAL_MAX, config.getSchedulingIntervalMax());
+        result.put(KEY_SCHEDULING_WINDOW_HOURS, config.getSchedulingWindowHours());
+        result.put(KEY_DAILY_POOL_SIZE, config.getDailyPoolSize());
+        result.put(KEY_ACTIVITY_WEIGHTED, config.getActivity().isWeighted());
+        result.put(KEY_ENGAGEMENT_ENABLED, config.getEngagement().isEnabled());
         AutomationConfig.EngagementConfig e = config.getEngagement();
         Map<String, Object> weights = new LinkedHashMap<>();
         weights.put("votes", e.getVotesWeight());
@@ -115,9 +136,9 @@ public class AutomationSettingsService {
         weights.put("saves", e.getSavesWeight());
         weights.put("views", e.getViewsWeight());
         result.put("engagementWeights", weights);
-        result.put("engagementTopExamples", e.getTopExamples());
-        result.put("engagementEvaluationDays", e.getEvaluationDays());
-        result.put("rssFeedUrls", config.getContext().getRssFeedUrls());
+        result.put(KEY_ENGAGEMENT_TOP_EXAMPLES, e.getTopExamples());
+        result.put(KEY_ENGAGEMENT_EVALUATION_DAYS, e.getEvaluationDays());
+        result.put(KEY_RSS_FEED_URLS, config.getContext().getRssFeedUrls());
         return result;
     }
 
@@ -169,33 +190,33 @@ public class AutomationSettingsService {
     private void applyValue(String key, JsonNode value) {
         switch (key) {
             // Actividad (scheduling ponderado)
-            case "activityWeighted" -> config.getActivity().setWeighted(value.asBoolean());
+            case KEY_ACTIVITY_WEIGHTED -> config.getActivity().setWeighted(value.asBoolean());
             // Engagement
-            case "engagementEnabled" -> config.getEngagement().setEnabled(value.asBoolean());
-            case "engagementTopExamples" -> config.getEngagement().setTopExamples(value.asInt());
-            case "engagementEvaluationDays" -> config.getEngagement().setEvaluationDays(value.asInt());
+            case KEY_ENGAGEMENT_ENABLED -> config.getEngagement().setEnabled(value.asBoolean());
+            case KEY_ENGAGEMENT_TOP_EXAMPLES -> config.getEngagement().setTopExamples(value.asInt());
+            case KEY_ENGAGEMENT_EVALUATION_DAYS -> config.getEngagement().setEvaluationDays(value.asInt());
             case "engagementVotesWeight" -> config.getEngagement().setVotesWeight(value.asInt());
             case "engagementCommentsWeight" -> config.getEngagement().setCommentsWeight(value.asInt());
             case "engagementReactionsWeight" -> config.getEngagement().setReactionsWeight(value.asInt());
             case "engagementSharesWeight" -> config.getEngagement().setSharesWeight(value.asInt());
             case "engagementSavesWeight" -> config.getEngagement().setSavesWeight(value.asInt());
             case "engagementViewsWeight" -> config.getEngagement().setViewsWeight(value.asInt());
-            case "rssFeedUrls" -> config.getContext().setRssFeedUrls(jsonToStringList(value));
-            case "enabled" -> config.setEnabled(value.asBoolean());
-            case "dryRun" -> config.setDryRun(value.asBoolean());
-            case "runHour" -> config.setRunHour(value.asInt());
-            case "dailyCasesMin" -> config.setDailyCasesMin(value.asInt());
-            case "dailyCasesMax" -> config.setDailyCasesMax(value.asInt());
-            case "usersPerCaseMin" -> config.setUsersPerCaseMin(value.asInt());
-            case "usersPerCaseMax" -> config.setUsersPerCaseMax(value.asInt());
-            case "maxInteractionsPerUserPerCaseMin" -> config.setMaxInteractionsPerUserPerCaseMin(value.asInt());
-            case "maxInteractionsPerUserPerCaseMax" -> config.setMaxInteractionsPerUserPerCaseMax(value.asInt());
-            case "intensityMin" -> config.setIntensityMin(value.asInt());
-            case "intensityMax" -> config.setIntensityMax(value.asInt());
-            case "schedulingIntervalMin" -> config.setSchedulingIntervalMin(value.asInt());
-            case "schedulingIntervalMax" -> config.setSchedulingIntervalMax(value.asInt());
-            case "schedulingWindowHours" -> config.setSchedulingWindowHours(value.asInt());
-            case "dailyPoolSize" -> config.setDailyPoolSize(value.asInt());
+            case KEY_RSS_FEED_URLS -> config.getContext().setRssFeedUrls(jsonToStringList(value));
+            case KEY_ENABLED -> config.setEnabled(value.asBoolean());
+            case KEY_DRY_RUN -> config.setDryRun(value.asBoolean());
+            case KEY_RUN_HOUR -> config.setRunHour(value.asInt());
+            case KEY_DAILY_CASES_MIN -> config.setDailyCasesMin(value.asInt());
+            case KEY_DAILY_CASES_MAX -> config.setDailyCasesMax(value.asInt());
+            case KEY_USERS_PER_CASE_MIN -> config.setUsersPerCaseMin(value.asInt());
+            case KEY_USERS_PER_CASE_MAX -> config.setUsersPerCaseMax(value.asInt());
+            case KEY_MAX_INTERACTIONS_PER_USER_PER_CASE_MIN -> config.setMaxInteractionsPerUserPerCaseMin(value.asInt());
+            case KEY_MAX_INTERACTIONS_PER_USER_PER_CASE_MAX -> config.setMaxInteractionsPerUserPerCaseMax(value.asInt());
+            case KEY_INTENSITY_MIN -> config.setIntensityMin(value.asInt());
+            case KEY_INTENSITY_MAX -> config.setIntensityMax(value.asInt());
+            case KEY_SCHEDULING_INTERVAL_MIN -> config.setSchedulingIntervalMin(value.asInt());
+            case KEY_SCHEDULING_INTERVAL_MAX -> config.setSchedulingIntervalMax(value.asInt());
+            case KEY_SCHEDULING_WINDOW_HOURS -> config.setSchedulingWindowHours(value.asInt());
+            case KEY_DAILY_POOL_SIZE -> config.setDailyPoolSize(value.asInt());
             default -> log.info("Automation setting '{}' has no mapping; skipped", key);
         }
     }

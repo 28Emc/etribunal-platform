@@ -20,6 +20,8 @@ public class GeminiProvider implements AIProvider {
 
     private static final int MAX_PROVIDER_RETRIES = 3;
     private static final Duration RETRY_BASE_DELAY = Duration.ofSeconds(1);
+    private static final String PLACEHOLDER_TITLE = "{title}";
+    private static final String PLACEHOLDER_INTENSITY = "{intensity}";
 
     private final ChatClient chatClient;
     private final RateLimiter rateLimiter;
@@ -129,30 +131,30 @@ public class GeminiProvider implements AIProvider {
         p = p.replace("{interactionCount}", String.valueOf(input.interactionCount()));
         p = p.replace("{availableUsers}", String.valueOf(input.availableUsers()));
         p = p.replace("{maxPerUser}", String.valueOf(input.maxPerUser()));
-        p = p.replace("{title}", input.title());
+        p = p.replace(PLACEHOLDER_TITLE, input.title());
         p = p.replace("{sideA}", input.sideAContent());
         p = p.replace("{sideB}", input.sideBContent());
         p = p.replace("{category}", input.category());
-        p = p.replace("{intensity}", String.valueOf(input.intensity()));
+        p = p.replace(PLACEHOLDER_INTENSITY, String.valueOf(input.intensity()));
         return p;
     }
 
     private String buildCommentPrompt(GenerateCommentInput input) {
         String p = PromptUtils.commentGenerationPrompt(input.language(), input.tone());
-        p = p.replace("{title}", input.caseTitle());
+        p = p.replace(PLACEHOLDER_TITLE, input.caseTitle());
         p = p.replace("{sideA}", input.caseSideA());
         p = p.replace("{sideB}", input.caseSideB());
         p = p.replace("{stance}", input.stance());
-        p = p.replace("{intensity}", String.valueOf(input.tone()));
+        p = p.replace(PLACEHOLDER_INTENSITY, String.valueOf(input.tone()));
         return p;
     }
 
     private String buildReplyPrompt(GenerateReplyInput input) {
         String p = PromptUtils.replyGenerationPrompt(input.language(), input.tone());
-        p = p.replace("{title}", input.caseTitle());
+        p = p.replace(PLACEHOLDER_TITLE, input.caseTitle());
         p = p.replace("{parentComment}", input.parentCommentContent());
         p = p.replace("{stance}", input.stance());
-        p = p.replace("{intensity}", String.valueOf(input.tone()));
+        p = p.replace(PLACEHOLDER_INTENSITY, String.valueOf(input.tone()));
         return p;
     }
 

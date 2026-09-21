@@ -36,7 +36,7 @@ public class NotificationsController {
             @RequestParam(defaultValue = "0") int skip,
             @RequestParam(defaultValue = "20") int take) {
         UUID userId = currentUser.requiredUserId(request);
-        int safeTake = Math.min(Math.max(take, 1), 50);
+        int safeTake = Math.clamp(take, 1, 50);
         return ResponseEntity.ok(ApiResponse.ok(
                 notificationService.getNotifications(userId, skip, safeTake)));
     }

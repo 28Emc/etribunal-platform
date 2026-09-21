@@ -4,7 +4,6 @@ import com.etribunal.core.analytics.AnalyticsService;
 import com.etribunal.core.analytics.InteractionAction;
 import com.etribunal.core.api.ApiResponse;
 import com.etribunal.core.cases.dto.CaseResponse;
-import com.etribunal.core.security.CurrentUserResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
@@ -22,13 +21,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserCasesController {
 
     private final CaseService caseService;
-    private final CurrentUserResolver currentUser;
     private final AnalyticsService analyticsService;
 
-    public UserCasesController(CaseService caseService, CurrentUserResolver currentUser,
-                               AnalyticsService analyticsService) {
+    public UserCasesController(CaseService caseService, AnalyticsService analyticsService) {
         this.caseService = caseService;
-        this.currentUser = currentUser;
         this.analyticsService = analyticsService;
     }
 

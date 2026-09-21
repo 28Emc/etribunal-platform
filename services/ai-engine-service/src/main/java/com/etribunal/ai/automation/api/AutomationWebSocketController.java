@@ -27,6 +27,8 @@ public class AutomationWebSocketController {
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String CLAIM_ROLES = "roles";
     private static final Set<String> ADMIN_ROLES = Set.of("ADMIN", "SYSADMIN");
+    private static final String TOPIC_RUN = "/topic/automation/run";
+    private static final String MSG_TYPE_RUN_UPDATE = "RUN_UPDATE";
 
     private final SimpMessageSendingOperations messagingTemplate;
     private final AutomationOrchestrator orchestrator;
@@ -112,7 +114,7 @@ public class AutomationWebSocketController {
     @MessageMapping("/automation/trigger")
     public void triggerRun(boolean dryRun) {
         var result = orchestrator.startRun(dryRun);
-        broadcast("/topic/automation/run", "RUN_UPDATE", Map.of(
+        broadcast(TOPIC_RUN, MSG_TYPE_RUN_UPDATE, Map.of(
             "id", result.runId().toString(),
             "status", result.status(),
             "dryRun", dryRun
@@ -122,7 +124,7 @@ public class AutomationWebSocketController {
     /** Empuja el estado completo actual a los 4 topics del panel (estado inicial al conectar). */
     private void sendCurrentState() {
         for (Map<String, Object> run : orchestrator.getRecentRuns(20)) {
-            broadcast("/topic/automation/run", "RUN_UPDATE", stripType(run));
+            broadcast(TOPIC_RUN, MSG_TYPE_RUN_UPDATE, stripType(run));
         }
         broadcast("/topic/automation/queue", "QUEUE_UPDATE", orchestrator.getQueueStatus());
         broadcast("/topic/automation/settings", "SETTINGS_UPDATE", settingsService.getSettings());
@@ -146,7 +148,7 @@ public class AutomationWebSocketController {
     }
 
     public void broadcastRunUpdate(Map<String, Object> run) {
-        broadcast("/topic/automation/run", "RUN_UPDATE", run);
+        broadcast(TOPIC_RUN, MSG_TYPE_RUN_UPDATE, run);
     }
 
     public void broadcastQueueUpdate(Map<String, Object> queue) {

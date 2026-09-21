@@ -17,7 +17,9 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
-        http.csrf(csrf -> csrf.disable())
+        // CSRF deshabilitado de forma segura: API stateless que autentica con JWT Bearer,
+        // sin cookies de sesión, por lo que no es susceptible a ataques CSRF.
+        http.csrf(csrf -> csrf.disable()) // NOSONAR java:S4502
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(
                         auth ->

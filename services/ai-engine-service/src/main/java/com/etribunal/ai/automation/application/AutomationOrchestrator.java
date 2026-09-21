@@ -14,7 +14,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.*;
@@ -25,6 +24,16 @@ public class AutomationOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(AutomationOrchestrator.class);
     private static final long STALE_MS = 30L * 60 * 1000;
+
+    private static final String K_STATUS = "status";
+    private static final String K_DRY_RUN = "dryRun";
+    private static final String K_CASES_REQUESTED = "casesRequested";
+    private static final String K_CASES_CREATED = "casesCreated";
+    private static final String K_CASES_FAILED = "casesFailed";
+    private static final String K_STARTED_AT = "startedAt";
+    private static final String K_FINISHED_AT = "finishedAt";
+    private static final String K_ERROR_MESSAGE = "errorMessage";
+    private static final String STALE_RECOVERY_MESSAGE = "Stale recovery";
 
     private final AutomationConfig config;
     private final AutomationRunRepository runRepository;
@@ -98,7 +107,7 @@ public class AutomationOrchestrator {
             if (existing.getStartedAt() != null &&
                 Instant.now().toEpochMilli() - existing.getStartedAt().toEpochMilli() > STALE_MS) {
                 existing.setStatus(AutomationRunStatus.FAILED);
-                existing.setErrorMessage("Stale recovery");
+                existing.setErrorMessage(STALE_RECOVERY_MESSAGE);
                 existing.setFinishedAt(Instant.now());
                 runRepository.save(existing);
             } else {
@@ -126,7 +135,7 @@ public class AutomationOrchestrator {
         run.setInteractionIntensity(intensity);
         run.setMetadata(Map.of(
                 "options", Map.of(
-                        "dryRun", dryRun,
+                        K_DRY_RUN, dryRun,
                         "dailyCases", dailyCases,
                         "usersPerCase", usersPerCase,
                         "intensity", intensity,
@@ -142,11 +151,11 @@ public class AutomationOrchestrator {
         // Broadcast initial run state
         wsController.broadcastRunUpdate(mapOf(
             "id", runId.toString(),
-            "status", "PENDING",
-            "dryRun", dryRun,
-            "casesRequested", dailyCases,
-            "casesCreated", 0,
-            "casesFailed", 0
+            K_STATUS, "PENDING",
+            K_DRY_RUN, dryRun,
+            K_CASES_REQUESTED, dailyCases,
+            K_CASES_CREATED, 0,
+            K_CASES_FAILED, 0
         ));
 
         self.launchRun(runId, dryRun, dailyCases, usersPerCase, intensity, maxPerUser, schedulingInterval);
@@ -168,8 +177,8 @@ public class AutomationOrchestrator {
             // Broadcast RUNNING status
             wsController.broadcastRunUpdate(mapOf(
                 "id", runId.toString(),
-                "status", "RUNNING",
-                "startedAt", run.getStartedAt().toString()
+                K_STATUS, "RUNNING",
+                K_STARTED_AT, run.getStartedAt().toString()
             ));
 
             int poolSize = config.getDailyPoolSize() > 0
@@ -232,9 +241,9 @@ public class AutomationOrchestrator {
             // Broadcast FAILED status
             wsController.broadcastRunUpdate(mapOf(
                 "id", runId.toString(),
-                "status", "FAILED",
-                "errorMessage", e.getMessage(),
-                "finishedAt", Instant.now().toString()
+                K_STATUS, "FAILED",
+                K_ERROR_MESSAGE, e.getMessage(),
+                K_FINISHED_AT, Instant.now().toString()
             ));
         }
     }
@@ -261,10 +270,10 @@ public class AutomationOrchestrator {
         // Broadcast final run state
         wsController.broadcastRunUpdate(mapOf(
             "id", runId.toString(),
-            "status", run.getStatus().name(),
-            "casesCreated", casesCreated,
-            "casesFailed", casesFailed,
-            "finishedAt", run.getFinishedAt().toString()
+            K_STATUS, run.getStatus().name(),
+            K_CASES_CREATED, casesCreated,
+            K_CASES_FAILED, casesFailed,
+            K_FINISHED_AT, run.getFinishedAt().toString()
         ));
 
         // Refrescar KPIs de cola en el panel admin
@@ -359,16 +368,16 @@ public class AutomationOrchestrator {
                 Instant.now().toEpochMilli() - run.getStartedAt().toEpochMilli() > STALE_MS) {
                 log.warn("Stale run {} detected, marking FAILED", run.getId());
                 run.setStatus(AutomationRunStatus.FAILED);
-                run.setErrorMessage("Stale recovery");
+                run.setErrorMessage(STALE_RECOVERY_MESSAGE);
                 run.setFinishedAt(Instant.now());
                 runRepository.save(run);
 
                 // Broadcast FAILED status for stale run
                 wsController.broadcastRunUpdate(mapOf(
                     "id", run.getId().toString(),
-                    "status", "FAILED",
-                    "errorMessage", "Stale recovery",
-                    "finishedAt", Instant.now().toString()
+                    K_STATUS, "FAILED",
+                    K_ERROR_MESSAGE, STALE_RECOVERY_MESSAGE,
+                    K_FINISHED_AT, Instant.now().toString()
                 ));
             }
         }
@@ -381,14 +390,14 @@ public class AutomationOrchestrator {
             return runRepository.findById(id).map(run -> {
                 Map<String, Object> result = new LinkedHashMap<>();
                 result.put("id", run.getId().toString());
-                result.put("status", run.getStatus().name());
-                result.put("dryRun", run.isDryRun());
-                result.put("casesRequested", run.getCasesRequested());
-                result.put("casesCreated", run.getCasesCreated());
-                result.put("casesFailed", run.getCasesFailed());
-                result.put("startedAt", run.getStartedAt() != null ? run.getStartedAt().toString() : null);
-                result.put("finishedAt", run.getFinishedAt() != null ? run.getFinishedAt().toString() : null);
-                result.put("errorMessage", run.getErrorMessage());
+                result.put(K_STATUS, run.getStatus().name());
+                result.put(K_DRY_RUN, run.isDryRun());
+                result.put(K_CASES_REQUESTED, run.getCasesRequested());
+                result.put(K_CASES_CREATED, run.getCasesCreated());
+                result.put(K_CASES_FAILED, run.getCasesFailed());
+                result.put(K_STARTED_AT, run.getStartedAt() != null ? run.getStartedAt().toString() : null);
+                result.put(K_FINISHED_AT, run.getFinishedAt() != null ? run.getFinishedAt().toString() : null);
+                result.put(K_ERROR_MESSAGE, run.getErrorMessage());
                 return result;
             });
         } catch (IllegalArgumentException e) {
@@ -399,20 +408,20 @@ public class AutomationOrchestrator {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getRecentRuns(int limit) {
         List<AutomationRunEntity> runs = runRepository.findRecentRuns();
-        int effectiveLimit = Math.min(Math.max(limit, 1), 100);
+        int effectiveLimit = Math.clamp(limit, 1, 100);
         return runs.stream()
                 .limit(effectiveLimit)
                 .map(run -> {
                     Map<String, Object> result = new LinkedHashMap<>();
                     result.put("id", run.getId().toString());
-                    result.put("status", run.getStatus().name());
-                    result.put("dryRun", run.isDryRun());
-                    result.put("casesRequested", run.getCasesRequested());
-                    result.put("casesCreated", run.getCasesCreated());
-                    result.put("casesFailed", run.getCasesFailed());
-                    result.put("startedAt", run.getStartedAt() != null ? run.getStartedAt().toString() : null);
-                    result.put("finishedAt", run.getFinishedAt() != null ? run.getFinishedAt().toString() : null);
-                    result.put("errorMessage", run.getErrorMessage());
+                    result.put(K_STATUS, run.getStatus().name());
+                    result.put(K_DRY_RUN, run.isDryRun());
+                    result.put(K_CASES_REQUESTED, run.getCasesRequested());
+                    result.put(K_CASES_CREATED, run.getCasesCreated());
+                    result.put(K_CASES_FAILED, run.getCasesFailed());
+                    result.put(K_STARTED_AT, run.getStartedAt() != null ? run.getStartedAt().toString() : null);
+                    result.put(K_FINISHED_AT, run.getFinishedAt() != null ? run.getFinishedAt().toString() : null);
+                    result.put(K_ERROR_MESSAGE, run.getErrorMessage());
                     return result;
                 })
                 .collect(Collectors.toList());

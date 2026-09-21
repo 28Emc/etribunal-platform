@@ -25,7 +25,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public class InteractionExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(InteractionExecutor.class);
-    private static final int TICK_BATCH = 5;
+    private static final String KEY_CONTENT = "content";
 
     private final AutomationInteractionRepository interactionRepository;
     private final AutomationCaseRepository caseRepository;
@@ -105,7 +105,7 @@ public class InteractionExecutor {
             entity.setPlanIndex(planned.index());
             entity.setScheduledAt(scheduledAt);
             entity.setMetadata(Map.of(
-                    "content", planned.content() != null ? planned.content() : "",
+                    KEY_CONTENT, planned.content() != null ? planned.content() : "",
                     "reaction", planned.reaction() != null ? planned.reaction() : "",
                     "option", planned.option() != null ? planned.option() : "",
                     "reply_to_plan_index", planned.replyToCommentIndex() != null ? planned.replyToCommentIndex() : -1
@@ -137,8 +137,8 @@ public class InteractionExecutor {
     private List<Instant> uniformSchedule(int count, Instant baseTime, int windowHours,
             int intervalMin, int intervalMax) {
         int windowMinutes = windowHours * 60;
-        int effectiveInterval = Math.max(intervalMin,
-                Math.min(intervalMax, windowMinutes / Math.max(1, count)));
+        int effectiveInterval = Math.clamp(windowMinutes / Math.max(1, count),
+                intervalMin, intervalMax);
         ThreadLocalRandom jitter = ThreadLocalRandom.current();
         List<Instant> out = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
@@ -267,13 +267,13 @@ public class InteractionExecutor {
         try {
             return switch (entity.getInteractionType()) {
                 case COMMENT -> {
-                    String content = metadata.getOrDefault("content", "").toString();
+                    String content = metadata.getOrDefault(KEY_CONTENT, "").toString();
                     String parentCommentId = resolveReplyParent(entity.getAutomationCase().getId(), metadata);
                     yield coreApiClient.createComment(token, UUID.fromString(caseId), content,
                             parentCommentId != null ? UUID.fromString(parentCommentId) : null, false).toString();
                 }
                 case REPLY -> {
-                    String content = metadata.getOrDefault("content", "").toString();
+                    String content = metadata.getOrDefault(KEY_CONTENT, "").toString();
                     String parentCommentId = resolveReplyParent(entity.getAutomationCase().getId(), metadata);
                     yield coreApiClient.createComment(token, UUID.fromString(caseId), content,
                             parentCommentId != null ? UUID.fromString(parentCommentId) : null, false).toString();

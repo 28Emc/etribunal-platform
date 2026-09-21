@@ -2,7 +2,6 @@ package com.etribunal.ai.automation.infrastructure.kafka;
 
 import com.etribunal.common.kafka.EventJson;
 import com.etribunal.common.kafka.Topics;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;

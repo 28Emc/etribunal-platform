@@ -6,7 +6,6 @@ import static org.mockito.Mockito.when;
 
 import com.etribunal.core.cases.domain.CaseImageEntity;
 import com.etribunal.core.media.application.MediaService;
-import com.etribunal.core.media.application.PresignedUrlService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -61,7 +60,7 @@ class MediaControllerTest {
                 imageId, new MediaController.ConfirmUploadDto(800, 600, 2048));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody().get("width")).isEqualTo(800);
+        assertThat(response.getBody()).containsEntry("width", 800);
     }
 
     @Test
