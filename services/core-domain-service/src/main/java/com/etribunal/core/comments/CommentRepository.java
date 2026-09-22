@@ -34,6 +34,24 @@ public interface CommentRepository extends JpaRepository<CommentEntity, UUID> {
     List<CommentEntity> findByCaseIdAndParentIdIsNullAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
             UUID caseId, Pageable pageable);
 
+    /**
+     * Cursor compuesto (createdAt, id) para paginación estable: evita repetir o
+     * saltar comentarios cuando varios comparten timestamp (orden DESC, id DESC).
+     */
+    @Query("""
+            SELECT c FROM CommentEntity c
+            WHERE c.caseId = :caseId AND c.parentId IS NULL AND c.deletedAt IS NULL
+              AND (:date IS NULL
+                   OR c.createdAt < :date
+                   OR (c.createdAt = :date AND (:beforeId IS NULL OR c.id < :beforeId)))
+            ORDER BY c.createdAt DESC, c.id DESC
+            """)
+    List<CommentEntity> findTopLevelBeforeCursor(
+            @Param("caseId") UUID caseId,
+            @Param("date") Instant date,
+            @Param("beforeId") UUID beforeId,
+            Pageable pageable);
+
     List<CommentEntity> findByCaseIdAndParentIdIsNullAndDeletedAtIsNullAndCreatedAtBeforeOrderByCreatedAtDescIdDesc(
             UUID caseId, Instant before, Pageable pageable);
 

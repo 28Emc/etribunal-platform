@@ -24,44 +24,52 @@ public class RateLimiter {
     }
 
     public Mono<Void> acquire(int estimatedTokens) {
-        return Mono.defer(() -> {
-            long now = Instant.now().toEpochMilli();
+        return Mono.defer(() -> tryAcquire(estimatedTokens)
+                ? Mono.empty()
+                : Mono.error(new RateLimitExceededException(
+                        "Límite de Gemini alcanzado, reintenta en un momento")));
+    }
 
-            // Reset minute window if needed
-            long minuteStart = minuteWindowStart.get();
-            if (now - minuteStart >= 60_000) {
-                if (minuteWindowStart.compareAndSet(minuteStart, now)) {
-                    requestsThisMinute.set(0);
-                    tokensThisMinute.set(0);
-                    tokenWindowStart.set(now);
-                }
+    /**
+     * Reserva la cuota de forma atómica: primero comprueba límites y SOLO
+     * incrementa los contadores si la petición cabe. Un rechazo no consume
+     * cuota (no quema el presupuesto al reintentar).
+     */
+    private synchronized boolean tryAcquire(int estimatedTokens) {
+        long now = Instant.now().toEpochMilli();
+
+        // Reset minute window if needed
+        long minuteStart = minuteWindowStart.get();
+        if (now - minuteStart >= 60_000) {
+            if (minuteWindowStart.compareAndSet(minuteStart, now)) {
+                requestsThisMinute.set(0);
+                tokensThisMinute.set(0);
+                tokenWindowStart.set(now);
             }
+        }
 
-            // Reset day window if needed
-            long dayStart = dayWindowStart.get();
-            if (now - dayStart >= 86_400_000) {
-                if (dayWindowStart.compareAndSet(dayStart, now)) {
-                    requestsToday.set(0);
-                }
+        // Reset day window if needed
+        long dayStart = dayWindowStart.get();
+        if (now - dayStart >= 86_400_000) {
+            if (dayWindowStart.compareAndSet(dayStart, now)) {
+                requestsToday.set(0);
             }
+        }
 
-            int currentRpm = requestsThisMinute.incrementAndGet();
-            if (currentRpm > rpm) {
-                return Mono.error(new RateLimitExceededException("RPM limit exceeded"));
-            }
+        if (requestsThisMinute.get() >= rpm) {
+            return false;
+        }
+        if (requestsToday.get() >= rpd) {
+            return false;
+        }
+        if (tokensThisMinute.get() + estimatedTokens > tpm) {
+            return false;
+        }
 
-            int currentRpd = requestsToday.incrementAndGet();
-            if (currentRpd > rpd) {
-                return Mono.error(new RateLimitExceededException("RPD limit exceeded"));
-            }
-
-            int currentTpm = tokensThisMinute.addAndGet(estimatedTokens);
-            if (currentTpm > tpm) {
-                return Mono.error(new RateLimitExceededException("TPM limit exceeded"));
-            }
-
-            return Mono.empty();
-        });
+        requestsThisMinute.incrementAndGet();
+        requestsToday.incrementAndGet();
+        tokensThisMinute.addAndGet(estimatedTokens);
+        return true;
     }
 
     public static class RateLimitExceededException extends RuntimeException {

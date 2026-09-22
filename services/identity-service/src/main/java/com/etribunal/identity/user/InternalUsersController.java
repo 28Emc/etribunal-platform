@@ -32,6 +32,10 @@ public class InternalUsersController {
                                    FollowRepository followRepository,
                                    UserService userService,
                                    @Value("${etribunal.internal.token}") String internalToken) {
+        if (internalToken == null || internalToken.isBlank()) {
+            throw new IllegalStateException(
+                    "etribunal.internal.token no puede estar vacío (fail-fast ante misconfiguración)");
+        }
         this.userRepository = userRepository;
         this.followRepository = followRepository;
         this.userService = userService;

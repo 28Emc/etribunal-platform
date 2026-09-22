@@ -41,7 +41,8 @@ class JwtGatewayFilterTest {
                 Duration.ofDays(7));
         var props =
                 new GatewayAuthProperties(
-                        true, List.of("/api/auth/register", "/api/auth/login", "/api/auth/refresh"));
+                        true, List.of("/api/auth/register", "/api/auth/login", "/api/auth/refresh"),
+                        false, List.of("http://localhost:3000"));
         filter = new JwtGatewayFilter(provider, props);
         chain = mock(GatewayFilterChain.class);
         when(chain.filter(any())).thenReturn(Mono.empty());
@@ -66,11 +67,26 @@ class JwtGatewayFilterTest {
     }
 
     @Test
-    void actuatorIsAlwaysPublic() {
+    void actuatorIsProtectedByDefault() {
         var exchange = exchange("GET", "/actuator/health", null);
 
-        assertThat(filter.isPublic("/actuator/health")).isTrue();
+        // Fail-closed: sin expose-actuator, /actuator NO es público.
+        assertThat(filter.isPublic("/actuator/health")).isFalse();
         filter.filter(exchange, chain).block();
+        verify(chain, never()).filter(any());
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void actuatorIsPublicWhenExplicitlyExposed() {
+        var exposedProps =
+                new GatewayAuthProperties(
+                        true, List.of(), true, List.of("http://localhost:3000"));
+        var exposedFilter = new JwtGatewayFilter(provider, exposedProps);
+        var exchange = exchange("GET", "/actuator/health", null);
+
+        assertThat(exposedFilter.isPublic("/actuator/health")).isTrue();
+        exposedFilter.filter(exchange, chain).block();
         verify(chain).filter(any());
     }
 
@@ -128,7 +144,8 @@ class JwtGatewayFilterTest {
     void antPatternsMatchSingleSegments() {
         var patternProps =
                 new GatewayAuthProperties(
-                        true, List.of("/api/users/*", "/api/users/*/followers"));
+                        true, List.of("/api/users/*", "/api/users/*/followers"),
+                        false, List.of("http://localhost:3000"));
         var patternFilter = new JwtGatewayFilter(provider, patternProps);
 
         assertThat(patternFilter.isPublic("/api/users/ana_t")).isTrue();
@@ -138,8 +155,25 @@ class JwtGatewayFilterTest {
     }
 
     @Test
+    void enabledDefaultsToTrue_whenPropertyMissing() {
+        // Fail-closed: aunque existan propiedades bajo el prefijo, si falta
+        // etribunal.gateway.enabled el filtro JWT queda activo por defecto.
+        var binder = new org.springframework.boot.context.properties.bind.Binder(
+                new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(
+                        java.util.Map.of("etribunal.gateway.allowed-origins",
+                                "http://localhost:3000")));
+        var bound = binder
+                .bind("etribunal.gateway",
+                        org.springframework.boot.context.properties.bind.Bindable.of(GatewayAuthProperties.class))
+                .get();
+
+        assertThat(bound.enabled()).isTrue();
+        assertThat(bound.exposeActuator()).isFalse();
+    }
+
+    @Test
     void disabledFilterLetsEverythingThrough() {
-        var disabledProps = new GatewayAuthProperties(false, List.of());
+        var disabledProps = new GatewayAuthProperties(false, List.of(), false, List.of("http://localhost:3000"));
         var disabledFilter = new JwtGatewayFilter(provider, disabledProps);
         var exchange = exchange("GET", "/api/users/me", null);
 

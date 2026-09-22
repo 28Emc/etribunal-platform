@@ -89,10 +89,10 @@ public class GeminiProvider implements AIProvider {
                     .chatResponse();
             return extractContent(response);
         })
+        .timeout(Duration.ofSeconds(timeoutSeconds))
         .flatMap(raw -> outputValidator.validate(raw, targetType))
         .onErrorMap(e -> !(e instanceof AiError),
-                e -> new AiError(AiErrorCode.PROVIDER_ERROR, e.getMessage(), true))
-        .timeout(Duration.ofSeconds(timeoutSeconds));
+                e -> new AiError(AiErrorCode.PROVIDER_ERROR, e.getMessage(), true));
 
         return attempt.retryWhen(Retry.backoff(MAX_PROVIDER_RETRIES, RETRY_BASE_DELAY)
                 .maxBackoff(Duration.ofSeconds(5))
@@ -145,7 +145,6 @@ public class GeminiProvider implements AIProvider {
         p = p.replace("{sideA}", input.caseSideA());
         p = p.replace("{sideB}", input.caseSideB());
         p = p.replace("{stance}", input.stance());
-        p = p.replace(PLACEHOLDER_INTENSITY, String.valueOf(input.tone()));
         return p;
     }
 
@@ -154,7 +153,6 @@ public class GeminiProvider implements AIProvider {
         p = p.replace(PLACEHOLDER_TITLE, input.caseTitle());
         p = p.replace("{parentComment}", input.parentCommentContent());
         p = p.replace("{stance}", input.stance());
-        p = p.replace(PLACEHOLDER_INTENSITY, String.valueOf(input.tone()));
         return p;
     }
 

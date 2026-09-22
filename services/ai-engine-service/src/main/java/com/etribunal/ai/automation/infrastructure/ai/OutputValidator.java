@@ -36,12 +36,45 @@ public class OutputValidator {
                 trimmed = trimmed.substring(0, lastBackticks);
             }
         }
-        // Try to extract JSON object
-        int firstBrace = trimmed.indexOf('{');
-        int lastBrace = trimmed.lastIndexOf('}');
-        if (firstBrace >= 0 && lastBrace > firstBrace) {
-            return trimmed.substring(firstBrace, lastBrace + 1);
+        // Extraer el valor JSON más externo (objeto o array) sin cortarlo por prose
+        // que contenga llaves/paréntesis dentro de strings o antes/después del JSON.
+        String extracted = extractOutermostJson(trimmed);
+        return extracted != null ? extracted : trimmed;
+    }
+
+    private static String extractOutermostJson(String text) {
+        int start = -1;
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+                continue;
+            }
+            if (c == '{' || c == '[') {
+                if (depth == 0) {
+                    start = i;
+                }
+                depth++;
+            } else if (c == '}' || c == ']') {
+                depth--;
+                if (depth == 0 && start >= 0) {
+                    return text.substring(start, i + 1);
+                }
+            }
         }
-        return trimmed;
+        return null;
     }
 }

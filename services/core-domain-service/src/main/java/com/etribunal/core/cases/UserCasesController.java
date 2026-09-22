@@ -46,7 +46,10 @@ public class UserCasesController {
             HttpServletRequest request) {
         String utmSource = request.getParameter("utm_source");
         String utmMedium = request.getParameter("utm_medium");
-        analyticsService.log(InteractionAction.VIEW.name(), null, userId, Map.of(
+        // El actor es el visitante (anónimo). Atribuir el VIEW al dueño del perfil
+        // inflaría su activity_count/active_users.
+        analyticsService.log(InteractionAction.VIEW.name(), null, null, Map.of(
+                "target_profile_id", userId.toString(),
                 "source", utmSource != null ? utmSource : "share",
                 "medium", utmMedium != null ? utmMedium : "",
                 "profile", true));

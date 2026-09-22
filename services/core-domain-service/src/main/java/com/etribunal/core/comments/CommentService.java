@@ -59,8 +59,9 @@ public class CommentService {
     }
 
     /**
-     * Paginación por cursor heredada: top-level desc, take limit+1 para
-     * hasMore, respuestas en batch asc.
+     * Paginación por cursor: top-level desc, take limit+1 para hasMore,
+     * cursor compuesto `createdAt|id` para no repetir/saltar comentarios
+     * con timestamps empatados. Responde en batch asc.
      */
     @Transactional(readOnly = true)
     public CommentPage getCommentsCursor(UUID caseId, String before, String after,
@@ -70,11 +71,10 @@ public class CommentService {
         Pageable pageable = PageRequest.of(0, pageSize + 1);
 
         List<CommentEntity> top;
-        Instant beforeDate = parseDate(before, false);
-        if (beforeDate != null) {
-            top = commentRepository
-                    .findByCaseIdAndParentIdIsNullAndDeletedAtIsNullAndCreatedAtBeforeOrderByCreatedAtDescIdDesc(
-                            caseId, beforeDate, pageable);
+        Cursor cursor = parseCursor(before);
+        if (cursor != null) {
+            top = commentRepository.findTopLevelBeforeCursor(
+                    caseId, cursor.date(), cursor.id(), pageable);
         } else {
             Instant afterDate = parseDate(after, true);
             top = commentRepository
@@ -90,7 +90,9 @@ public class CommentService {
         boolean hasMore = top.size() > pageSize;
         List<CommentEntity> page = hasMore ? top.subList(0, pageSize) : top;
         String nextCursor = hasMore && !page.isEmpty()
-                ? page.get(page.size() - 1).getCreatedAt().toString() : null;
+                ? page.get(page.size() - 1).getCreatedAt().toString()
+                        + "|" + page.get(page.size() - 1).getId()
+                : null;
 
         return new CommentPage(toResponses(page), nextCursor, hasMore);
     }
@@ -152,7 +154,11 @@ public class CommentService {
         CaseEntity c = requireCase(caseId);
         notifyCommentCreated(c, saved, parentId, userId);
 
-        return CommentResponse.toResponse(saved, maskedUser(null), List.of(), 0);
+        // Devolver el usuario real (o enmascarado si es anónimo), no un "Unknown".
+        Map<UUID, com.etribunal.core.users.UserSummary> summaries =
+                fetchSummaries(new LinkedHashSet<>(List.of(userId)));
+        return CommentResponse.toResponse(
+                saved, maskedUser(summaries.get(userId)), List.of(), 0);
     }
 
     private void notifyCommentCreated(CaseEntity c, CommentEntity saved,
@@ -373,6 +379,37 @@ public class CommentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Fecha inválida: \"" + value + "\"");
         }
+    }
+
+    private record Cursor(Instant date, UUID id) {
+    }
+
+    /**
+     * Parsea un cursor compuesto `createdAt|id`. Cursor de fecha sola (legacy)
+     * se sigue aceptando; en ese caso el tiebreaker por id queda libre.
+     */
+    private static Cursor parseCursor(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String[] parts = value.split("\\|", -1);
+        Instant date;
+        try {
+            date = Instant.parse(parts[0]);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cursor inválido: \"" + value + "\"");
+        }
+        UUID id = null;
+        if (parts.length > 1 && !parts[1].isBlank()) {
+            try {
+                id = UUID.fromString(parts[1]);
+            } catch (Exception e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Cursor inválido: \"" + value + "\"");
+            }
+        }
+        return new Cursor(date, id);
     }
 
     public record CommentPage(List<CommentResponse> data, String next_cursor,

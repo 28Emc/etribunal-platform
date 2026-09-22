@@ -1,36 +1,57 @@
 package com.etribunal.ai.automation.api;
 
+import com.etribunal.common.security.JwtTokenProvider;
+import com.nimbusds.jwt.JWTClaimsSet;
+import java.util.List;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Arrays;
-import java.util.Set;
-import java.util.stream.Collectors;
-
 /**
- * Guards de administración para el motor IA.
+ * Guard de administración para el motor IA.
  *
- * <p>El gateway (edge) valida el JWT e inyecta los headers {@code X-User-Id},
- * {@code X-Username} y {@code X-Roles}. Estos endpoints de administración se
- * autorizan por ROL (ADMIN/SYSADMIN), no por API key (decisión Fase 4.2).
+ * <p>Autorización por JWT (access token) con rol ADMIN/SYSADMIN, el MISMO modelo de
+ * confianza que usa el WebSocket de administración. No se confía en headers
+ * inyectables tipo {@code X-Roles}: el gateway los asigna, pero api-engine escucha
+ * en red directa (8083) y cualquier origen podría fabricarlos.</p>
  */
 @Component
 public class AutomationAdminGuard {
 
     private static final Set<String> ADMIN_ROLES = Set.of("ADMIN", "SYSADMIN");
+    private static final String BEARER_PREFIX = "Bearer ";
+    private static final String CLAIM_ROLES = "roles";
 
-    public void assertAdmin(String rolesHeader) {
-        if (rolesHeader == null || rolesHeader.isBlank()) {
+    private final JwtTokenProvider jwtTokenProvider;
+
+    public AutomationAdminGuard(JwtTokenProvider jwtTokenProvider) {
+        this.jwtTokenProvider = jwtTokenProvider;
+    }
+
+    public void assertAdmin(String authorization) {
+        if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No autenticado");
         }
-        Set<String> roles = Arrays.stream(rolesHeader.split(","))
-                .map(String::trim)
-                .filter(r -> !r.isEmpty())
-                .collect(Collectors.toSet());
-        boolean authorized = roles.stream().anyMatch(ADMIN_ROLES::contains);
-        if (!authorized) {
+        JWTClaimsSet claims = jwtTokenProvider
+                .parseAccessToken(authorization.substring(BEARER_PREFIX.length()))
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token inválido o expirado"));
+        if (!hasAdminRole(claims)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Requiere rol administrador");
         }
+    }
+
+    private boolean hasAdminRole(JWTClaimsSet claims) {
+        Object rolesClaim = claims.getClaim(CLAIM_ROLES);
+        if (!(rolesClaim instanceof List<?> roles)) {
+            return false;
+        }
+        for (Object role : roles) {
+            if (role instanceof String s && ADMIN_ROLES.contains(s)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

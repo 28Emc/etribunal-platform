@@ -46,6 +46,12 @@ public class JwtTokenProvider {
         if (refreshSecret == null || refreshSecret.length < 32) {
             throw new IllegalArgumentException("JWT_REFRESH_SECRET debe tener >= 32 bytes");
         }
+        if (issuer == null || issuer.isBlank()) {
+            throw new IllegalArgumentException("etribunal.jwt.issuer no puede estar vacío");
+        }
+        if (accessTtl == null || refreshTtl == null) {
+            throw new IllegalArgumentException("Los TTL de acceso/refresh no pueden ser nulos");
+        }
         this.accessSecret = accessSecret.clone();
         this.refreshSecret = refreshSecret.clone();
         this.issuer = issuer;
@@ -106,14 +112,23 @@ public class JwtTokenProvider {
     private Optional<JWTClaimsSet> parse(String token, String expectedType, byte[] secret) {
         try {
             SignedJWT jwt = SignedJWT.parse(token);
+            JWTClaimsSet claims = jwt.getJWTClaimsSet();
             boolean valid =
                     jwt.verify(new MACVerifier(secret))
-                            && expectedType.equals(jwt.getJWTClaimsSet().getClaim(CLAIM_TOKEN_TYPE))
-                            && issuer.equals(jwt.getJWTClaimsSet().getIssuer())
-                            && new Date().before(jwt.getJWTClaimsSet().getExpirationTime());
-            return valid ? Optional.of(jwt.getJWTClaimsSet()) : Optional.empty();
+                            && expectedType.equals(claims.getClaim(CLAIM_TOKEN_TYPE))
+                            && issuer.equals(claims.getIssuer())
+                            && isNotExpired(claims);
+            return valid ? Optional.of(claims) : Optional.empty();
         } catch (ParseException | JOSEException e) {
             return Optional.empty();
         }
+    }
+
+    private boolean isNotExpired(JWTClaimsSet claims) {
+        Date expiration = claims.getExpirationTime();
+        if (expiration == null) {
+            return false;
+        }
+        return expiration.toInstant().isAfter(Instant.now());
     }
 }

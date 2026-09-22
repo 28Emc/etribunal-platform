@@ -1,6 +1,7 @@
 package com.etribunal.common.kafka;
 
 import com.etribunal.common.domain.event.DomainEvent;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -11,7 +12,10 @@ public final class EventJson {
     private static final ObjectMapper MAPPER =
             new ObjectMapper()
                     .registerModule(new JavaTimeModule())
-                    .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+                    .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                    // Tolerancia a campos nuevos: un productor más nuevo no debe
+                    // romper la deserialización del consumidor.
+                    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private EventJson() {}
 

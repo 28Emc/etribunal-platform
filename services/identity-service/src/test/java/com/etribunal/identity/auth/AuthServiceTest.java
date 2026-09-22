@@ -87,7 +87,8 @@ class AuthServiceTest {
                         props,
                         redisTemplate,
                         emailProvider,
-                        new EmailTemplates("http://localhost:3000"));
+                        new EmailTemplates(),
+                        "http://localhost:3000");
 
         existingUser = new UserEntity();
         existingUser.setId(UUID.randomUUID());
@@ -192,6 +193,33 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginUnknownUserRunsDummyHashToEqualizeTiming() {
+        when(valueOperations.get(AuthService.ATTEMPTS_PREFIX + "ghost")).thenReturn(null);
+        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNull("ghost"))
+                .thenReturn(Optional.empty());
+        when(passwordEncoder.matches(eq("Password1"), anyString())).thenReturn(false);
+
+        LoginRequest request = new LoginRequest("ghost", "Password1");
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(UnauthorizedException.class);
+
+        // Debe ejecutarse una comparación BCrypt con un hash dummy (mitiga enumeración por timing)
+        verify(passwordEncoder).matches(eq("Password1"), anyString());
+        verify(valueOperations).increment(AuthService.ATTEMPTS_PREFIX + "ghost");
+    }
+
+    @Test
+    void changePasswordRevokesRefreshSessions() {
+        UUID id = existingUser.getId();
+        when(userRepository.findById(id)).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("OldPass1", "hashed")).thenReturn(true);
+
+        authService.changePassword(id, new ChangePasswordRequest("OldPass1", "NewPass1"));
+
+        verify(redisTemplate).delete(AuthService.SESSION_PREFIX + id);
+    }
+
+    @Test
     void refreshRotatesSession() {
         JwtTokenProvider provider =
                 new JwtTokenProvider(
@@ -214,7 +242,8 @@ class AuthServiceTest {
         TokenResponse response = authService.refresh(new RefreshRequest(refreshToken));
 
         assertThat(response.refreshToken()).isNotEqualTo(refreshToken);
-        verify(redisTemplate).delete(AuthService.SESSION_PREFIX + existingUser.getId());
+        // NO debe borrarse la sesión antes de re-escribirla (carrera entre pestañas)
+        verify(redisTemplate, never()).delete(AuthService.SESSION_PREFIX + existingUser.getId());
         verify(valueOperations).set(anyString(), anyString(), any(Duration.class));
     }
 
@@ -243,7 +272,6 @@ class AuthServiceTest {
         TokenResponse response = authService.refresh(new RefreshRequest(refreshToken));
 
         assertThat(response.refreshToken()).isNotEqualTo(refreshToken);
-        verify(redisTemplate).delete(AuthService.SESSION_PREFIX + userId);
         // La nueva sesión conserva el jti anterior para tolerar carreras
         verify(valueOperations)
                 .set(eq(AuthService.SESSION_PREFIX + userId), anyString(), any(Duration.class));
@@ -345,9 +373,9 @@ class AuthServiceTest {
 
     @Test
     void resetPasswordSuccess() {
-        existingUser.setResetToken("valid-token");
+        existingUser.setResetToken(AuthService.hashToken("valid-token"));
         existingUser.setResetTokenExpires(Instant.now().plus(Duration.ofHours(1)));
-        when(userRepository.findByResetToken("valid-token"))
+        when(userRepository.findByResetToken(AuthService.hashToken("valid-token")))
                 .thenReturn(Optional.of(existingUser));
 
         authService.resetPassword(new ResetPasswordRequest("valid-token", "NewPass1"));
@@ -360,9 +388,9 @@ class AuthServiceTest {
 
     @Test
     void resetPasswordRejectsExpiredToken() {
-        existingUser.setResetToken("expired-token");
+        existingUser.setResetToken(AuthService.hashToken("expired-token"));
         existingUser.setResetTokenExpires(Instant.now().minus(Duration.ofHours(1)));
-        when(userRepository.findByResetToken("expired-token"))
+        when(userRepository.findByResetToken(AuthService.hashToken("expired-token")))
                 .thenReturn(Optional.of(existingUser));
 
         ResetPasswordRequest request = new ResetPasswordRequest("expired-token", "NewPass1");
@@ -373,7 +401,8 @@ class AuthServiceTest {
 
     @Test
     void resetPasswordRejectsInvalidToken() {
-        when(userRepository.findByResetToken("bad-token")).thenReturn(Optional.empty());
+        when(userRepository.findByResetToken(AuthService.hashToken("bad-token")))
+                .thenReturn(Optional.empty());
 
         ResetPasswordRequest request = new ResetPasswordRequest("bad-token", "NewPass1");
         assertThatThrownBy(() -> authService.resetPassword(request))
@@ -384,9 +413,9 @@ class AuthServiceTest {
 
     @Test
     void verifyEmailSuccess() {
-        existingUser.setVerificationToken("verify-token");
+        existingUser.setVerificationToken(AuthService.hashToken("verify-token"));
         existingUser.setVerificationExpires(Instant.now().plus(Duration.ofHours(24)));
-        when(userRepository.findByVerificationToken("verify-token"))
+        when(userRepository.findByVerificationToken(AuthService.hashToken("verify-token")))
                 .thenReturn(Optional.of(existingUser));
 
         authService.verifyEmail("verify-token");
@@ -398,9 +427,9 @@ class AuthServiceTest {
 
     @Test
     void verifyEmailRejectsExpiredToken() {
-        existingUser.setVerificationToken("expired-vtoken");
+        existingUser.setVerificationToken(AuthService.hashToken("expired-vtoken"));
         existingUser.setVerificationExpires(Instant.now().minus(Duration.ofHours(1)));
-        when(userRepository.findByVerificationToken("expired-vtoken"))
+        when(userRepository.findByVerificationToken(AuthService.hashToken("expired-vtoken")))
                 .thenReturn(Optional.of(existingUser));
 
         assertThatThrownBy(() -> authService.verifyEmail("expired-vtoken"))
@@ -410,7 +439,8 @@ class AuthServiceTest {
 
     @Test
     void verifyEmailRejectsInvalidToken() {
-        when(userRepository.findByVerificationToken("bad-vtoken")).thenReturn(Optional.empty());
+        when(userRepository.findByVerificationToken(AuthService.hashToken("bad-vtoken")))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.verifyEmail("bad-vtoken"))
                 .isInstanceOf(BadRequestException.class);

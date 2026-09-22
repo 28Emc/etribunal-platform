@@ -89,6 +89,8 @@ etribunal:
     scheduling-interval-max: ${AUTOMATION_INTERVAL_MAX:180}
     scheduling-window-hours: ${AUTOMATION_WINDOW_HOURS:24}
     daily-pool-size: ${AUTOMATION_POOL_SIZE:0}
+    websocket:
+      allowed-origins: ${AUTOMATION_WS_ALLOWED_ORIGINS:http://localhost:3000}
     ai:
       provider: ${AI_PROVIDER:gemini}
       api-key: ${AI_API_KEY:}

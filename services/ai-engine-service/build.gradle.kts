@@ -33,6 +33,7 @@ dependencies {
     implementation("org.springframework.ai:spring-ai-starter-model-google-genai")
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation("io.projectreactor:reactor-test")
     testImplementation(project(":libs:common-test"))
     testRuntimeOnly("com.h2database:h2:2.2.224")
 }

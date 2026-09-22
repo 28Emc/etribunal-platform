@@ -32,7 +32,9 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public NotificationsPage getNotifications(UUID userId, int skip, int take) {
-        Pageable pageable = PageRequest.of(skip / take, take);
+        int safeTake = Math.clamp(take, 1, 100);
+        int safeSkip = Math.max(skip, 0);
+        Pageable pageable = PageRequest.of(safeSkip / safeTake, safeTake);
         List<NotificationEntity> notifications = notificationRepository
                 .findByUserIdOrderByCreatedAtDesc(userId, pageable);
 
@@ -79,11 +81,13 @@ public class NotificationService {
 
     /**
      * Internal method for other services to create notifications.
-     * Skips if recipient == actor or recipient has notifications disabled.
      */
     @Transactional
     public void createNotification(UUID recipientId, UUID actorId,
                                    NotificationType type, Map<String, Object> payload) {
+        if (recipientId == null || actorId == null || type == null) {
+            return;
+        }
         if (recipientId.equals(actorId)) {
             return;
         }
@@ -92,7 +96,7 @@ public class NotificationService {
         n.setId(UUID.randomUUID());
         n.setUserId(recipientId);
         n.setType(type);
-        n.setPayload(payload);
+        n.setPayload(payload != null ? payload : Map.of());
         n.setRead(false);
         n.setCreatedAt(Instant.now());
         notificationRepository.save(n);
@@ -105,7 +109,11 @@ public class NotificationService {
         if (payload != null && payload.containsKey("actor_id")) {
             Object v = payload.get("actor_id");
             if (v != null) {
-                return UUID.fromString(v.toString());
+                try {
+                    return UUID.fromString(v.toString());
+                } catch (IllegalArgumentException e) {
+                    return null;
+                }
             }
         }
         return null;

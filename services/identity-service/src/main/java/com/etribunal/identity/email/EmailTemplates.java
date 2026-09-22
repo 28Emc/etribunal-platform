@@ -1,20 +1,14 @@
 package com.etribunal.identity.email;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class EmailTemplates {
 
-    private final String appUrl;
+    public EmailTemplates() {}
 
-    public EmailTemplates(
-            @Value("${etribunal.frontend.url:http://localhost:3000}") String appUrl) {
-        this.appUrl = appUrl;
-    }
-
-    public String passwordResetBody(String resetToken, String language) {
-        String resetUrl = appUrl + "/reset-password?token=" + resetToken;
+    /** Recibe la URL completa (incluye el token) construida por el caller. */
+    public String passwordResetBody(String resetUrl, String language) {
         if ("en".equals(language)) {
             return htmlWrapper(
                     "Reset your password",

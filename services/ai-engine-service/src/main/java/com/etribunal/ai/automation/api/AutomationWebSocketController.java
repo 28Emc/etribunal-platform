@@ -4,15 +4,14 @@ import com.etribunal.ai.automation.application.AutomationOrchestrator;
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.infrastructure.settings.AutomationSettingsService;
 import com.etribunal.common.security.JwtTokenProvider;
-import com.nimbusds.jwt.JWTClaimsSet;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
+import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessageSendingOperations;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
@@ -24,9 +23,6 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 public class AutomationWebSocketController {
 
     private static final Logger log = LoggerFactory.getLogger(AutomationWebSocketController.class);
-    private static final String BEARER_PREFIX = "Bearer ";
-    private static final String CLAIM_ROLES = "roles";
-    private static final Set<String> ADMIN_ROLES = Set.of("ADMIN", "SYSADMIN");
     private static final String TOPIC_RUN = "/topic/automation/run";
     private static final String MSG_TYPE_RUN_UPDATE = "RUN_UPDATE";
 
@@ -34,9 +30,8 @@ public class AutomationWebSocketController {
     private final AutomationOrchestrator orchestrator;
     private final AutomationSettingsService settingsService;
     private final EngagementService engagementService;
-    private final JwtTokenProvider jwtTokenProvider;
 
-    // Track connected admin sessions
+    // Track connected admin sessions (solo sesiones con CONNECT autenticado por JWT)
     private final Set<String> connectedSessions = ConcurrentHashMap.newKeySet();
 
     public AutomationWebSocketController(
@@ -50,52 +45,14 @@ public class AutomationWebSocketController {
         this.orchestrator = orchestrator;
         this.settingsService = settingsService;
         this.engagementService = engagementService;
-        this.jwtTokenProvider = jwtTokenProvider;
     }
 
     @EventListener
     public void handleSessionConnected(SessionConnectEvent event) {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
         String sessionId = accessor.getSessionId();
-
-        if (isAdminSession(accessor)) {
-            connectedSessions.add(sessionId);
-            log.info("Admin WebSocket connected: {}", sessionId);
-        } else {
-            log.warn("Non-admin WebSocket connection rejected: {}", sessionId);
-        }
-    }
-
-    /**
-     * Autoriza la sesión de administración:
-     * 1. Header {@code X-Roles} inyectado por el gateway (despliegue con WS proxied).
-     * 2. Access token JWT en el frame STOMP CONNECT ({@code Authorization: Bearer <token>}).
-     */
-    private boolean isAdminSession(StompHeaderAccessor accessor) {
-        String roles = accessor.getFirstNativeHeader("X-Roles");
-        if (roles != null && (roles.contains("ADMIN") || roles.contains("SYSADMIN"))) {
-            return true;
-        }
-        String authorization = accessor.getFirstNativeHeader("Authorization");
-        if (authorization != null && authorization.startsWith(BEARER_PREFIX)) {
-            return jwtTokenProvider.parseAccessToken(authorization.substring(BEARER_PREFIX.length()))
-                    .map(this::hasAdminRole)
-                    .orElse(false);
-        }
-        return false;
-    }
-
-    private boolean hasAdminRole(JWTClaimsSet claims) {
-        Object rolesClaim = claims.getClaim(CLAIM_ROLES);
-        if (!(rolesClaim instanceof List<?> roles)) {
-            return false;
-        }
-        for (Object role : roles) {
-            if (role instanceof String s && ADMIN_ROLES.contains(s)) {
-                return true;
-            }
-        }
-        return false;
+        connectedSessions.add(sessionId);
+        log.info("Admin WebSocket connected: {}", sessionId);
     }
 
     @EventListener
@@ -107,18 +64,26 @@ public class AutomationWebSocketController {
     }
 
     @MessageMapping("/automation/subscribe")
-    public void subscribe() {
+    public void subscribe(StompHeaderAccessor accessor) {
+        assertAdminSession(accessor);
         sendCurrentState();
     }
 
     @MessageMapping("/automation/trigger")
-    public void triggerRun(boolean dryRun) {
+    public void triggerRun(boolean dryRun, StompHeaderAccessor accessor) {
+        assertAdminSession(accessor);
         var result = orchestrator.startRun(dryRun);
         broadcast(TOPIC_RUN, MSG_TYPE_RUN_UPDATE, Map.of(
             "id", result.runId().toString(),
             "status", result.status(),
             "dryRun", dryRun
         ));
+    }
+
+    private void assertAdminSession(StompHeaderAccessor accessor) {
+        if (accessor == null || !connectedSessions.contains(accessor.getSessionId())) {
+            throw new MessagingException("Se requiere rol administrador");
+        }
     }
 
     /** Empuja el estado completo actual a los 4 topics del panel (estado inicial al conectar). */

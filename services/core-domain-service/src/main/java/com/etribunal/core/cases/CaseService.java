@@ -290,7 +290,10 @@ public class CaseService {
         entity.setSideBContent(dto.side_b_content().trim());
         entity.setStatus(CaseStatus.PUBLIC);
         entity.setInviteToken(null);
-        entity.setAnonymous(Boolean.TRUE.equals(dto.is_anonymous()));
+        // El anonimato a nivel de caso lo decide el creador (Side A). Side B solo puede
+        // sumar anonimato, nunca quitárselo al creador.
+        entity.setAnonymous(
+                entity.isAnonymous() || Boolean.TRUE.equals(dto.is_anonymous()));
 
         moderationService.moderateCaseContentAsync(
                 entity.getId(), entity.getTitle(), entity.getSideAContent(), entity.getSideBContent());
@@ -360,6 +363,9 @@ public class CaseService {
             if (dto.is_anonymous() != null) {
                 entity.setAnonymous(dto.is_anonymous());
             }
+            if (dto.is_private() != null) {
+                entity.setPrivate(dto.is_private());
+            }
             if (dto.both_wrong_subtitle() != null) {
                 entity.setBothWrongSubtitle(dto.both_wrong_subtitle());
             }
@@ -408,9 +414,8 @@ public class CaseService {
     @Transactional(readOnly = true)
     public List<CaseResponse> getTrendingCases(int limit) {
         Pageable pageable = PageRequest.of(0, limit);
-        return caseRepository.findTrendingCases(pageable).getContent().stream()
-                .map(c -> toResponse(List.of(c), null).getFirst())
-                .toList();
+        // Enriquecimiento en batch: N casos → 1 llamada a summaries + queries agrupadas
+        return toResponse(caseRepository.findTrendingCases(pageable).getContent(), null);
     }
 
     @Transactional(readOnly = true)
@@ -420,11 +425,22 @@ public class CaseService {
                 .minus(java.time.Duration.ofMinutes(activeUsersWindowMinutes));
         List<Object[]> results = caseRepository.findActiveUsersByRecentActivity(since,
                 PageRequest.of(0, limit));
+
+        // Batch: una sola llamada para todos los summaries (evita N+1 sobre red)
+        Map<UUID, UserSummary> summaries = new HashMap<>();
+        if (!results.isEmpty()) {
+            List<UUID> ids = results.stream()
+                    .map(row -> (UUID) row[0])
+                    .toList();
+            summaries.putAll(usersClient.summaries(ids).stream()
+                    .collect(Collectors.toMap(UserSummary::id, Function.identity())));
+        }
+
         List<Map<String, Object>> users = new ArrayList<>();
         for (Object[] row : results) {
             UUID userId = (UUID) row[0];
             long activityCount = ((Number) row[1]).longValue();
-            UserSummary summary = usersClient.summaries(List.of(userId)).stream().findFirst().orElse(null);
+            UserSummary summary = summaries.get(userId);
             if (summary != null) {
                 Map<String, Object> u = new HashMap<>();
                 u.put("id", summary.id().toString());

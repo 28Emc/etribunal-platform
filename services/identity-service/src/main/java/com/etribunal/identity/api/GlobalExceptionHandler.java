@@ -8,11 +8,16 @@ import com.etribunal.common.domain.exception.UnauthorizedException;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -57,6 +62,31 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNoResource(NoResourceFoundException ex) {
         return build(HttpStatus.NOT_FOUND, "Recurso no encontrado");
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadable(HttpMessageNotReadableException ex) {
+        return build(HttpStatus.BAD_REQUEST, "Cuerpo de petición inválido o malformado");
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(
+            MethodArgumentTypeMismatchException ex) {
+        return build(HttpStatus.BAD_REQUEST, "Parámetro inválido: " + ex.getName());
+    }
+
+    @ExceptionHandler({
+        MissingServletRequestParameterException.class,
+        MissingRequestHeaderException.class
+    })
+    public ResponseEntity<ApiResponse<Void>> handleMissingParam(Exception ex) {
+        return build(HttpStatus.BAD_REQUEST, "Falta un parámetro o cabecera requerida");
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIntegrity(DataIntegrityViolationException ex) {
+        log.warn("Violación de integridad: {}", ex.getMostSpecificCause().getMessage());
+        return build(HttpStatus.CONFLICT, "El recurso ya existe o viola una restricción");
     }
 
     @ExceptionHandler(Exception.class)

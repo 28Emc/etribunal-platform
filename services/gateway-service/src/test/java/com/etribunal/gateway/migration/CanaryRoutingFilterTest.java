@@ -1,5 +1,6 @@
 package com.etribunal.gateway.migration;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -101,7 +102,7 @@ class CanaryRoutingFilterTest {
     @Test
     void filterHandlesAuthPaths() {
         filter = new CanaryRoutingFilter(featureFlags, ENABLED_PROPS);
-        when(featureFlags.shouldRouteToSpring("identity", "auth"))
+        when(featureFlags.shouldRouteToSpring("identity", "auth-login"))
                 .thenReturn(Mono.just(false));
         when(featureFlags.getNestJsUrl()).thenReturn("http://localhost:3001/api");
 
@@ -111,6 +112,28 @@ class CanaryRoutingFilterTest {
                 .verifyComplete();
 
         verify(chain).filter(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void filterPreservesQueryStringWhenRoutingToNestJs() {
+        filter = new CanaryRoutingFilter(featureFlags, ENABLED_PROPS);
+        when(featureFlags.shouldRouteToSpring("core-domain", "cases-feed"))
+                .thenReturn(Mono.just(false));
+        when(featureFlags.getNestJsUrl()).thenReturn("http://localhost:3001/api");
+
+        MockServerHttpRequest request = MockServerHttpRequest
+                .get("/api/cases/feed?page=2&take=10&q=hola")
+                .build();
+        ServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        org.mockito.ArgumentCaptor<ServerWebExchange> captor =
+                org.mockito.ArgumentCaptor.forClass(ServerWebExchange.class);
+        verify(chain).filter(captor.capture());
+        assertThat(captor.getValue().getRequest().getURI())
+                .hasToString("http://localhost:3001/api/cases/feed?page=2&take=10&q=hola");
     }
 
     private ServerWebExchange createExchange(String path) {

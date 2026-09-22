@@ -13,12 +13,13 @@ import reactor.core.publisher.Mono;
 /**
  * Canary routing filter for Strangler Fig migration.
  *
- * When canary is enabled, this filter checks the feature flag for the matched
+ * <p>When canary is enabled, this filter checks the feature flag for the matched
  * route. If the flag says "route to Spring", the request proceeds normally
  * (already routed by Spring Cloud Gateway). If the flag says "route to NestJS",
- * the filter rewrites the URI to point to the legacy backend.
+ * the filter rewrites the URI to point to the legacy backend, preservando el
+ * query string (page/take/q).</p>
  *
- * Order: -5 (after JWT filter at -10, before routing at 0)
+ * <p>Order: -5 (after JWT filter at -10, before routing at 0)</p>
  */
 @Component
 public class CanaryRoutingFilter implements GlobalFilter, Ordered {
@@ -46,8 +47,8 @@ public class CanaryRoutingFilter implements GlobalFilter, Ordered {
         }
 
         String path = exchange.getRequest().getURI().getPath();
-        String service = extractService(path);
-        String route = extractRoute(path);
+        String service = MigrationRoutes.extractService(path);
+        String route = MigrationRoutes.extractRoute(path);
 
         if (service == null) {
             return chain.filter(exchange);
@@ -55,15 +56,17 @@ public class CanaryRoutingFilter implements GlobalFilter, Ordered {
 
         return featureFlags.shouldRouteToSpring(service, route)
                 .flatMap(shouldSpring -> {
-                    if (shouldSpring) {
+                    if (shouldSpring != null && shouldSpring) {
                         // Route to Spring (default behavior)
                         log.debug("Canary → Spring: {} {}", service, path);
                         return chain.filter(exchange);
                     } else {
                         // Route to NestJS (legacy)
                         String nestjsUrl = featureFlags.getNestJsUrl();
-                        String newPath = path.replaceFirst("^/api", "");
-                        String targetUri = nestjsUrl + newPath;
+                        String newPath = MigrationRoutes.nestJsPath(path);
+                        String query = exchange.getRequest().getURI().getRawQuery();
+                        String targetUri =
+                                nestjsUrl + newPath + (query == null || query.isEmpty() ? "" : "?" + query);
 
                         log.debug("Canary → NestJS: {} {} → {}", service, path, targetUri);
 
@@ -76,33 +79,5 @@ public class CanaryRoutingFilter implements GlobalFilter, Ordered {
                                 .build());
                     }
                 });
-    }
-
-    /**
-     * Extract the service name from the path.
-     * e.g., /api/cases/123/votes → "core-domain"
-     */
-    private String extractService(String path) {
-        if (path.startsWith("/api/cases") || path.startsWith("/api/comments")
-                || path.startsWith("/api/reactions") || path.startsWith("/api/saved-cases")
-                || path.startsWith("/api/notifications")) {
-            return "core-domain";
-        }
-        if (path.startsWith("/api/auth") || path.startsWith("/api/users")) {
-            return "identity";
-        }
-        return null;
-    }
-
-    /**
-     * Extract a route key from the path for flag lookup.
-     * e.g., /api/cases/feed → "cases-feed"
-     */
-    private String extractRoute(String path) {
-        String[] parts = path.split("/");
-        if (parts.length >= 3) {
-            return parts[2]; // e.g., "cases", "comments", "auth"
-        }
-        return "default";
     }
 }

@@ -80,11 +80,11 @@ public class CoreEmailTemplates {
     private String escapeHtml(String text) {
         if (text == null) return "";
         return text
-                .replace("&", "&")
-                .replace("<", "<")
-                .replace(">", ">")
-                .replace("\"", "\"")
-                .replace("'", "'");
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 
     public String getModeratorEmail() {

@@ -18,7 +18,10 @@ import com.etribunal.identity.email.EmailProvider;
 import com.etribunal.identity.email.EmailTemplates;
 import com.etribunal.identity.user.UserEntity;
 import com.etribunal.identity.user.UserRepository;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
@@ -26,6 +29,7 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -52,6 +56,8 @@ public class AuthService {
     private final StringRedisTemplate redis;
     private final EmailProvider emailProvider;
     private final EmailTemplates emailTemplates;
+    private final String frontendUrl;
+    private volatile String dummyPasswordHash;
 
     public AuthService(
             UserRepository userRepository,
@@ -60,7 +66,8 @@ public class AuthService {
             JwtProperties jwtProperties,
             StringRedisTemplate redis,
             EmailProvider emailProvider,
-            EmailTemplates emailTemplates) {
+            EmailTemplates emailTemplates,
+            @Value("${etribunal.frontend.url:http://localhost:3000}") String frontendUrl) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
@@ -68,6 +75,33 @@ public class AuthService {
         this.redis = redis;
         this.emailProvider = emailProvider;
         this.emailTemplates = emailTemplates;
+        this.frontendUrl = frontendUrl;
+    }
+
+    private String buildEmailUrl(String path, String rawToken) {
+        return frontendUrl + path + "?token=" + rawToken;
+    }
+
+    /** Hash SHA-256 de los tokens (verif/reset) antes de persistir o consultar. */
+    static String hashToken(String token) {
+        try {
+            byte[] digest =
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(token.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Hash exponencialmente costoso que iguala el tiempo de login cuando no hay usuario. */
+    private String dummyPasswordHash() {
+        String current = dummyPasswordHash;
+        if (current == null) {
+            current = passwordEncoder.encode(UUID.randomUUID() + "@" + System.nanoTime());
+            dummyPasswordHash = current;
+        }
+        return current;
     }
 
     // ──────────────────────── Register ────────────────────────
@@ -91,17 +125,16 @@ public class AuthService {
                 "https://api.dicebear.com/7.x/identicon/svg?seed=" + request.username());
 
         String verificationToken = generateToken();
-        user.setVerificationToken(verificationToken);
+        user.setVerificationToken(hashToken(verificationToken));
         user.setVerificationExpires(Instant.now().plus(VERIFICATION_TOKEN_TTL));
 
         userRepository.save(user);
 
-        String verificationUrl =
-                "http://localhost:3000/verify-email?token=" + verificationToken;
+        String verificationUrl = buildEmailUrl("/verify-email", verificationToken);
         emailProvider.sendEmail(
                 email,
                 "Verifica tu correo - eTribunal",
-                emailTemplates.verificationBody(verificationUrl, "es"));
+                emailTemplates.verificationBody(verificationUrl, user.getLanguage()));
 
         return issueTokens(user);
     }
@@ -113,7 +146,8 @@ public class AuthService {
         String attemptsKey = ATTEMPTS_PREFIX + email;
 
         String attemptsValue = redis.opsForValue().get(attemptsKey);
-        if (attemptsValue != null && Integer.parseInt(attemptsValue) >= MAX_ATTEMPTS) {
+        int attempts = parseAttempts(attemptsValue);
+        if (attempts >= MAX_ATTEMPTS) {
             Long ttlSeconds = redis.getExpire(attemptsKey);
             long minutes = ttlSeconds != null && ttlSeconds > 0 ? ttlSeconds / 60 + 1 : 1;
             throw new UnauthorizedException(
@@ -125,10 +159,12 @@ public class AuthService {
                         .findByEmailIgnoreCaseAndDeletedAtNull(email)
                         .orElseGet(UserEntity::new);
 
-        boolean valid =
-                user.getId() != null
-                        && user.isActive()
-                        && passwordEncoder.matches(request.password(), user.getPasswordHash());
+        // Igualar el tiempo de respuesta aunque el usuario no exista (evita enumeración por timing).
+        // La comparación BCrypt se ejecuta SIEMPRE, usando un hash dummy cuando no existe usuario.
+        String candidateHash =
+                user.getPasswordHash() != null ? user.getPasswordHash() : dummyPasswordHash();
+        boolean matches = passwordEncoder.matches(request.password(), candidateHash);
+        boolean valid = user.getId() != null && user.isActive() && matches;
         if (!valid) {
             registerFailure(attemptsKey);
             throw new UnauthorizedException("Credenciales inválidas");
@@ -136,6 +172,17 @@ public class AuthService {
 
         redis.delete(attemptsKey);
         return issueTokens(user);
+    }
+
+    private static int parseAttempts(String attemptsValue) {
+        if (attemptsValue == null || attemptsValue.isBlank()) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(attemptsValue.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     // ──────────────────────── Refresh ────────────────────────
@@ -182,7 +229,8 @@ public class AuthService {
         String previousJti =
                 validJtis.stream().filter(j -> !j.equals(tokenJti)).findFirst().orElse(null);
 
-        redis.delete(storageKey);
+        // issueTokens sobrescribe la clave de sesión de forma atómica: NO borrar antes
+        // (un delete previo + set posterior dejaría a dos pestañas revocándose en carrera).
         return issueTokens(user, previousJti);
     }
 
@@ -221,6 +269,7 @@ public class AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         userRepository.save(user);
+        redis.delete(SESSION_PREFIX + userId);
     }
 
     // ──────────────────────── Forgot Password ────────────────────────
@@ -235,15 +284,15 @@ public class AuthService {
                         return;
                     }
                     String token = generateToken();
-                    user.setResetToken(token);
+                    user.setResetToken(hashToken(token));
                     user.setResetTokenExpires(Instant.now().plus(RESET_TOKEN_TTL));
                     userRepository.save(user);
 
-                    String resetUrl = "http://localhost:3000/reset-password?token=" + token;
+                    String resetUrl = buildEmailUrl("/reset-password", token);
                     emailProvider.sendEmail(
                             email,
                             "Recuperar tu contraseña - eTribunal",
-                            emailTemplates.passwordResetBody(resetUrl, "es"));
+                            emailTemplates.passwordResetBody(resetUrl, user.getLanguage()));
                 });
     }
 
@@ -252,7 +301,7 @@ public class AuthService {
     public void resetPassword(ResetPasswordRequest request) {
         UserEntity user =
                 userRepository
-                        .findByResetToken(request.token())
+                        .findByResetToken(hashToken(request.token()))
                         .orElseThrow(
                                 () ->
                                         new BadRequestException(
@@ -267,6 +316,7 @@ public class AuthService {
         user.setResetToken(null);
         user.setResetTokenExpires(null);
         userRepository.save(user);
+        redis.delete(SESSION_PREFIX + user.getId());
     }
 
     // ──────────────────────── Verify Email ────────────────────────
@@ -274,7 +324,7 @@ public class AuthService {
     public void verifyEmail(String token) {
         UserEntity user =
                 userRepository
-                        .findByVerificationToken(token)
+                        .findByVerificationToken(hashToken(token))
                         .orElseThrow(
                                 () ->
                                         new BadRequestException(
@@ -310,16 +360,15 @@ public class AuthService {
                         return;
                     }
                     String token = generateToken();
-                    user.setVerificationToken(token);
+                    user.setVerificationToken(hashToken(token));
                     user.setVerificationExpires(Instant.now().plus(VERIFICATION_TOKEN_TTL));
                     userRepository.save(user);
 
-                    String verificationUrl =
-                            "http://localhost:3000/verify-email?token=" + token;
+                    String verificationUrl = buildEmailUrl("/verify-email", token);
                     emailProvider.sendEmail(
                             normalizedEmail,
                             "Verifica tu correo - eTribunal",
-                            emailTemplates.verificationBody(verificationUrl, "es"));
+                            emailTemplates.verificationBody(verificationUrl, user.getLanguage()));
                 });
     }
 

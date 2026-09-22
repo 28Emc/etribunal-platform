@@ -108,6 +108,9 @@ class InteractionExecutorTest {
         entity.setStatus(AutomationInteractionStatus.SCHEDULED);
         entity.setMetadata(new HashMap<>(Map.of("content", "Hola", "case_id", caseUuid)));
 
+        when(interactionRepository.claimForExecution(
+                any(UUID.class), same(AutomationInteractionStatus.SCHEDULED), same(AutomationInteractionStatus.PROCESSING)))
+                .thenReturn(1);
         when(interactionRepository.findById(any(UUID.class))).thenReturn(Optional.of(entity));
         when(interactionRepository.save(any(AutomationInteractionEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -125,6 +128,25 @@ class InteractionExecutorTest {
         verify(analyticsRecorder).record(
                 eq(AutomationInteractionType.COMMENT), eq(caseUuid), eq(userUuid), anyString());
         verify(caseRepository).incrementSuccessfulInteractions(isNull());
+    }
+
+    @Test
+    void execute_doesNotDispatch_whenClaimFails() {
+        UUID interactionId = UUID.randomUUID();
+        AutomationInteractionEntity entity = new AutomationInteractionEntity();
+        entity.setAutomationCase(new AutomationCaseEntity());
+        entity.setStatus(AutomationInteractionStatus.PROCESSING);
+        entity.setResultId("other-instance-result");
+
+        when(interactionRepository.claimForExecution(any(UUID.class), same(AutomationInteractionStatus.SCHEDULED),
+                same(AutomationInteractionStatus.PROCESSING))).thenReturn(0);
+        when(interactionRepository.findById(interactionId)).thenReturn(Optional.of(entity));
+
+        InteractionExecutor.ExecuteResult result = executor.execute(interactionId);
+
+        assertThat(result.status()).isEqualTo("PROCESSING");
+        assertThat(result.resultId()).isEqualTo("other-instance-result");
+        verifyNoInteractions(coreApiClient);
     }
 
     @Test

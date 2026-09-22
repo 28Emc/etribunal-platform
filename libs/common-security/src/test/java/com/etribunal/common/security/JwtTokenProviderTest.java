@@ -1,9 +1,13 @@
 package com.etribunal.common.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import java.text.ParseException;
 import java.time.Duration;
 import java.util.List;
@@ -90,15 +94,58 @@ class JwtTokenProviderTest {
     void secretsShorterThan32BytesRejected() {
         byte[] shortSecret = "short".getBytes();
         byte[] refreshSecret = REFRESH_SECRET.getBytes();
-        assertThatThrownBy(
-                        () ->
-                                new JwtTokenProvider(
-                                        shortSecret,
-                                        refreshSecret,
-                                        "etribunal",
-                                        Duration.ofMinutes(15),
-                                        Duration.ofDays(7)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("JWT_ACCESS_SECRET");
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new JwtTokenProvider(
+                        shortSecret,
+                        refreshSecret,
+                        "etribunal",
+                        Duration.ofMinutes(15),
+                        Duration.ofDays(7)));
+
+        assertThat(exception.getMessage()).contains("JWT_ACCESS_SECRET");
+    }
+
+    @Test
+    void tokenWithoutExpirationRejectedInsteadOfNpe() throws Exception {
+        JWTClaimsSet claims =
+                new JWTClaimsSet.Builder()
+                        .subject(UUID.randomUUID().toString())
+                        .issuer("etribunal")
+                        .claim(JwtTokenProvider.CLAIM_TOKEN_TYPE, JwtTokenProvider.TOKEN_TYPE_ACCESS)
+                        .claim(JwtTokenProvider.CLAIM_USERNAME, "user")
+                        .claim("roles", List.of("USER"))
+                        .jwtID(UUID.randomUUID().toString())
+                        .build();
+        SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claims);
+        jwt.sign(new MACSigner(ACCESS_SECRET.getBytes()));
+
+        assertThat(provider.parseAccessToken(jwt.serialize())).isEmpty();
+    }
+
+    @Test
+    void nullIssuerRejectedAtConstruction() {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new JwtTokenProvider(
+                        ACCESS_SECRET.getBytes(),
+                        REFRESH_SECRET.getBytes(),
+                        null,
+                        Duration.ofMinutes(15),
+                        Duration.ofDays(7)));
+
+        assertThat(exception.getMessage()).contains("issuer");
+    }
+
+    @Test
+    void nullTtlRejectedAtConstruction() {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new JwtTokenProvider(
+                        ACCESS_SECRET.getBytes(),
+                        REFRESH_SECRET.getBytes(),
+                        "etribunal",
+                        null,
+                        Duration.ofDays(7)));
+
+        assertThat(exception.getMessage()).contains("TTL");
     }
 }

@@ -95,6 +95,15 @@ public class AutomationOrchestrator {
             log.info("Automation disabled (AI_ENABLED=false), refusing to start run");
             throw new IllegalStateException("Automation is disabled (AI_ENABLED=false)");
         }
+        return doStartRun(dryRunOverride);
+    }
+
+    /**
+     * Sincronizado: el check-then-act (¿hay run activo? → crear) debe ser atómico frente a
+     * las tres entradas (REST, WebSocket y cron). Sin esto dos llamadas concurrentes podrían
+     * crear dos runs solapados del día.
+     */
+    private synchronized RunResult doStartRun(boolean dryRunOverride) {
 
         Instant todayStart = Instant.now().atZone(java.time.ZoneId.systemDefault())
                 .toLocalDate().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();

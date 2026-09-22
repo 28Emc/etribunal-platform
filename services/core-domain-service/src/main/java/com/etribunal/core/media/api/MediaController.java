@@ -1,6 +1,8 @@
 package com.etribunal.core.media.api;
 
 import com.etribunal.core.media.application.MediaService;
+import com.etribunal.core.security.CurrentUserResolver;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -17,9 +19,11 @@ import java.util.UUID;
 public class MediaController {
 
     private final MediaService mediaService;
+    private final CurrentUserResolver currentUser;
 
-    public MediaController(MediaService mediaService) {
+    public MediaController(MediaService mediaService, CurrentUserResolver currentUser) {
         this.mediaService = mediaService;
+        this.currentUser = currentUser;
     }
 
     public record RequestUploadDto(
@@ -38,10 +42,11 @@ public class MediaController {
     public ResponseEntity<Map<String, Object>> requestUpload(
             @PathVariable UUID caseId,
             @RequestParam(defaultValue = "A") String side,
-            @Valid @RequestBody RequestUploadDto dto
+            @Valid @RequestBody RequestUploadDto dto,
+            HttpServletRequest request
     ) {
         MediaService.UploadResponse response = mediaService.requestUpload(
-                caseId, side,
+                caseId, side, currentUser.requiredUserId(request),
                 new MediaService.UploadRequest(dto.contentType(), dto.originalFilename(), dto.fileSize()));
 
         return ResponseEntity.ok(Map.of(
@@ -55,9 +60,12 @@ public class MediaController {
     @PostMapping("/images/{imageId}/confirm")
     public ResponseEntity<Map<String, Object>> confirmUpload(
             @PathVariable UUID imageId,
-            @Valid @RequestBody ConfirmUploadDto dto
+            @Valid @RequestBody ConfirmUploadDto dto,
+            HttpServletRequest request
     ) {
-        var entity = mediaService.confirmUpload(imageId, dto.width(), dto.height(), dto.fileSize());
+        var entity = mediaService.confirmUpload(
+                imageId, dto.width(), dto.height(), dto.fileSize(),
+                currentUser.requiredUserId(request));
 
         return ResponseEntity.ok(Map.of(
                 "id", entity.getId().toString(),
@@ -74,8 +82,10 @@ public class MediaController {
     }
 
     @DeleteMapping("/images/{imageId}")
-    public ResponseEntity<Map<String, String>> deleteImage(@PathVariable UUID imageId) {
-        mediaService.deleteImage(imageId);
+    public ResponseEntity<Map<String, String>> deleteImage(
+            @PathVariable UUID imageId,
+            HttpServletRequest request) {
+        mediaService.deleteImage(imageId, currentUser.requiredUserId(request));
         return ResponseEntity.ok(Map.of("message", "Image deleted"));
     }
 }

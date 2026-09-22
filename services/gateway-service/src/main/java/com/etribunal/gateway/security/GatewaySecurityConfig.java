@@ -20,9 +20,9 @@ public class GatewaySecurityConfig {
     }
 
     @Bean
-    public CorsWebFilter corsWebFilter() {
+    public CorsWebFilter corsWebFilter(GatewayAuthProperties props) {
         CorsConfiguration config = new CorsConfiguration();
-        config.addAllowedOrigin("http://localhost:3000");
+        props.allowedOrigins().forEach(config::addAllowedOrigin);
         config.addAllowedMethod("*");
         config.addAllowedHeader("*");
         config.setAllowCredentials(true);

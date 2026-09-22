@@ -13,10 +13,9 @@ public class ConsoleEmailProvider implements EmailProvider {
 
     @Override
     public void sendEmail(String to, String subject, String htmlBody) {
-        log.info(
-                "[EMAIL-CONSOLE] To: {} | Subject: {} | Body preview: {}",
-                to,
-                subject,
-                htmlBody.replaceAll("<[^>]+>", "").substring(0, Math.min(120, htmlBody.length())));
+        String visibleText = htmlBody.replaceAll("<[^>]+>", "");
+        String preview =
+                visibleText.substring(0, Math.min(120, visibleText.length()));
+        log.info("[EMAIL-CONSOLE] To: {} | Subject: {} | Body preview: {}", to, subject, preview);
     }
 }

@@ -11,6 +11,12 @@ import com.etribunal.ai.automation.application.AutomationScheduler;
 import com.etribunal.ai.automation.config.AutomationConfig;
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.infrastructure.settings.AutomationSettingsService;
+import com.etribunal.common.security.JwtTokenProvider;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -21,14 +27,19 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-
 @ExtendWith(MockitoExtension.class)
 class AutomationControllerTest {
 
-    private static final String ADMIN = "USER,ADMIN";
+    private static final JwtTokenProvider PROVIDER = new JwtTokenProvider(
+            "test-access-secret-0123456789abcdef0123456789abcdef".getBytes(),
+            "test-refresh-secret-0123456789abcdef0123456789abcdef".getBytes(),
+            "etribunal",
+            Duration.ofMinutes(15),
+            Duration.ofDays(7));
+    private static final String ADMIN =
+            "Bearer " + PROVIDER.generateAccessToken(UUID.randomUUID(), "admin", List.of("USER", "ADMIN"));
+    private static final String NON_ADMIN =
+            "Bearer " + PROVIDER.generateAccessToken(UUID.randomUUID(), "user", List.of("USER"));
 
     @Mock
     private AutomationOrchestrator orchestrator;
@@ -46,7 +57,7 @@ class AutomationControllerTest {
     private AutomationConfig config = new AutomationConfig();
 
     @Spy
-    private AutomationAdminGuard adminGuard;
+    private AutomationAdminGuard adminGuard = new AutomationAdminGuard(PROVIDER);
 
     @Mock
     private AutomationWebSocketController wsController;
@@ -84,16 +95,23 @@ class AutomationControllerTest {
 
     @Test
     void startRun_forbidsNonAdmin() {
-        assertThatThrownBy(() -> controller.startRun("USER", false))
+        assertThatThrownBy(() -> controller.startRun(NON_ADMIN, false))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Requiere rol administrador");
     }
 
     @Test
-    void startRun_unauthorized_whenNoRolesHeader() {
+    void startRun_unauthorized_whenNoToken() {
         assertThatThrownBy(() -> controller.startRun(null, false))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("No autenticado");
+    }
+
+    @Test
+    void startRun_rejectsTamperedToken() {
+        assertThatThrownBy(() -> controller.startRun("Bearer " + ADMIN.substring(6) + "x", false))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Token inválido o expirado");
     }
 
     @Test
@@ -147,7 +165,7 @@ class AutomationControllerTest {
 
     @Test
     void getSettings_forbidsNonAdmin() {
-        assertThatThrownBy(() -> controller.getSettings("USER"))
+        assertThatThrownBy(() -> controller.getSettings(NON_ADMIN))
                 .isInstanceOf(ResponseStatusException.class);
     }
 

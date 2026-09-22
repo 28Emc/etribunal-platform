@@ -203,21 +203,20 @@ public class InteractionExecutor {
 
     @Transactional
     public ExecuteResult execute(UUID interactionId) {
-        Optional<AutomationInteractionEntity> opt = interactionRepository.findById(interactionId);
-        if (opt.isEmpty()) {
-            return new ExecuteResult("FAILED", null, "NOT_FOUND", "Interaction not found");
+        // Claim atómico: solo una ejecución gana el UPDATE condicional; las demás
+        // ven la fila ya en otro estado y devuelven su estado actual sin re-ejecutar.
+        int claimed = interactionRepository.claimForExecution(
+                interactionId, AutomationInteractionStatus.SCHEDULED,
+                AutomationInteractionStatus.PROCESSING);
+
+        if (claimed == 0) {
+            return interactionRepository.findById(interactionId)
+                    .map(e -> new ExecuteResult(e.getStatus().name(), e.getResultId(),
+                            e.getErrorCode(), e.getErrorMessage()))
+                    .orElseGet(() -> new ExecuteResult("FAILED", null, "NOT_FOUND", "Interaction not found"));
         }
 
-        AutomationInteractionEntity entity = opt.get();
-
-        if (entity.getStatus() == AutomationInteractionStatus.SUCCESS ||
-                entity.getStatus() == AutomationInteractionStatus.FAILED ||
-                entity.getStatus() == AutomationInteractionStatus.REJECTED) {
-            return new ExecuteResult(entity.getStatus().name(), entity.getResultId(), entity.getErrorCode(), entity.getErrorMessage());
-        }
-
-        entity.setStatus(AutomationInteractionStatus.PROCESSING);
-        interactionRepository.save(entity);
+        AutomationInteractionEntity entity = interactionRepository.findById(interactionId).orElseThrow();
 
         try {
             InteractionExecutor dispatchSource = self != null ? self : this;

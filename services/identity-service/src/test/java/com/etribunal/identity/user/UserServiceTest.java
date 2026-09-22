@@ -220,4 +220,28 @@ class UserServiceTest {
         assertThat(result.get(0)).containsEntry("username", "carl_m");
         assertThat(result.get(0)).containsEntry("followers_count", 9L);
     }
+
+    @Test
+    void searchMasksAnonymousIdentity() {
+        UserEntity anon = user("ghost_1", "g@test.com", true);
+        when(userRepository.searchByUsername(any(), any())).thenReturn(List.of(anon));
+
+        var result = userService.searchUsers("ghost", null, 8, 0);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0)).containsEntry("username", UserService.ANON_USERNAME);
+        assertThat(result.get(0)).containsEntry("avatar_url", UserService.ANON_AVATAR);
+        assertThat(result.get(0).get("bio")).isNull();
+    }
+
+    @Test
+    void topJudgesMasksAnonymousIdentity() {
+        UserEntity anon = user("ghost_1", "g@test.com", true);
+        when(userRepository.findTopJudges(any())).thenReturn(List.of(anon));
+        when(followRepository.countByFollowingId(anon.getId())).thenReturn(1L);
+
+        var result = userService.topJudges(10, null);
+
+        assertThat(result.get(0)).containsEntry("username", UserService.ANON_USERNAME);
+    }
 }

@@ -21,7 +21,12 @@ etribunal:
     access-secret: ${JWT_ACCESS_SECRET}
     issuer: ${JWT_ISSUER:etribunal}
   gateway:
-    enabled: true
+    enabled: ${GATEWAY_AUTH_ENABLED:true}
+    # Fail-closed: el filtro JWT queda activo por defecto (ver GatewayAuthProperties)
+    # Actuator: público SOLO si se expone explícitamente (dev/local). En producción
+    # no exponer o configurar el healthcheck con el token correspondiente.
+    expose-actuator: ${EXPOSE_ACTUATOR:false}
+    allowed-origins: ${GATEWAY_CORS_ALLOWED_ORIGINS:http://localhost:3000}
     public-paths:
       # Auth (legacy: sin guard o con throttling)
       - /api/auth/register
@@ -140,6 +145,8 @@ etribunal:
     # DEV ONLY - debe coincidir con identity-service (mismos secretos compartidos)
     access-secret: "dev-only-access-secret-0123456789abcdef0123456789abcdef"
     issuer: etribunal
+  gateway:
+    expose-actuator: ${EXPOSE_ACTUATOR:true}
   migration:
     # Local: deshabilitado por defecto; habilitar con env vars
     enabled: ${MIGRATION_ENABLED:false}

@@ -70,26 +70,37 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
             return Optional.empty();
         }
         var c = claims.get();
-        @SuppressWarnings("unchecked")
-        List<String> roles =
-                c.getClaim(CLAIM_ROLES) instanceof List
-                        ? (List<String>) c.getClaim(CLAIM_ROLES)
-                        : List.<String>of();
+        // Un token válido siempre tiene sub; si no lo tiene, no adjuntar identidad
+        // (evita emitir "X-User-Id: null" que rompe UUID.fromString aguas abajo).
+        String subject = c.getSubject();
+        if (subject == null || subject.isBlank()) {
+            return Optional.empty();
+        }
+        Object usernameClaim = c.getClaim(JwtTokenProvider.CLAIM_USERNAME);
+        String username = usernameClaim != null ? String.valueOf(usernameClaim) : "";
         return Optional.of(
                 request.mutate()
-                        .header(HEADER_USER_ID, c.getSubject())
-                        .header(
-                                HEADER_USERNAME,
-                                String.valueOf(c.getClaim(JwtTokenProvider.CLAIM_USERNAME)))
+                        .header(HEADER_USER_ID, subject)
+                        .header(HEADER_USERNAME, username)
                         .header(
                                 HEADER_ROLES,
-                                roles.isEmpty() ? "" : String.join(",", roles))
+                                rolesOf(c).isEmpty() ? "" : String.join(",", rolesOf(c)))
                         .build());
     }
 
+    @SuppressWarnings("unchecked")
+    private static List<String> rolesOf(com.nimbusds.jwt.JWTClaimsSet claims) {
+        Object claim = claims.getClaim(CLAIM_ROLES);
+        return claim instanceof List
+                ? (List<String>) claim
+                : List.<String>of();
+    }
+
     boolean isPublic(String path) {
-        return path.startsWith("/actuator")
-                || properties.publicPaths().stream().anyMatch(p -> pathMatcher.match(p, path));
+        if (properties.exposeActuator() && path.startsWith("/actuator")) {
+            return true;
+        }
+        return properties.publicPaths().stream().anyMatch(p -> pathMatcher.match(p, path));
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange) {

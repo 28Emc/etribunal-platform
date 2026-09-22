@@ -1,13 +1,17 @@
 package com.etribunal.core.media.application;
 
+import com.etribunal.core.cases.CaseEntity;
+import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.domain.CaseImageEntity;
 import com.etribunal.core.cases.repository.CaseImageRepository;
 import com.etribunal.core.media.domain.MediaUploadedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -19,15 +23,18 @@ public class MediaService {
     private static final int MAX_IMAGES_PER_CASE = 5;
 
     private final CaseImageRepository imageRepository;
+    private final CaseRepository caseRepository;
     private final PresignedUrlService presignedUrlService;
     private final KafkaTemplate<String, byte[]> kafkaTemplate;
 
     public MediaService(
             CaseImageRepository imageRepository,
+            CaseRepository caseRepository,
             PresignedUrlService presignedUrlService,
             KafkaTemplate<String, byte[]> kafkaTemplate
     ) {
         this.imageRepository = imageRepository;
+        this.caseRepository = caseRepository;
         this.presignedUrlService = presignedUrlService;
         this.kafkaTemplate = kafkaTemplate;
     }
@@ -36,7 +43,16 @@ public class MediaService {
     public record UploadResponse(String uploadUrl, String storageKey, String publicUrl, UUID imageId) {}
 
     @Transactional
-    public UploadResponse requestUpload(UUID caseId, String side, UploadRequest request) {
+    public UploadResponse requestUpload(UUID caseId, String side, UUID userId, UploadRequest request) {
+        if (side == null || (!"A".equals(side) && !"B".equals(side))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El parámetro side debe ser 'A' o 'B'");
+        }
+        if (!isParticipant(caseId, userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "No tienes permisos para subir imágenes a este caso");
+        }
+
         long count = imageRepository.countByCaseId(caseId);
         if (count >= MAX_IMAGES_PER_CASE) {
             throw new IllegalArgumentException("Maximum " + MAX_IMAGES_PER_CASE + " images per case");
@@ -47,7 +63,7 @@ public class MediaService {
 
         CaseImageEntity entity = new CaseImageEntity();
         entity.setCaseId(caseId);
-        entity.setSide(side != null ? side : "A");
+        entity.setSide(side);
         entity.setUrl(presigned.publicUrl());
         entity.setStorageKey(presigned.storageKey());
         entity.setOriginalFilename(request.originalFilename());
@@ -66,9 +82,15 @@ public class MediaService {
     }
 
     @Transactional
-    public CaseImageEntity confirmUpload(UUID imageId, int width, int height, long fileSize) {
+    public CaseImageEntity confirmUpload(UUID imageId, int width, int height, long fileSize, UUID userId) {
         CaseImageEntity entity = imageRepository.findById(imageId)
-                .orElseThrow(() -> new IllegalArgumentException("Image not found: " + imageId));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Image not found: " + imageId));
+
+        if (!isParticipant(entity.getCaseId(), userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "No tienes permisos sobre esta imagen");
+        }
 
         entity.setWidth(width);
         entity.setHeight(height);
@@ -101,9 +123,15 @@ public class MediaService {
     }
 
     @Transactional
-    public void deleteImage(UUID imageId) {
+    public void deleteImage(UUID imageId, UUID userId) {
         CaseImageEntity entity = imageRepository.findById(imageId)
-                .orElseThrow(() -> new IllegalArgumentException("Image not found: " + imageId));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Image not found: " + imageId));
+
+        if (!isParticipant(entity.getCaseId(), userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "No tienes permisos para borrar esta imagen");
+        }
 
         presignedUrlService.deleteObject(entity.getStorageKey());
         imageRepository.delete(entity);
@@ -118,5 +146,14 @@ public class MediaService {
             presignedUrlService.deleteObject(img.getStorageKey());
         }
         imageRepository.deleteAll(images);
+    }
+
+    private boolean isParticipant(UUID caseId, UUID userId) {
+        return caseRepository.findById(caseId)
+                .filter(c -> c.getDeletedAt() == null)
+                .map(CaseEntity -> CaseEntity.getSideAUserId().equals(userId)
+                        || (CaseEntity.getSideBUserId() != null
+                                && CaseEntity.getSideBUserId().equals(userId)))
+                .orElse(false);
     }
 }

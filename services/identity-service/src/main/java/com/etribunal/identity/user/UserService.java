@@ -173,17 +173,20 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> myFollowing(UUID userId, int skip, int take) {
-        Pageable page = PageRequest.of(skip / Math.max(take, 1), take);
+        int safeTake = Math.max(take, 1);
+        int safeSkip = Math.max(skip, 0);
+        Pageable page = PageRequest.of(safeSkip / safeTake, safeTake);
         return followRepository.findByFollowerIdOrderByCreatedAtDesc(userId, page).stream()
                 .map(
                         f -> {
                             UserEntity u = f.getFollowing();
+                            boolean hide = hideAnonIdentity(u, userId);
                             Map<String, Object> row = new LinkedHashMap<>();
                             row.put("id", u.getId());
-                            row.put(KEY_USERNAME, u.getUsername());
-                            row.put(KEY_AVATAR_URL, u.getAvatarUrl());
+                            row.put(KEY_USERNAME, hide ? ANON_USERNAME : u.getUsername());
+                            row.put(KEY_AVATAR_URL, hide ? ANON_AVATAR : u.getAvatarUrl());
                             row.put(KEY_IS_ANONYMOUS, u.getIsAnonymous());
-                            row.put("bio", u.getBio());
+                            row.put("bio", hide ? null : u.getBio());
                             row.put("followers_count", followRepository.countByFollowingId(u.getId()));
                             return row;
                         })
@@ -203,7 +206,7 @@ public class UserService {
         return userRepository.searchByUsername(normalized, PageRequest.of(page, clamped)).stream()
                 .filter(u -> requesterId == null || !requesterId.equals(u.getId()))
                 .limit(clamped)
-                .map(this::searchView)
+                .map(u -> searchView(u, requesterId))
                 .toList();
     }
 
@@ -228,10 +231,11 @@ public class UserService {
                 .limit(clamped)
                 .map(
                         u -> {
+                            boolean hide = hideAnonIdentity(u, currentUserId);
                             Map<String, Object> row = new LinkedHashMap<>();
                             row.put("id", u.getId());
-                            row.put(KEY_USERNAME, u.getUsername());
-                            row.put(KEY_AVATAR_URL, u.getAvatarUrl());
+                            row.put(KEY_USERNAME, hide ? ANON_USERNAME : u.getUsername());
+                            row.put(KEY_AVATAR_URL, hide ? ANON_AVATAR : u.getAvatarUrl());
                             row.put(KEY_IS_ANONYMOUS, u.getIsAnonymous());
                             row.put("followers_count", followRepository.countByFollowingId(u.getId()));
                             if (currentUserId != null) {
@@ -304,12 +308,17 @@ public class UserService {
         return view;
     }
 
-    private Map<String, Object> searchView(UserEntity user) {
+    private Map<String, Object> searchView(UserEntity user, UUID requesterId) {
+        boolean hide = hideAnonIdentity(user, requesterId);
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", user.getId());
-        view.put(KEY_USERNAME, user.getUsername());
-        view.put(KEY_AVATAR_URL, user.getAvatarUrl());
-        view.put("bio", user.getBio());
+        view.put(KEY_USERNAME, hide ? ANON_USERNAME : user.getUsername());
+        view.put(KEY_AVATAR_URL, hide ? ANON_AVATAR : user.getAvatarUrl());
+        view.put("bio", hide ? null : user.getBio());
         return view;
+    }
+
+    private static boolean hideAnonIdentity(UserEntity user, UUID requesterId) {
+        return Boolean.TRUE.equals(user.getIsAnonymous()) && !user.getId().equals(requesterId);
     }
 }

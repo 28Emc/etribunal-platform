@@ -59,4 +59,17 @@ public interface AutomationInteractionRepository extends JpaRepository<Automatio
         @Param("newStatus") AutomationInteractionStatus newStatus,
         @Param("staleSince") Instant staleSince
     );
+
+    /**
+     * Claim atómico de una interacción (SCHEDULED→PROCESSING). El UPDATE condicional
+     * garantiza que solo un tick/instancia ejecute cada interacción aunque lean la
+     * misma fila: quien no gane el claim recibe 0 filas.
+     */
+    @Modifying
+    @Query("UPDATE AutomationInteractionEntity ai SET ai.status = :newStatus, ai.updatedAt = CURRENT_TIMESTAMP WHERE ai.id = :id AND ai.status = :expectedStatus")
+    int claimForExecution(
+        @Param("id") UUID id,
+        @Param("expectedStatus") AutomationInteractionStatus expectedStatus,
+        @Param("newStatus") AutomationInteractionStatus newStatus
+    );
 }

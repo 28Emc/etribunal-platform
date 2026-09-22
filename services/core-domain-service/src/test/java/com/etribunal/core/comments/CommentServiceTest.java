@@ -7,6 +7,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
@@ -198,8 +199,60 @@ class CommentServiceTest {
 
         assertThat(page.data()).hasSize(3);
         assertThat(page.has_more()).isTrue();
+        // Cursor compuesto createdAt|id: estable incluso con timestamps empatados
         assertThat(page.next_cursor())
-                .isEqualTo(now.minusSeconds(120).toString());
+                .isEqualTo(now.minusSeconds(120).toString()
+                        + "|" + fetched.get(2).getId().toString());
+    }
+
+    @Test
+    void cursorPaginationUsesCompositeBeforeCursor() {
+        UUID lastId = UUID.randomUUID();
+        Instant beforeDate = now.minusSeconds(120);
+        when(commentRepository.findTopLevelBeforeCursor(eq(caseId), eq(beforeDate),
+                eq(lastId), any()))
+                .thenReturn(List.of());
+
+        commentService.getCommentsCursor(caseId,
+                beforeDate.toString() + "|" + lastId, null, 20);
+
+        verify(commentRepository).findTopLevelBeforeCursor(
+                eq(caseId), eq(beforeDate), eq(lastId), any());
+    }
+
+    @Test
+    void createCommentReturnsRealAuthor() {
+        when(commentRepository.save(any(CommentEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(usersClient.summaries(any()))
+                .thenReturn(List.of(new com.etribunal.core.users.UserSummary(
+                        userId, "ana_t", "https://example.com/a.png", false)));
+
+        CommentResponse response = commentService.createComment(
+                caseId, userId, "  Mi comentario  ", null, false);
+
+        assertThat(response.user().username()).isEqualTo("ana_t");
+        assertThat(response.user().is_anonymous()).isFalse();
+    }
+
+    @Test
+    void createCommentAnonymousAuthorIsMasked() {
+        when(commentRepository.save(any(CommentEntity.class)))
+                .thenAnswer(inv -> {
+                    CommentEntity c = inv.getArgument(0);
+                    c.setAnonymous(true);
+                    return c;
+                });
+        when(usersClient.summaries(any()))
+                .thenReturn(List.of(new com.etribunal.core.users.UserSummary(
+                        userId, "realuser", "https://example.com/a.png", true)));
+
+        CommentResponse response = commentService.createComment(
+                caseId, userId, "  Comentario anónimo  ", null, true);
+
+        assertThat(response.is_anonymous()).isTrue();
+        assertThat(response.user().username())
+                .isEqualTo(com.etribunal.core.cases.CaseService.MASKED_USERNAME);
     }
 
     @Test

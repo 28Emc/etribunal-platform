@@ -6,6 +6,7 @@ import com.etribunal.ai.automation.domain.dtos.*;
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.infrastructure.context.LiveContextService;
 import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
+import com.etribunal.ai.automation.infrastructure.kafka.AiModerationService;
 import com.etribunal.ai.automation.repository.AutomationCaseRepository;
 import com.etribunal.ai.automation.repository.AutomationRunRepository;
 import org.slf4j.Logger;
@@ -28,6 +29,8 @@ public class CaseGenerator {
     private static final Logger log = LoggerFactory.getLogger(CaseGenerator.class);
     private static final int MODERATION_POLL_ATTEMPTS = 14;
     private static final long MODERATION_POLL_DELAY_MS = 150;
+    private static final int MAX_DEDUP_RETRIES = 3;
+    private static final int SIDE_B_RETRIES = 3;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final AIProvider aiProvider;
@@ -38,6 +41,7 @@ public class CaseGenerator {
     private final AutomationEventPublisher eventPublisher;
     private final EngagementService engagementService;
     private final LiveContextService liveContextService;
+    private final AiModerationService moderationService;
 
     public CaseGenerator(
             AIProvider aiProvider,
@@ -47,7 +51,8 @@ public class CaseGenerator {
             JdbcTemplate jdbcTemplate,
             AutomationEventPublisher eventPublisher,
             EngagementService engagementService,
-            LiveContextService liveContextService
+            LiveContextService liveContextService,
+            AiModerationService moderationService
     ) {
         this.aiProvider = aiProvider;
         this.config = config;
@@ -57,6 +62,7 @@ public class CaseGenerator {
         this.eventPublisher = eventPublisher;
         this.engagementService = engagementService;
         this.liveContextService = liveContextService;
+        this.moderationService = moderationService;
     }
 
     public record CaseResult(
@@ -94,7 +100,7 @@ public class CaseGenerator {
         }
 
         // Real generation with anti-duplicate
-        return generateWithDedup(runId, index, variationSeed, recentTopics, intensity, language, authorId, pool, dryRun);
+        return generateWithDedup(runId, index, variationSeed, recentTopics, intensity, language, authorId, pool, dryRun, 0);
     }
 
     private List<String> loadSuccessExamples() {
@@ -115,20 +121,29 @@ public class CaseGenerator {
     private Mono<CaseResult> generateWithDedup(
             UUID runId, int index, String variationSeed,
             List<String> recentTopics, int intensity, String language,
-            String authorId, List<UserSelector.BotUser> pool, boolean dryRun
+            String authorId, List<UserSelector.BotUser> pool, boolean dryRun,
+            int dedupAttempt
     ) {
         GenerateCaseInput input = new GenerateCaseInput(variationSeed, recentTopics, intensity, language, loadSuccessExamples(), liveContextService.buildContext());
 
         return aiProvider.generateCase(input)
                 .flatMap(generated -> {
                     String hash = computeHash(generated.title(), generated.sideAContent());
-                    Optional<AutomationCaseEntity> duplicate = caseRepository.findByCaseId("dup-" + hash.substring(0, 16));
+                    Optional<AutomationCaseEntity> duplicate =
+                            caseRepository.findByCaseId("dup-" + hash.substring(0, 16));
                     if (duplicate.isPresent()) {
+                        if (dedupAttempt >= MAX_DEDUP_RETRIES) {
+                            log.warn("Duplicate case detected after {} attempts, giving up", dedupAttempt + 1);
+                            return Mono.just(new CaseResult(null, AutomationCaseStatus.FAILED, authorId, null, null));
+                        }
                         log.warn("Duplicate case detected, retrying (hash={})", hash.substring(0, 16));
-                        return Mono.empty();
+                        String newSeed = UUID.randomUUID().toString().substring(0, 8);
+                        return generateWithDedup(runId, index, newSeed, recentTopics, intensity,
+                                language, authorId, pool, dryRun, dedupAttempt + 1);
                     }
 
                     String caseId = persistCase(generated, authorId);
+                    requestModeration(caseId, generated, authorId);
                     pollModeration(caseId);
 
                     String sideBUserId = null;
@@ -159,6 +174,20 @@ public class CaseGenerator {
                     log.error("Case generation failed: {}", e.getMessage());
                     return Mono.just(new CaseResult(null, AutomationCaseStatus.FAILED, authorId, null, null));
                 });
+    }
+
+    private void requestModeration(String caseId, GeneratedCase generated, String authorId) {
+        try {
+            String content = java.util.stream.Stream.of(
+                            generated.title(),
+                            generated.sideAContent(),
+                            generated.sideBContent())
+                    .filter(Objects::nonNull)
+                    .collect(java.util.stream.Collectors.joining(" "));
+            moderationService.requestTextModeration("CASE", caseId, content, authorId);
+        } catch (Exception e) {
+            log.warn("Moderation request failed for case {}: {}", caseId, e.getMessage());
+        }
     }
 
     private String persistCase(GeneratedCase generated, String authorId) {
@@ -241,13 +270,20 @@ public class CaseGenerator {
      * resuelvan correctamente.
      */
     private static String generateSlug(String title) {
-        String slug = title.toLowerCase()
+        String base = title == null ? "" : title;
+        String normalized = java.text.Normalizer.normalize(base, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase()
                 .replaceAll("[^a-z0-9\\s-]", "")
                 .replaceAll("\\s+", "-")
                 .replaceAll("-+", "-")
                 .replaceAll("^-+", "")
                 .replaceAll("-+$", "");
-        return slug.length() > 100 ? slug.substring(0, 100) : slug;
+        if (normalized.isEmpty()) {
+            // Slug vacío violaría unicidad: fallback con prefijo estable.
+            normalized = "caso-" + UUID.randomUUID().toString().substring(0, 8);
+        }
+        return normalized.length() > 100 ? normalized.substring(0, 100) : normalized;
     }
 
     private void respondAsSideB(String caseId, String sideBUserId, String sideBContent) {
@@ -256,7 +292,7 @@ public class CaseGenerator {
 
         // El caso ya trae su invite_token (asignado al insertar en WAITING). No se genera
         // uno nuevo: el UPDATE para responder Side B debe usar el token existente de la fila.
-        int retries = 3;
+        int retries = SIDE_B_RETRIES;
         for (int attempt = 1; attempt <= retries; attempt++) {
             try {
                 int updated = jdbcTemplate.update(
@@ -283,8 +319,17 @@ public class CaseGenerator {
             } catch (Exception e) {
                 log.warn("Side B response attempt {}/{} failed: {}", attempt, retries, e.getMessage());
             }
-            // Brief backoff
-            try { Thread.sleep(100L * attempt); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
+            if (attempt < retries) {
+                // Brief backoff
+                try {
+                    Thread.sleep(100L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.warn("Interrupted during Side B backoff for case {}, converting to classic", caseId);
+                    fallbackToClassic(caseId);
+                    return;
+                }
+            }
         }
 
         // Fallback: convert to classic (type=classic, status=PUBLIC) so case is visible in feed
@@ -318,21 +363,41 @@ public class CaseGenerator {
     private void pollModeration(String caseId) {
         UUID caseUuid = UUID.fromString(caseId);
         for (int i = 0; i < MODERATION_POLL_ATTEMPTS; i++) {
+            String localStatus = moderationService.getModerationStatus(caseId);
+            if (isTerminalModerationStatus(localStatus)) {
+                log.info("Case {} moderated via pipeline: {}", caseId, localStatus);
+                return;
+            }
             try {
-                String status = jdbcTemplate.queryForObject(
+                String dbStatus = jdbcTemplate.queryForObject(
                     "SELECT moderation_status FROM cases WHERE id = ?",
                     new Object[]{caseUuid},
                     String.class
                 );
-                if (status != null && !("PENDING".equals(status))) {
+                if (isTerminalModerationStatus(dbStatus)) {
+                    log.info("Case {} moderation status resolved: {}", caseId, dbStatus);
                     return;
                 }
+            } catch (Exception e) {
+                log.debug("Could not query moderation status for {}: {}", caseId, e.getMessage());
+                return;
+            }
+            try {
                 Thread.sleep(MODERATION_POLL_DELAY_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
             }
         }
+    }
+
+    private static boolean isTerminalModerationStatus(String status) {
+        if (status == null) {
+            return false;
+        }
+        return "APPROVED".equalsIgnoreCase(status)
+                || "REJECTED".equalsIgnoreCase(status)
+                || "FLAGGED".equalsIgnoreCase(status);
     }
 
     private String pickRandomUserId(List<UserSelector.BotUser> pool) {
