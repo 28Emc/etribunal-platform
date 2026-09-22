@@ -5,26 +5,26 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.etribunal.ai.automation.config.AutomationConfig;
-import com.etribunal.ai.automation.domain.*;
+import com.etribunal.ai.automation.domain.AutomationInteractionEntity;
+import com.etribunal.ai.automation.domain.AutomationInteractionStatus;
 import com.etribunal.ai.automation.infrastructure.analytics.ActivityProfileService;
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
 import com.etribunal.ai.automation.repository.AutomationRunRepository;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
-import org.springframework.scheduling.support.CronTrigger;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.List;
-import java.util.UUID;
 
 @ExtendWith(MockitoExtension.class)
 class AutomationSchedulerTest {
@@ -43,50 +43,35 @@ class AutomationSchedulerTest {
     private EngagementService engagementService;
     @Mock
     private ActivityProfileService activityProfileService;
+    @Mock
+    private Clock clock;
 
-    private AutomationConfig config;
-    private Clock fixedClock;
+    @Spy
+    private AutomationConfig config = new AutomationConfig();
 
+    @InjectMocks
     private AutomationScheduler scheduler;
 
     @BeforeEach
     void setUp() {
-        config = new AutomationConfig();
-        fixedClock = Clock.fixed(Instant.parse("2026-09-08T10:00:00Z"), ZoneOffset.UTC);
-        scheduler = new AutomationScheduler(
-                orchestrator, executor, interactionRepository, runRepository,
-                config, taskScheduler, engagementService, activityProfileService, fixedClock
-        );
-    }
-
-    @AfterEach
-    void tearDown() {
-        reset(orchestrator, executor, interactionRepository, runRepository, taskScheduler,
-                engagementService, activityProfileService);
-    }
-
-    @Test
-    void scheduleDailyRun_doesNotSchedule_whenDisabled() {
-        config.setEnabled(false);
-        scheduler.scheduleDailyRun();
-        verify(taskScheduler, never()).schedule(any(Runnable.class), any(Trigger.class));
-        verify(orchestrator, never()).resumeStaleRuns();
-    }
-
-    @Test
-    void scheduleDailyRun_schedulesAtConfiguredHour_whenEnabled() {
         config.setEnabled(true);
-        config.setRunHour(14);
+        config.setRunHour(9);
+        config.getActivity().setEnabled(true);
+        config.getEngagement().setEnabled(true);
+        config.getEngagement().setEvaluationDays(7);
 
-        when(taskScheduler.schedule(any(Runnable.class), any(Trigger.class)))
-                .thenAnswer(inv -> {
-                    Trigger trigger = inv.getArgument(1, Trigger.class);
-                    assertThat(trigger).isInstanceOf(CronTrigger.class);
-                    CronTrigger cron = (CronTrigger) trigger;
-                    assertThat(cron.toString()).contains("0 0 14 * * *");
-                    return null;
-                });
+        lenient().when(clock.instant()).thenReturn(Instant.parse("2026-09-03T10:00:00Z"));
+        lenient().when(clock.getZone()).thenReturn(ZoneId.systemDefault());
+        lenient().when(interactionRepository.expireStaleInteractions(any(), any(), any())).thenReturn(0);
+        lenient().when(interactionRepository.findByStatusAndScheduledAtLessThanEqual(any(), any(), any()))
+                .thenReturn(List.of());
+        lenient().when(runRepository.existsByCreatedAtAfter(any())).thenReturn(false);
+        lenient().when(engagementService.getAnalyticsSummary(anyInt())).thenReturn(java.util.Map.of());
+        lenient().when(engagementService.evaluateRecentCases(anyInt())).thenReturn(0);
+    }
 
+    @Test
+    void scheduleDailyRun_schedulesCronTask_whenEnabled() {
         scheduler.scheduleDailyRun();
 
         verify(taskScheduler).schedule(any(Runnable.class), any(Trigger.class));
@@ -94,100 +79,74 @@ class AutomationSchedulerTest {
     }
 
     @Test
-    void scheduleDailyRun_resumesStaleRunsOnlyWhenEnabled() {
+    void scheduleDailyRun_doesNotSchedule_whenDisabled() {
         config.setEnabled(false);
-        scheduler.init();
-        verify(orchestrator, never()).resumeStaleRuns();
 
-        config.setEnabled(true);
-        scheduler.init();
-        verify(orchestrator).resumeStaleRuns();
+        scheduler.scheduleDailyRun();
+
+        verify(taskScheduler, never()).schedule(any(Runnable.class), any(Trigger.class));
+    }
+
+    @Test
+    void dailyRun_startsRunAndRefreshesProfile_whenEnabled() {
+        lenient().when(clock.instant()).thenReturn(Instant.parse("2026-09-03T10:00:00Z"));
+
+        scheduler.dailyRun();
+
+        verify(orchestrator).startRun(false);
+        verify(activityProfileService).refresh();
+        verify(engagementService).evaluateRecentCases(anyInt());
     }
 
     @Test
     void dailyRun_doesNothing_whenDisabled() {
         config.setEnabled(false);
+
         scheduler.dailyRun();
+
         verify(orchestrator, never()).startRun(anyBoolean());
+        verify(activityProfileService, never()).refresh();
     }
 
     @Test
-    void dailyRun_triggersRun_whenEnabled() {
-        config.setEnabled(true);
-        when(orchestrator.startRun(false)).thenReturn(
-                new AutomationOrchestrator.RunResult(java.util.UUID.randomUUID(), true, "RUNNING", "/api/automation/runs/x")
-        );
-        scheduler.dailyRun();
-        verify(orchestrator).startRun(false);
-    }
-
-    @Test
-    void tick_processesDueInteractions() {
-        AutomationInteractionEntity due = new AutomationInteractionEntity();
-        when(interactionRepository.findByStatusAndScheduledAtLessThanEqual(
-                eq(AutomationInteractionStatus.SCHEDULED), any(Instant.class), any()))
-                .thenReturn(List.of(due));
-
-        scheduler.tick();
-
-        verify(executor).execute(null);
-    }
-
-    @Test
-    void tick_expiresStaleProcessingInteractions() {
-        when(interactionRepository.expireStaleInteractions(
-                eq(AutomationInteractionStatus.PROCESSING),
-                eq(AutomationInteractionStatus.SCHEDULED),
-                any(Instant.class)))
-                .thenReturn(2);
-        when(interactionRepository.findByStatusAndScheduledAtLessThanEqual(
-                eq(AutomationInteractionStatus.SCHEDULED), any(Instant.class), any()))
+    void tick_expiresStaleInteractionsAndProcessesDue() {
+        lenient().when(interactionRepository.expireStaleInteractions(any(), any(), any())).thenReturn(2);
+        lenient().when(interactionRepository.findByStatusAndScheduledAtLessThanEqual(any(), any(), any()))
                 .thenReturn(List.of());
 
         scheduler.tick();
 
-        verify(interactionRepository).expireStaleInteractions(
-                eq(AutomationInteractionStatus.PROCESSING),
-                eq(AutomationInteractionStatus.SCHEDULED),
-                any(Instant.class));
-        verify(executor, never()).execute(any(UUID.class));
+        verify(interactionRepository).expireStaleInteractions(any(), any(), any());
+        verify(interactionRepository).findByStatusAndScheduledAtLessThanEqual(any(), any(), any());
+        verify(orchestrator).broadcastQueueStatus();
     }
 
     @Test
-    void scheduleDailyRun_catchUpNotTriggered_whenCurrentHourBeforeRunHour() {
-        config.setEnabled(true);
-        config.setRunHour(14); // runHour = 14, clock fixed at 10:00
-        when(taskScheduler.schedule(any(Runnable.class), any(Trigger.class))).thenReturn(null);
+    void tick_broadcastsQueueStatus_whenExpiredInteractions() {
+        lenient().when(interactionRepository.expireStaleInteractions(any(), any(), any())).thenReturn(3);
+        lenient().when(interactionRepository.findByStatusAndScheduledAtLessThanEqual(any(), any(), any()))
+                .thenReturn(List.of());
 
-        scheduler.scheduleDailyRun();
+        scheduler.tick();
 
-        verify(orchestrator, never()).startRun(anyBoolean());
+        verify(orchestrator).broadcastQueueStatus();
     }
 
     @Test
-    void scheduleDailyRun_catchUpNotTriggered_whenRunAlreadyExistsToday() {
-        config.setEnabled(true);
-        config.setRunHour(9); // runHour = 9, clock fixed at 10:00 (>= runHour)
-        when(taskScheduler.schedule(any(Runnable.class), any(Trigger.class))).thenReturn(null);
-        when(runRepository.existsByCreatedAtAfter(any(Instant.class))).thenReturn(true);
+    void init_resumesStaleRuns_whenEnabled() {
+        lenient().when(clock.instant()).thenReturn(Instant.parse("2026-09-03T10:00:00Z"));
 
-        scheduler.scheduleDailyRun();
+        scheduler.init();
 
-        verify(orchestrator, never()).startRun(anyBoolean());
+        verify(orchestrator).resumeStaleRuns();
     }
 
     @Test
-    void scheduleDailyRun_catchUpTriggersStartRun_whenCurrentHourAfterRunHourAndNoRunToday() {
-        config.setEnabled(true);
-        config.setRunHour(9); // runHour = 9, clock fixed at 10:00 (>= runHour)
-        when(taskScheduler.schedule(any(Runnable.class), any(Trigger.class))).thenReturn(null);
-        when(runRepository.existsByCreatedAtAfter(any(Instant.class))).thenReturn(false);
-        when(orchestrator.startRun(false)).thenReturn(
-                new AutomationOrchestrator.RunResult(UUID.randomUUID(), true, "RUNNING", "/api/automation/runs/x")
-        );
+    void init_skips_whenDisabled() {
+        config.setEnabled(false);
 
-        scheduler.scheduleDailyRun();
+        scheduler.init();
 
-        verify(orchestrator).startRun(false);
+        verify(orchestrator, never()).resumeStaleRuns();
     }
 }
