@@ -38,23 +38,8 @@ public class RateLimiter {
     private synchronized boolean tryAcquire(int estimatedTokens) {
         long now = Instant.now().toEpochMilli();
 
-        // Reset minute window if needed
-        long minuteStart = minuteWindowStart.get();
-        if (now - minuteStart >= 60_000) {
-            if (minuteWindowStart.compareAndSet(minuteStart, now)) {
-                requestsThisMinute.set(0);
-                tokensThisMinute.set(0);
-                tokenWindowStart.set(now);
-            }
-        }
-
-        // Reset day window if needed
-        long dayStart = dayWindowStart.get();
-        if (now - dayStart >= 86_400_000) {
-            if (dayWindowStart.compareAndSet(dayStart, now)) {
-                requestsToday.set(0);
-            }
-        }
+        resetMinuteWindowIfNeeded(now);
+        resetDayWindowIfNeeded(now);
 
         if (requestsThisMinute.get() >= rpm) {
             return false;
@@ -70,6 +55,22 @@ public class RateLimiter {
         requestsToday.incrementAndGet();
         tokensThisMinute.addAndGet(estimatedTokens);
         return true;
+    }
+
+    private void resetMinuteWindowIfNeeded(long now) {
+        long minuteStart = minuteWindowStart.get();
+        if (now - minuteStart >= 60_000 && minuteWindowStart.compareAndSet(minuteStart, now)) {
+            requestsThisMinute.set(0);
+            tokensThisMinute.set(0);
+            tokenWindowStart.set(now);
+        }
+    }
+
+    private void resetDayWindowIfNeeded(long now) {
+        long dayStart = dayWindowStart.get();
+        if (now - dayStart >= 86_400_000 && dayWindowStart.compareAndSet(dayStart, now)) {
+            requestsToday.set(0);
+        }
     }
 
     public static class RateLimitExceededException extends RuntimeException {

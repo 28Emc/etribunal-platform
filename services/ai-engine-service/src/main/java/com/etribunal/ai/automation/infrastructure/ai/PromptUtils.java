@@ -64,7 +64,7 @@ public final class PromptUtils {
             """.formatted(language, toneDirective, MODERATION_SAFE_WRITING, "{successExamples}", "{liveContext}", "{recentTopics}", "{variationSeed}", CASE_JSON_SCHEMA);
     }
 
-    public static String interactionPlanningPrompt(String language) {
+    public static String interactionPlanningPrompt() {
         return """
             Eres un planificador de interacciones para un caso de debate.
             Recomendaciones de intensidad: {interactionCount} ({availableUsers} usuarios disponibles, máx {maxPerUser} por usuario).

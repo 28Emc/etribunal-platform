@@ -36,13 +36,15 @@ class AutomationWsChannelInterceptorTest {
 
     @Test
     void rejectsConnectWithoutAuthorizationHeader() {
-        assertThatThrownBy(() -> interceptor.preSend(connectFrame(null), null))
+        Message<byte[]> frame = connectFrame(null);
+        assertThatThrownBy(() -> interceptor.preSend(frame, null))
                 .isInstanceOf(MessagingException.class);
     }
 
     @Test
     void rejectsConnectWithInvalidToken() {
-        assertThatThrownBy(() -> interceptor.preSend(connectFrame("Bearer invalid.token.here"), null))
+        Message<byte[]> frame = connectFrame("Bearer invalid.token.here");
+        assertThatThrownBy(() -> interceptor.preSend(frame, null))
                 .isInstanceOf(MessagingException.class);
     }
 
@@ -50,7 +52,8 @@ class AutomationWsChannelInterceptorTest {
     void rejectsConnectWithNonAdminToken() {
         String token = "Bearer " + PROVIDER.generateAccessToken(
                 UUID.randomUUID(), "user", List.of("USER"));
-        assertThatThrownBy(() -> interceptor.preSend(connectFrame(token), null))
+        Message<byte[]> frame = connectFrame(token);
+        assertThatThrownBy(() -> interceptor.preSend(frame, null))
                 .isInstanceOf(MessagingException.class);
     }
 
@@ -58,14 +61,16 @@ class AutomationWsChannelInterceptorTest {
     void allowsConnectWithAdminToken() {
         String token = "Bearer " + PROVIDER.generateAccessToken(
                 UUID.randomUUID(), "admin", List.of("USER", "ADMIN"));
-        interceptor.preSend(connectFrame(token), null);
+        Message<byte[]> frame = connectFrame(token);
+        org.assertj.core.api.Assertions.assertThat(interceptor.preSend(frame, null)).isNotNull();
     }
 
     @Test
     void allowsConnectWithSysadminToken() {
         String token = "Bearer " + PROVIDER.generateAccessToken(
                 UUID.randomUUID(), "sysops", List.of("SYSADMIN"));
-        interceptor.preSend(connectFrame(token), null);
+        Message<byte[]> frame = connectFrame(token);
+        org.assertj.core.api.Assertions.assertThat(interceptor.preSend(frame, null)).isNotNull();
     }
 
     @Test
@@ -74,6 +79,6 @@ class AutomationWsChannelInterceptorTest {
         accessor.setSessionId("s1");
         Message<byte[]> subscribe =
                 MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
-        interceptor.preSend(subscribe, null);
+        org.assertj.core.api.Assertions.assertThat(interceptor.preSend(subscribe, null)).isNotNull();
     }
 }

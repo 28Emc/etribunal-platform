@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -125,7 +126,7 @@ public class EngagementService {
                         rs.getInt("shares"),
                         rs.getInt("saves"),
                         rs.getInt("views"),
-                        LocalDate.now()
+                        LocalDate.now(ZoneId.systemDefault())
                 ),
                 since
             );

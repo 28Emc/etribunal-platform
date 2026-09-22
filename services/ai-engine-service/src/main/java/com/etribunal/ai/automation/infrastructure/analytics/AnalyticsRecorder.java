@@ -26,7 +26,7 @@ public class AnalyticsRecorder {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public void record(AutomationInteractionType type, String caseId, String userId, String resultId) {
+    public void recordInteraction(AutomationInteractionType type, String caseId, String userId, String resultId) {
         try {
             String action = switch (type) {
                 case VOTE -> "VOTE";

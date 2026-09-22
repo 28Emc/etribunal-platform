@@ -115,9 +115,6 @@ public class ShadowTrafficFilter implements GlobalFilter, Ordered {
     private void fireShadowRequest(String targetUri, ServerHttpRequest originalRequest,
                                    ShadowResponseDecorator springResponse) {
         HttpMethod method = originalRequest.getMethod();
-        if (method == null) {
-            method = HttpMethod.GET;
-        }
 
         String authHeader = originalRequest.getHeaders().getFirst("Authorization");
 

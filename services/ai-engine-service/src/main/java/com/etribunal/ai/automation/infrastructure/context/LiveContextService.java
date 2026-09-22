@@ -172,7 +172,7 @@ public class LiveContextService {
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 400) {
-                throw new RuntimeException("HTTP " + response.statusCode());
+                throw new IllegalStateException("HTTP " + response.statusCode());
             }
             return response.body();
         } catch (InterruptedException e) {
@@ -210,19 +210,26 @@ public class LiveContextService {
             if (node.getNodeType() != Node.ELEMENT_NODE) {
                 continue;
             }
-            Element el = (Element) node;
-            NodeList titleNodes = el.getElementsByTagName("title");
-            if (titleNodes.getLength() > 0) {
-                String title = titleNodes.item(0).getTextContent().trim();
-                if (title.isBlank()) {
-                    continue;
-                }
-                if (title.length() > MAX_TITLE_CHARS) {
-                    title = title.substring(0, MAX_TITLE_CHARS) + "…";
-                }
+            String title = extractTitle((Element) node);
+            if (title != null) {
                 out.add(title);
             }
         }
+    }
+
+    private String extractTitle(Element el) {
+        NodeList titleNodes = el.getElementsByTagName("title");
+        if (titleNodes.getLength() == 0) {
+            return null;
+        }
+        String title = titleNodes.item(0).getTextContent().trim();
+        if (title.isBlank()) {
+            return null;
+        }
+        if (title.length() > MAX_TITLE_CHARS) {
+            title = title.substring(0, MAX_TITLE_CHARS) + "…";
+        }
+        return title;
     }
 
     private LocalDate nextOccurrence(SeasonalEvent ev, LocalDate today) {

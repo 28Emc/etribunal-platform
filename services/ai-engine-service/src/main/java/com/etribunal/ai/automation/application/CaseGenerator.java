@@ -100,7 +100,8 @@ public class CaseGenerator {
         }
 
         // Real generation with anti-duplicate
-        return generateWithDedup(runId, index, variationSeed, recentTopics, intensity, language, authorId, pool, dryRun, 0);
+        CaseGenContext ctx = new CaseGenContext(runId, index, variationSeed, recentTopics, intensity, language, authorId, pool, dryRun);
+        return generateWithDedup(ctx, 0);
     }
 
     private List<String> loadSuccessExamples() {
@@ -118,13 +119,20 @@ public class CaseGenerator {
         }
     }
 
-    private Mono<CaseResult> generateWithDedup(
-            UUID runId, int index, String variationSeed,
-            List<String> recentTopics, int intensity, String language,
-            String authorId, List<UserSelector.BotUser> pool, boolean dryRun,
-            int dedupAttempt
-    ) {
-        GenerateCaseInput input = new GenerateCaseInput(variationSeed, recentTopics, intensity, language, loadSuccessExamples(), liveContextService.buildContext());
+    private record CaseGenContext(
+            UUID runId,
+            int index,
+            String variationSeed,
+            List<String> recentTopics,
+            int intensity,
+            String language,
+            String authorId,
+            List<UserSelector.BotUser> pool,
+            boolean dryRun
+    ) {}
+
+    private Mono<CaseResult> generateWithDedup(CaseGenContext ctx, int dedupAttempt) {
+        GenerateCaseInput input = new GenerateCaseInput(ctx.variationSeed(), ctx.recentTopics(), ctx.intensity(), ctx.language(), loadSuccessExamples(), liveContextService.buildContext());
 
         return aiProvider.generateCase(input)
                 .flatMap(generated -> {
@@ -134,21 +142,22 @@ public class CaseGenerator {
                     if (duplicate.isPresent()) {
                         if (dedupAttempt >= MAX_DEDUP_RETRIES) {
                             log.warn("Duplicate case detected after {} attempts, giving up", dedupAttempt + 1);
-                            return Mono.just(new CaseResult(null, AutomationCaseStatus.FAILED, authorId, null, null));
+                            return Mono.just(new CaseResult(null, AutomationCaseStatus.FAILED, ctx.authorId(), null, null));
                         }
                         log.warn("Duplicate case detected, retrying (hash={})", hash.substring(0, 16));
                         String newSeed = UUID.randomUUID().toString().substring(0, 8);
-                        return generateWithDedup(runId, index, newSeed, recentTopics, intensity,
-                                language, authorId, pool, dryRun, dedupAttempt + 1);
+                        CaseGenContext retryCtx = new CaseGenContext(ctx.runId(), ctx.index(), newSeed, ctx.recentTopics(),
+                                ctx.intensity(), ctx.language(), ctx.authorId(), ctx.pool(), ctx.dryRun());
+                        return generateWithDedup(retryCtx, dedupAttempt + 1);
                     }
 
-                    String caseId = persistCase(generated, authorId);
-                    requestModeration(caseId, generated, authorId);
+                    String caseId = persistCase(generated, ctx.authorId());
+                    requestModeration(caseId, generated, ctx.authorId());
                     pollModeration(caseId);
 
                     String sideBUserId = null;
                     if ("vote".equalsIgnoreCase(generated.caseType())) {
-                        sideBUserId = pickSideBUser(pool, authorId);
+                        sideBUserId = pickSideBUser(ctx.pool(), ctx.authorId());
                         if (sideBUserId != null) {
                             respondAsSideB(caseId, sideBUserId, generated.sideBContent());
                         }
@@ -156,23 +165,23 @@ public class CaseGenerator {
 
                     eventPublisher.publishCaseCreated(
                             UUID.fromString(caseId),
-                            UUID.fromString(authorId),
+                            UUID.fromString(ctx.authorId()),
                             sideBUserId != null ? UUID.fromString(sideBUserId) : null,
                             generated.caseType()
                     );
 
                     AutomationCaseEntity entity = new AutomationCaseEntity();
-                    entity.setRun(runRepository.findById(runId).orElseThrow());
+                    entity.setRun(runRepository.findById(ctx.runId()).orElseThrow());
                     entity.setCaseId(caseId);
                     entity.setStatus(AutomationCaseStatus.CREATED);
-                    entity.setMetadata(Map.of("title", generated.title(), "hash", hash, "index", index));
+                    entity.setMetadata(Map.of("title", generated.title(), "hash", hash, "index", ctx.index()));
                     caseRepository.save(entity);
 
-                    return Mono.just(new CaseResult(caseId, AutomationCaseStatus.CREATED, authorId, sideBUserId, generated));
+                    return Mono.just(new CaseResult(caseId, AutomationCaseStatus.CREATED, ctx.authorId(), sideBUserId, generated));
                 })
                 .onErrorResume(e -> {
                     log.error("Case generation failed: {}", e.getMessage());
-                    return Mono.just(new CaseResult(null, AutomationCaseStatus.FAILED, authorId, null, null));
+                    return Mono.just(new CaseResult(null, AutomationCaseStatus.FAILED, ctx.authorId(), null, null));
                 });
     }
 
@@ -243,7 +252,7 @@ public class CaseGenerator {
                     log.error("  Deep cause: {}", e.getCause().getCause().getMessage());
                 }
             }
-            throw e;
+            throw new IllegalStateException("Could not persist generated case", e);
         }
     }
 
@@ -271,19 +280,34 @@ public class CaseGenerator {
      */
     private static String generateSlug(String title) {
         String base = title == null ? "" : title;
-        String normalized = java.text.Normalizer.normalize(base, java.text.Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")
-                .toLowerCase()
-                .replaceAll("[^a-z0-9\\s-]", "")
-                .replaceAll("\\s+", "-")
-                .replaceAll("-+", "-")
-                .replaceAll("^-+", "")
-                .replaceAll("-+$", "");
+        String normalized = buildSlug(base);
         if (normalized.isEmpty()) {
             // Slug vacío violaría unicidad: fallback con prefijo estable.
             normalized = "caso-" + UUID.randomUUID().toString().substring(0, 8);
         }
         return normalized.length() > 100 ? normalized.substring(0, 100) : normalized;
+    }
+
+    private static String buildSlug(String base) {
+        String lower = java.text.Normalizer.normalize(base, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase();
+        StringBuilder sb = new StringBuilder();
+        boolean prevDash = false;
+        for (int i = 0; i < lower.length(); i++) {
+            char c = lower.charAt(i);
+            if (Character.isLetterOrDigit(c)) {
+                sb.append(c);
+                prevDash = false;
+            } else if ((c == ' ' || c == '-' || !Character.isLetterOrDigit(c)) && !prevDash && !sb.isEmpty()) {
+                sb.append('-');
+                prevDash = true;
+            }
+        }
+        while (!sb.isEmpty() && sb.charAt(sb.length() - 1) == '-') {
+            sb.setLength(sb.length() - 1);
+        }
+        return sb.toString();
     }
 
     private void respondAsSideB(String caseId, String sideBUserId, String sideBContent) {

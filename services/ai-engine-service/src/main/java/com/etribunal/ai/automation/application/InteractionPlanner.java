@@ -43,7 +43,7 @@ public class InteractionPlanner {
         Integer replyToCommentIndex
     ) {}
 
-    public Mono<PlanResult> generate(
+    public record PlanInput(
             String caseId,
             String title,
             String sideAContent,
@@ -55,23 +55,25 @@ public class InteractionPlanner {
             String authorId,
             String sideBUserId,
             int maxPerUser
-    ) {
-        List<UserSelector.BotUser> available = pool.stream()
-                .filter(u -> !u.id().equals(authorId))
-                .filter(u -> !u.id().equals(sideBUserId))
+    ) {}
+
+    public Mono<PlanResult> generate(PlanInput input) {
+        List<UserSelector.BotUser> available = input.pool().stream()
+                .filter(u -> !u.id().equals(input.authorId()))
+                .filter(u -> !u.id().equals(input.sideBUserId()))
                 .toList();
 
         if (available.isEmpty()) {
             return Mono.just(new PlanResult(List.of(), new InteractionPlan(List.of())));
         }
 
-        GenerateInteractionPlanInput input = new GenerateInteractionPlanInput(
-                caseId, title, sideAContent, sideBContent, category,
-                interactionCount, intensity, config.getLanguage(),
-                available.size(), maxPerUser
+        GenerateInteractionPlanInput aiInput = new GenerateInteractionPlanInput(
+                input.caseId(), input.title(), input.sideAContent(), input.sideBContent(), input.category(),
+                input.interactionCount(), input.intensity(), config.getLanguage(),
+                available.size(), input.maxPerUser()
         );
 
-        return generateWithValidation(input, available, maxPerUser, 0);
+        return generateWithValidation(aiInput, available, input.maxPerUser(), 0);
     }
 
     private Mono<PlanResult> generateWithValidation(
@@ -113,38 +115,50 @@ public class InteractionPlanner {
 
         for (int i = 0; i < plan.interactions().size(); i++) {
             PlannedInteraction pi = plan.interactions().get(i);
-            if (pi.type() == null) {
-                errors.add(INTERACTION_PREFIX + i + ": missing type");
-                continue;
-            }
-
-            switch (pi.type()) {
-                case COMMENT -> {
-                    if (pi.content() == null || pi.content().isBlank()) {
-                        errors.add(INTERACTION_PREFIX + i + ": COMMENT requires content");
-                    }
-                }
-                case REPLY -> {
-                    if (pi.content() == null || pi.content().isBlank()) {
-                        errors.add(INTERACTION_PREFIX + i + ": REPLY requires content");
-                    }
-                    if (pi.replyToIndex() == null || pi.replyToIndex() < 0 || pi.replyToIndex() >= i) {
-                        errors.add(INTERACTION_PREFIX + i + ": REPLY requires valid replyToIndex < " + i);
-                    }
-                }
-                case REACTION -> {
-                    if (pi.reaction() == null || !List.of("LIKE", "LOVE", "ANGRY").contains(pi.reaction())) {
-                        errors.add(INTERACTION_PREFIX + i + ": REACTION requires valid emoji (LIKE/LOVE/ANGRY)");
-                    }
-                }
-                case VOTE -> {
-                    if (pi.option() == null || !List.of("A", "B", "BOTH_WRONG").contains(pi.option())) {
-                        errors.add(INTERACTION_PREFIX + i + ": VOTE requires valid option (A/B/BOTH_WRONG)");
-                    }
-                }
-            }
+            validateInteraction(pi, i, errors);
         }
         return errors;
+    }
+
+    private void validateInteraction(PlannedInteraction pi, int i, List<String> errors) {
+        if (pi.type() == null) {
+            errors.add(INTERACTION_PREFIX + i + ": missing type");
+            return;
+        }
+
+        switch (pi.type()) {
+            case COMMENT -> validateComment(pi, i, errors);
+            case REPLY -> validateReply(pi, i, errors);
+            case REACTION -> validateReaction(pi, i, errors);
+            case VOTE -> validateVote(pi, i, errors);
+        }
+    }
+
+    private static void validateComment(PlannedInteraction pi, int i, List<String> errors) {
+        if (pi.content() == null || pi.content().isBlank()) {
+            errors.add(INTERACTION_PREFIX + i + ": COMMENT requires content");
+        }
+    }
+
+    private static void validateReply(PlannedInteraction pi, int i, List<String> errors) {
+        if (pi.content() == null || pi.content().isBlank()) {
+            errors.add(INTERACTION_PREFIX + i + ": REPLY requires content");
+        }
+        if (pi.replyToIndex() == null || pi.replyToIndex() < 0 || pi.replyToIndex() >= i) {
+            errors.add(INTERACTION_PREFIX + i + ": REPLY requires valid replyToIndex < " + i);
+        }
+    }
+
+    private static void validateReaction(PlannedInteraction pi, int i, List<String> errors) {
+        if (pi.reaction() == null || !List.of("LIKE", "LOVE", "ANGRY").contains(pi.reaction())) {
+            errors.add(INTERACTION_PREFIX + i + ": REACTION requires valid emoji (LIKE/LOVE/ANGRY)");
+        }
+    }
+
+    private static void validateVote(PlannedInteraction pi, int i, List<String> errors) {
+        if (pi.option() == null || !List.of("A", "B", "BOTH_WRONG").contains(pi.option())) {
+            errors.add(INTERACTION_PREFIX + i + ": VOTE requires valid option (A/B/BOTH_WRONG)");
+        }
     }
 
     private InteractionPlan repairPlan(InteractionPlan plan) {
@@ -153,26 +167,11 @@ public class InteractionPlanner {
         List<Integer> keptOriginalIndexes = new ArrayList<>();
 
         for (int i = 0; i < source.size(); i++) {
-            PlannedInteraction pi = source.get(i);
-            // REPLY sin contenido no es reparable: se elimina.
-            if (pi.type() == AutomationInteractionType.REPLY
-                    && (pi.content() == null || pi.content().isBlank())) {
+            PlannedInteraction pi = repairOrNull(source, i);
+            if (pi == null) {
                 continue;
             }
-            PlannedInteraction out = pi;
-            // REPLY apuntando hacia adelante se re-dirige al COMMENT más cercano previo;
-            // si no hay ninguno al que anclar, no es reparable y se elimina.
-            if (pi.type() == AutomationInteractionType.REPLY
-                    && pi.replyToIndex() != null && pi.replyToIndex() >= i) {
-                int newTarget = findNearestCommentIndex(source, i);
-                if (newTarget < 0) {
-                    continue;
-                }
-                out = new PlannedInteraction(
-                        pi.type(), pi.stance(), pi.tone(), pi.content(), pi.reaction(), pi.option(),
-                        newTarget);
-            }
-            repaired.add(out);
+            repaired.add(pi);
             keptOriginalIndexes.add(i);
         }
 
@@ -180,43 +179,87 @@ public class InteractionPlanner {
         // re-indexar contra la posición real de cada padre (o re-dirigir si el
         // padre fue removido).
         if (keptOriginalIndexes.size() != source.size()) {
-            Set<Integer> removedIndexes = new HashSet<>();
-            for (int i = 0; i < source.size(); i++) {
-                if (!keptOriginalIndexes.contains(i)) {
-                    removedIndexes.add(i);
-                }
-            }
-            List<PlannedInteraction> remapped = new ArrayList<>();
-            for (int j = 0; j < repaired.size(); j++) {
-                PlannedInteraction pi = repaired.get(j);
-                if (pi.type() != AutomationInteractionType.REPLY || pi.replyToIndex() == null) {
-                    remapped.add(pi);
-                    continue;
-                }
-                int originalTarget = pi.replyToIndex();
-                int removedBeforeTarget = 0;
-                for (int removedIdx : removedIndexes) {
-                    if (removedIdx < originalTarget) {
-                        removedBeforeTarget++;
-                    }
-                }
-                int adjusted = originalTarget - removedBeforeTarget;
-                Integer newTarget = null;
-                if (adjusted >= 0 && adjusted < j && !removedIndexes.contains(originalTarget)) {
-                    newTarget = adjusted;
-                } else {
-                    int nearest = findNearestCommentIndex(remapped, j);
-                    if (nearest >= 0) {
-                        newTarget = nearest;
-                    }
-                }
-                remapped.add(new PlannedInteraction(
-                        pi.type(), pi.stance(), pi.tone(), pi.content(), pi.reaction(), pi.option(), newTarget));
-            }
-            return new InteractionPlan(remapped);
+            return new InteractionPlan(remapReplyTargets(source, repaired, keptOriginalIndexes));
         }
 
         return new InteractionPlan(repaired);
+    }
+
+    private PlannedInteraction repairOrNull(List<PlannedInteraction> source, int i) {
+        PlannedInteraction pi = source.get(i);
+        // REPLY sin contenido no es reparable: se elimina.
+        if (pi.type() == AutomationInteractionType.REPLY
+                && (pi.content() == null || pi.content().isBlank())) {
+            return null;
+        }
+        // REPLY apuntando hacia adelante se re-dirige al COMMENT más cercano previo;
+        // si no hay ninguno al que anclar, no es reparable y se elimina.
+        if (pi.type() == AutomationInteractionType.REPLY
+                && pi.replyToIndex() != null && pi.replyToIndex() >= i) {
+            int newTarget = findNearestCommentIndex(source, i);
+            if (newTarget < 0) {
+                return null;
+            }
+            return new PlannedInteraction(
+                    pi.type(), pi.stance(), pi.tone(), pi.content(), pi.reaction(), pi.option(),
+                    newTarget);
+        }
+        return pi;
+    }
+
+    private List<PlannedInteraction> remapReplyTargets(
+            List<PlannedInteraction> source,
+            List<PlannedInteraction> repaired,
+            List<Integer> keptOriginalIndexes
+    ) {
+        Set<Integer> removedIndexes = computeRemovedIndexes(source, keptOriginalIndexes);
+        List<PlannedInteraction> remapped = new ArrayList<>();
+        for (int j = 0; j < repaired.size(); j++) {
+            PlannedInteraction pi = repaired.get(j);
+            if (pi.type() != AutomationInteractionType.REPLY || pi.replyToIndex() == null) {
+                remapped.add(pi);
+                continue;
+            }
+            remapped.add(remapReply(pi, removedIndexes, remapped, j));
+        }
+        return remapped;
+    }
+
+    private Set<Integer> computeRemovedIndexes(List<PlannedInteraction> source, List<Integer> kept) {
+        Set<Integer> removed = new HashSet<>();
+        for (int i = 0; i < source.size(); i++) {
+            if (!kept.contains(i)) {
+                removed.add(i);
+            }
+        }
+        return removed;
+    }
+
+    private PlannedInteraction remapReply(
+            PlannedInteraction pi,
+            Set<Integer> removedIndexes,
+            List<PlannedInteraction> remapped,
+            int j
+    ) {
+        int originalTarget = pi.replyToIndex();
+        int removedBeforeTarget = 0;
+        for (int removedIdx : removedIndexes) {
+            if (removedIdx < originalTarget) {
+                removedBeforeTarget++;
+            }
+        }
+        int adjusted = originalTarget - removedBeforeTarget;
+        Integer newTarget = null;
+        if (adjusted >= 0 && adjusted < j && !removedIndexes.contains(originalTarget)) {
+            newTarget = adjusted;
+        } else {
+            int nearest = findNearestCommentIndex(remapped, j);
+            if (nearest >= 0) {
+                newTarget = nearest;
+            }
+        }
+        return new PlannedInteraction(
+                pi.type(), pi.stance(), pi.tone(), pi.content(), pi.reaction(), pi.option(), newTarget);
     }
 
     private int findNearestCommentIndex(List<PlannedInteraction> interactions, int beforeIndex) {
@@ -239,87 +282,107 @@ public class InteractionPlanner {
 
         for (int i = 0; i < plan.interactions().size(); i++) {
             PlannedInteraction pi = plan.interactions().get(i);
-            String userId = null;
-
-            if (pi.type() != AutomationInteractionType.REPLY) {
-                // Assign user with round-robin and max-per-user cap
-                int attempts = 0;
-                while (attempts < available.size()) {
-                    UserSelector.BotUser candidate = available.get(userIndex % available.size());
-                    int count = userCounts.getOrDefault(candidate.id(), 0);
-                    if (count < maxPerUser) {
-                        userId = candidate.id();
-                        userCounts.merge(userId, 1, Integer::sum);
-                        userIndex++;
-                        break;
-                    }
-                    userIndex++;
-                    attempts++;
-                }
-            } else {
-                // REPLY: responder distinto al autor del COMMENT padre (evitar self-reply).
-                if (pi.replyToIndex() != null && pi.replyToIndex() < result.size()) {
-                    String parentUserId = result.get(pi.replyToIndex()).userId();
-                    int attempts = 0;
-                    while (attempts < available.size() * 2 && userId == null) {
-                        UserSelector.BotUser candidate = available.get(userIndex % available.size());
-                        int count = userCounts.getOrDefault(candidate.id(), 0);
-                        if (!candidate.id().equals(parentUserId) && count < maxPerUser) {
-                            userId = candidate.id();
-                            userCounts.merge(userId, 1, Integer::sum);
-                        }
-                        userIndex++;
-                        attempts++;
-                    }
-                    if (userId == null) {
-                        // Respeta el cap eligiendo el usuario menos cargado distinto al padre;
-                        // solo cae al padre como último recurso (nunca deja userId nulo).
-                        int bestIdx = -1;
-                        int bestCount = Integer.MAX_VALUE;
-                        for (int k = 0; k < available.size(); k++) {
-                            UserSelector.BotUser candidate = available.get(k);
-                            if (candidate.id().equals(parentUserId)) {
-                                continue;
-                            }
-                            int count = userCounts.getOrDefault(candidate.id(), 0);
-                            if (count < bestCount) {
-                                bestCount = count;
-                                bestIdx = k;
-                            }
-                        }
-                        userId = bestIdx >= 0 ? available.get(bestIdx).id() : parentUserId;
-                        userCounts.merge(userId, 1, Integer::sum);
-                        userIndex++;
-                    }
-                } else {
-                    // REPLY sin padre válido (defensivo): asignar siguiente usuario round-robin.
-                    int attempts = 0;
-                    while (attempts < available.size() && userId == null) {
-                        UserSelector.BotUser candidate = available.get(userIndex % available.size());
-                        int count = userCounts.getOrDefault(candidate.id(), 0);
-                        if (count < maxPerUser) {
-                            userId = candidate.id();
-                            userCounts.merge(userId, 1, Integer::sum);
-                            userIndex++;
-                            break;
-                        }
-                        userIndex++;
-                        attempts++;
-                    }
-                    if (userId == null && !available.isEmpty()) {
-                        userId = available.get(userIndex % available.size()).id();
-                        userCounts.merge(userId, 1, Integer::sum);
-                        userIndex++;
-                    }
-                }
-            }
+            UserPick pick = pi.type() != AutomationInteractionType.REPLY
+                    ? pickCommentUser(available, userCounts, maxPerUser, userIndex)
+                    : pickReplyUser(pi, available, userCounts, maxPerUser, userIndex, result);
+            userIndex = pick.nextUserIndex();
 
             result.add(new PlannedInteractionWithUser(
-                    i, pi.type(), userId, pi.stance(), pi.tone(),
+                    i, pi.type(), pick.userId(), pi.stance(), pi.tone(),
                     pi.content(), pi.reaction(), pi.option(), pi.replyToIndex()
             ));
         }
 
         return result;
     }
+
+    private UserPick pickCommentUser(
+            List<UserSelector.BotUser> available,
+            Map<String, Integer> userCounts,
+            int maxPerUser,
+            int userIndex
+    ) {
+        for (int attempts = 0; attempts < available.size(); attempts++) {
+            UserSelector.BotUser candidate = available.get(userIndex % available.size());
+            int count = userCounts.getOrDefault(candidate.id(), 0);
+            if (count < maxPerUser) {
+                userCounts.merge(candidate.id(), 1, Integer::sum);
+                return new UserPick(candidate.id(), userIndex + 1);
+            }
+            userIndex++;
+        }
+        return new UserPick(null, userIndex);
+    }
+
+    private UserPick pickReplyUser(
+            PlannedInteraction pi,
+            List<UserSelector.BotUser> available,
+            Map<String, Integer> userCounts,
+            int maxPerUser,
+            int userIndex,
+            List<PlannedInteractionWithUser> result
+    ) {
+        if (pi.replyToIndex() == null || pi.replyToIndex() >= result.size()) {
+            return pickFallbackUser(available, userCounts, maxPerUser, userIndex);
+        }
+        String parentUserId = result.get(pi.replyToIndex()).userId();
+        for (int attempts = 0; attempts < available.size() * 2; attempts++) {
+            UserSelector.BotUser candidate = available.get(userIndex % available.size());
+            int count = userCounts.getOrDefault(candidate.id(), 0);
+            if (!candidate.id().equals(parentUserId) && count < maxPerUser) {
+                userCounts.merge(candidate.id(), 1, Integer::sum);
+                return new UserPick(candidate.id(), userIndex + 1);
+            }
+            userIndex++;
+        }
+        return new UserPick(pickLeastLoadedDistinct(available, userCounts, parentUserId), userIndex + 1);
+    }
+
+    private String pickLeastLoadedDistinct(
+            List<UserSelector.BotUser> available,
+            Map<String, Integer> userCounts,
+            String parentUserId
+    ) {
+        int bestIdx = -1;
+        int bestCount = Integer.MAX_VALUE;
+        for (int k = 0; k < available.size(); k++) {
+            UserSelector.BotUser candidate = available.get(k);
+            if (candidate.id().equals(parentUserId)) {
+                continue;
+            }
+            int count = userCounts.getOrDefault(candidate.id(), 0);
+            if (count < bestCount) {
+                bestCount = count;
+                bestIdx = k;
+            }
+        }
+        String chosen = bestIdx >= 0 ? available.get(bestIdx).id() : parentUserId;
+        userCounts.merge(chosen, 1, Integer::sum);
+        return chosen;
+    }
+
+    private UserPick pickFallbackUser(
+            List<UserSelector.BotUser> available,
+            Map<String, Integer> userCounts,
+            int maxPerUser,
+            int userIndex
+    ) {
+        for (int attempts = 0; attempts < available.size(); attempts++) {
+            UserSelector.BotUser candidate = available.get(userIndex % available.size());
+            int count = userCounts.getOrDefault(candidate.id(), 0);
+            if (count < maxPerUser) {
+                userCounts.merge(candidate.id(), 1, Integer::sum);
+                return new UserPick(candidate.id(), userIndex + 1);
+            }
+            userIndex++;
+        }
+        if (!available.isEmpty()) {
+            String forced = available.get(userIndex % available.size()).id();
+            userCounts.merge(forced, 1, Integer::sum);
+            return new UserPick(forced, userIndex + 1);
+        }
+        return new UserPick(null, userIndex);
+    }
+
+    private record UserPick(String userId, int nextUserIndex) {}
 }

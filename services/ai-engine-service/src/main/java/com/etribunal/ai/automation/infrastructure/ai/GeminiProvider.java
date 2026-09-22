@@ -96,7 +96,7 @@ public class GeminiProvider implements AIProvider {
 
         return attempt.retryWhen(Retry.backoff(MAX_PROVIDER_RETRIES, RETRY_BASE_DELAY)
                 .maxBackoff(Duration.ofSeconds(5))
-                .filter(throwable -> throwable instanceof AiError && ((AiError) throwable).isRetryable()));
+                .filter(throwable -> throwable instanceof AiError error && error.isRetryable()));
     }
 
     private String buildCasePrompt(GenerateCaseInput input) {
@@ -127,7 +127,7 @@ public class GeminiProvider implements AIProvider {
     }
 
     private String buildPlanPrompt(GenerateInteractionPlanInput input) {
-        String p = PromptUtils.interactionPlanningPrompt(input.language());
+        String p = PromptUtils.interactionPlanningPrompt();
         p = p.replace("{interactionCount}", String.valueOf(input.interactionCount()));
         p = p.replace("{availableUsers}", String.valueOf(input.availableUsers()));
         p = p.replace("{maxPerUser}", String.valueOf(input.maxPerUser()));

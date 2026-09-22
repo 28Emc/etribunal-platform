@@ -43,38 +43,68 @@ public class OutputValidator {
     }
 
     private static String extractOutermostJson(String text) {
-        int start = -1;
-        int depth = 0;
-        boolean inString = false;
-        boolean escaped = false;
-        for (int i = 0; i < text.length(); i++) {
+        int start = indexOfOpeningBrace(text);
+        if (start < 0) {
+            return null;
+        }
+        int end = indexOfMatchingClose(text, start);
+        return end < 0 ? null : text.substring(start, end + 1);
+    }
+
+    private static int indexOfOpeningBrace(String text) {
+        int i = 0;
+        while (i < text.length()) {
             char c = text.charAt(i);
-            if (inString) {
-                if (escaped) {
-                    escaped = false;
-                } else if (c == '\\') {
-                    escaped = true;
-                } else if (c == '"') {
-                    inString = false;
-                }
-                continue;
-            }
             if (c == '"') {
-                inString = true;
-                continue;
-            }
-            if (c == '{' || c == '[') {
-                if (depth == 0) {
-                    start = i;
+                i = skipJsonString(text, i);
+                if (i < 0) {
+                    return -1;
                 }
+                i++;
+            } else if (c == '{' || c == '[') {
+                return i;
+            } else {
+                i++;
+            }
+        }
+        return -1;
+    }
+
+    private static int indexOfMatchingClose(String text, int openIndex) {
+        int depth = 0;
+        int i = openIndex;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            if (c == '"') {
+                i = skipJsonString(text, i);
+                if (i < 0) {
+                    return -1;
+                }
+            } else if (c == '{' || c == '[') {
                 depth++;
             } else if (c == '}' || c == ']') {
                 depth--;
-                if (depth == 0 && start >= 0) {
-                    return text.substring(start, i + 1);
+                if (depth == 0) {
+                    return i;
                 }
             }
+            i++;
         }
-        return null;
+        return -1;
+    }
+
+    private static int skipJsonString(String text, int openQuoteIndex) {
+        boolean escaped = false;
+        for (int j = openQuoteIndex + 1; j < text.length(); j++) {
+            char c = text.charAt(j);
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                return j;
+            }
+        }
+        return -1;
     }
 }

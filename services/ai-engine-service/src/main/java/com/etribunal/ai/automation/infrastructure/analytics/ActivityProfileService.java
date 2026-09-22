@@ -98,48 +98,15 @@ public class ActivityProfileService {
                 realTotal += e.getValue();
             }
 
-            double[] result;
-            ProfilePhase p;
-            if (realTotal <= 0) {
-                result = uniform();
-                p = ProfilePhase.BOOTSTRAP;
-            } else {
-                for (int i = 0; i < HOURS; i++) {
-                    real[i] /= realTotal;
-                }
-                int d = Math.max(0, a.getMinStableSamples() - a.getMinTransitionSamples());
-                double alpha;
-                if (realizedTotal >= a.getMinStableSamples()) {
-                    alpha = 1.0;
-                    p = ProfilePhase.STABLE;
-                } else if (realizedTotal > a.getMinTransitionSamples()) {
-                    double fill;
-                    if (d == 0) {
-                        fill = 1.0;
-                    } else {
-                        fill = (double) (realizedTotal - a.getMinTransitionSamples()) / d;
-                    }
-                    alpha = 0.5 + 0.5 * fill;
-                    alpha = Math.clamp(alpha, 0.0, 1.0);
-                    p = ProfilePhase.TRANSITION;
-                } else {
-                    alpha = 0.0;
-                    p = ProfilePhase.BOOTSTRAP;
-                }
-                result = new double[HOURS];
-                for (int i = 0; i < HOURS; i++) {
-                    result[i] = (1.0 - alpha) * (1.0 / HOURS) + alpha * real[i];
-                }
-                normalize(result);
-            }
+            ProfileResult profile = computeProfile(real, realTotal, a);
 
-            persist(result);
-            weights.set(result);
-            phase.set(p);
-            metrics.put("phase", p.name());
+            persist(profile.weights());
+            weights.set(profile.weights());
+            phase.set(profile.phase());
+            metrics.put("phase", profile.phase().name());
             metrics.put("samples", realizedTotal);
             metrics.put("lastRefresh", java.time.Instant.now().toString());
-            log.info("Activity profile refreshed: phase={}, samples={}", p, realizedTotal);
+            log.info("Activity profile refreshed: phase={}, samples={}", profile.phase(), realizedTotal);
         } catch (Exception e) {
             log.warn("Could not refresh activity profile: {}", e.getMessage());
         }
@@ -194,9 +161,72 @@ public class ActivityProfileService {
         };
     }
 
+    private ProfileResult computeProfile(double[] real, double realTotal, AutomationConfig.ActivityConfig a) {
+        if (realTotal <= 0) {
+            return new ProfileResult(uniform(), ProfilePhase.BOOTSTRAP);
+        }
+        for (int i = 0; i < HOURS; i++) {
+            real[i] /= realTotal;
+        }
+        int d = Math.max(0, a.getMinStableSamples() - a.getMinTransitionSamples());
+        int realized = (int) realTotal;
+        double alpha = alphaForRealized(realized, a, d);
+        ProfilePhase p = phaseForRealized(realized, a);
+        double[] result = new double[HOURS];
+        for (int i = 0; i < HOURS; i++) {
+            result[i] = (1.0 - alpha) * (1.0 / HOURS) + alpha * real[i];
+        }
+        normalize(result);
+        return new ProfileResult(result, p);
+    }
+
+    private static double alphaForRealized(int realizedTotal, AutomationConfig.ActivityConfig a, int d) {
+        if (realizedTotal >= a.getMinStableSamples()) {
+            return 1.0;
+        }
+        if (realizedTotal > a.getMinTransitionSamples()) {
+            double fill = d == 0 ? 1.0 : (double) (realizedTotal - a.getMinTransitionSamples()) / d;
+            return Math.clamp(0.5 + 0.5 * fill, 0.0, 1.0);
+        }
+        return 0.0;
+    }
+
+    private static ProfilePhase phaseForRealized(int realizedTotal, AutomationConfig.ActivityConfig a) {
+        if (realizedTotal >= a.getMinStableSamples()) {
+            return ProfilePhase.STABLE;
+        }
+        if (realizedTotal > a.getMinTransitionSamples()) {
+            return ProfilePhase.TRANSITION;
+        }
+        return ProfilePhase.BOOTSTRAP;
+    }
+
+    private record ProfileResult(double[] weights, ProfilePhase phase) {
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof ProfileResult(double[] thatWeights, ProfilePhase thatPhase))) {
+                return false;
+            }
+            return phase == thatPhase && java.util.Arrays.equals(weights, thatWeights);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = java.util.Arrays.hashCode(weights);
+            return 31 * result + (phase != null ? phase.hashCode() : 0);
+        }
+
+        @Override
+        public String toString() {
+            return "ProfileResult{weights=" + java.util.Arrays.toString(weights) + ", phase=" + phase + "}";
+        }
+    }
+
     private void persist(double[] hourlyWeights) {
         try {
-            jdbcTemplate.update("DELETE FROM activity_profile");
             for (int h = 0; h < HOURS; h++) {
                 jdbcTemplate.update(
                     "INSERT INTO activity_profile (hour_of_day, weight, updated_at) VALUES (?, ?, now())",

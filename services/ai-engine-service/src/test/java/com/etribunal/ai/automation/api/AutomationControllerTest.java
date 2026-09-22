@@ -109,7 +109,8 @@ class AutomationControllerTest {
 
     @Test
     void startRun_rejectsTamperedToken() {
-        assertThatThrownBy(() -> controller.startRun("Bearer " + ADMIN.substring(6) + "x", false))
+        String tamperedToken = "Bearer " + ADMIN.substring(6) + "x";
+        assertThatThrownBy(() -> controller.startRun(tamperedToken, false))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Token inválido o expirado");
     }

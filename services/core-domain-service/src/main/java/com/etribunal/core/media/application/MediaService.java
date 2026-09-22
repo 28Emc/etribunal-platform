@@ -1,6 +1,5 @@
 package com.etribunal.core.media.application;
 
-import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.domain.CaseImageEntity;
 import com.etribunal.core.cases.repository.CaseImageRepository;
@@ -151,9 +150,9 @@ public class MediaService {
     private boolean isParticipant(UUID caseId, UUID userId) {
         return caseRepository.findById(caseId)
                 .filter(c -> c.getDeletedAt() == null)
-                .map(CaseEntity -> CaseEntity.getSideAUserId().equals(userId)
-                        || (CaseEntity.getSideBUserId() != null
-                                && CaseEntity.getSideBUserId().equals(userId)))
+                .map(c -> c.getSideAUserId().equals(userId)
+                        || (c.getSideBUserId() != null
+                                && c.getSideBUserId().equals(userId)))
                 .orElse(false);
     }
 }

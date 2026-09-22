@@ -16,7 +16,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,13 +36,11 @@ public class SearchService {
     private EntityManager em;
 
     private final InternalUsersClient usersClient;
+    private final SearchService self;
 
-    @Autowired
-    @Lazy
-    private SearchService self;
-
-    public SearchService(InternalUsersClient usersClient) {
+    public SearchService(InternalUsersClient usersClient, @Lazy SearchService self) {
         this.usersClient = usersClient;
+        this.self = self;
     }
 
     /**
@@ -85,7 +82,7 @@ public class SearchService {
         // Batch fetch CaseEntity by IDs for full data
         List<UUID> caseIds = rows.stream()
                 .map(r -> (UUID) r[0])
-                .collect(Collectors.toList());
+                .toList();
 
         List<CaseEntity> entities = em.createQuery(
                 "SELECT c FROM CaseEntity c WHERE c.id IN :ids", CaseEntity.class)

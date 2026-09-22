@@ -74,9 +74,11 @@ class MediaServiceTest {
 
     @Test
     void requestUpload_rejectsInvalidSide() {
+        MediaService.UploadRequest uploadRequest =
+                new MediaService.UploadRequest("image/jpeg", "photo.jpg", 1024);
+
         assertThatThrownBy(() -> mediaService.requestUpload(
-                caseId, "X", participantId,
-                new MediaService.UploadRequest("image/jpeg", "photo.jpg", 1024)))
+                caseId, "X", participantId, uploadRequest))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting("statusCode.value")
                 .isEqualTo(400);
@@ -84,9 +86,11 @@ class MediaServiceTest {
 
     @Test
     void requestUpload_rejectsNonParticipant() {
+        MediaService.UploadRequest uploadRequest =
+                new MediaService.UploadRequest("image/jpeg", "photo.jpg", 1024);
+
         assertThatThrownBy(() -> mediaService.requestUpload(
-                caseId, "A", outsiderId,
-                new MediaService.UploadRequest("image/jpeg", "photo.jpg", 1024)))
+                caseId, "A", outsiderId, uploadRequest))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("No tienes permisos");
         verify(imageRepository, never()).save(any());

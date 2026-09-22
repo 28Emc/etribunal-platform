@@ -38,13 +38,16 @@ class SearchServiceTest {
     @Mock
     private InternalUsersClient usersClient;
 
+    @Mock
+    private SearchService self;
+
     private SearchService searchService;
 
     private final UUID requesterId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        searchService = new SearchService(usersClient);
+        searchService = new SearchService(usersClient, self);
         try {
             var field = SearchService.class.getDeclaredField("em");
             field.setAccessible(true);

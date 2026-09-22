@@ -42,10 +42,10 @@ public class InteractionExecutor {
      * de API en UNA interacción revierte solo su subtransacción y no aborta el tick completo,
      * permitiendo persistir el estado FAILED y que el resto de interacciones siga ejecutándose.
      */
-    @Autowired
-    @Lazy
     private InteractionExecutor self;
 
+    @Autowired
+    @Lazy
     void setSelf(InteractionExecutor self) {
         this.self = self;
     }
@@ -161,7 +161,6 @@ public class InteractionExecutor {
             for (int m = 1; m <= windowMinutes; m++) {
                 cum[m] = m / (double) windowMinutes;
             }
-            total = 1.0;
         } else {
             for (int m = 1; m <= windowMinutes; m++) {
                 cum[m] /= total;
@@ -189,7 +188,8 @@ public class InteractionExecutor {
     }
 
     private int binarySearch(double[] cum, double target) {
-        int lo = 0, hi = cum.length - 1;
+        int lo = 0;
+        int hi = cum.length - 1;
         while (lo < hi) {
             int mid = (lo + hi) >>> 1;
             if (cum[mid] < target) {
@@ -230,7 +230,7 @@ public class InteractionExecutor {
                 caseRepository.incrementSuccessfulInteractions(entity.getAutomationCase().getId());
                 String caseId = getCaseIdFromEntity(entity);
                 eventPublisher.publishActivity(entity.getInteractionType(), caseId, entity.getUserId(), resultId);
-                analyticsRecorder.record(entity.getInteractionType(), caseId, entity.getUserId(), resultId);
+                analyticsRecorder.recordInteraction(entity.getInteractionType(), caseId, entity.getUserId(), resultId);
             }
 
             return new ExecuteResult("SUCCESS", resultId, null, null);
@@ -289,19 +289,22 @@ public class InteractionExecutor {
             };
         } catch (Exception e) {
             log.error("API call failed for interaction {}: {}", entity.getId(), e.getMessage());
-            throw e;
+            throw new RuntimeException("API call failed for interaction " + entity.getId() + " of type "
+                    + entity.getInteractionType(), e);
         }
     }
 
     private String resolveReplyParent(UUID automationCaseId, Map<String, Object> metadata) {
         int replyToIndex = -1;
         Object obj = metadata.get("reply_to_plan_index");
-        if (obj instanceof Integer) {
-            replyToIndex = (Integer) obj;
-        } else if (obj instanceof String) {
+        if (obj instanceof Integer integer) {
+            replyToIndex = integer;
+        } else if (obj instanceof String str) {
             try {
-                replyToIndex = Integer.parseInt((String) obj);
-            } catch (NumberFormatException ignored) {}
+                replyToIndex = Integer.parseInt(str);
+            } catch (NumberFormatException ignored) {
+                // metadata malformada: se ignora y se resuelve sin parent
+            }
         }
         if (replyToIndex < 0) {
             return null;

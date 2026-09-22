@@ -1,41 +1,24 @@
 package com.etribunal.identity.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.doReturn;
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.etribunal.common.domain.exception.BadRequestException;
 import com.etribunal.common.domain.exception.BusinessException;
 import com.etribunal.common.domain.exception.ConflictException;
 import com.etribunal.common.domain.exception.NotFoundException;
 import com.etribunal.common.domain.exception.UnauthorizedException;
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.ConstraintViolationException;
-import jakarta.validation.Path;
-import jakarta.validation.metadata.ConstraintDescriptor;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import org.springframework.web.bind.MissingServletRequestParameterException;
-import org.springframework.http.converter.HttpMessageNotReadableException;
 
-import java.util.Collections;
-import java.util.Set;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-
-@ExtendWith(org.mockito.junit.jupiter.MockitoExtension.class)
+@ExtendWith(MockitoExtension.class)
 class GlobalExceptionHandlerTest {
 
     @Mock
@@ -99,9 +82,8 @@ class GlobalExceptionHandlerTest {
     void handleTypeMismatchReturns400() {
         org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex =
                 mock(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class);
-        when(ex.getName()).thenReturn("id");
-        doReturn(Integer.class).when(ex).getRequiredType();
-        when(ex.getValue()).thenReturn("abc");
+        lenient().when(ex.getName()).thenReturn("id");
+        lenient().when(ex.getValue()).thenReturn("abc");
 
         ResponseEntity<?> response = handler.handleTypeMismatch(ex);
 
@@ -132,5 +114,25 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<?> response = handler.handleGeneric(ex);
 
         assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @Test
+    void handleNoResourceReturns404() {
+        org.springframework.web.servlet.resource.NoResourceFoundException ex =
+                new org.springframework.web.servlet.resource.NoResourceFoundException(
+                        org.springframework.http.HttpMethod.GET, "/favicon.ico");
+        ResponseEntity<?> response = handler.handleNoResource(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void handleIntegrityReturns409() {
+        org.springframework.dao.DataIntegrityViolationException ex =
+                new org.springframework.dao.DataIntegrityViolationException(
+                        "violation", new java.sql.SQLException("duplicate key"));
+        ResponseEntity<?> response = handler.handleIntegrity(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.CONFLICT);
     }
 }

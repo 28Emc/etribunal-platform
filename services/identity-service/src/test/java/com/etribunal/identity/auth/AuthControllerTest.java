@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.etribunal.common.security.AuthenticatedUser;
+import com.etribunal.identity.api.ApiResponse;
 import com.etribunal.identity.auth.dto.ChangePasswordRequest;
 import com.etribunal.identity.auth.dto.ForgotPasswordRequest;
 import com.etribunal.identity.auth.dto.LoginRequest;
@@ -24,12 +25,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class AuthControllerTest {
@@ -53,7 +48,8 @@ class AuthControllerTest {
         var response = controller.register(request);
 
         assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.CREATED);
-        assertThat(response.getBody()).isSameAs(mockResponse);
+        assertThat(response.getBody()).isInstanceOf(ApiResponse.class);
+        assertThat(((ApiResponse<?>) response.getBody()).data()).isSameAs(mockResponse);
         verify(authService).register(any());
     }
 
@@ -66,7 +62,8 @@ class AuthControllerTest {
         var response = controller.login(request);
 
         assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
-        assertThat(response.getBody()).isSameAs(mockResponse);
+        assertThat(response.getBody()).isInstanceOf(ApiResponse.class);
+        assertThat(((ApiResponse<?>) response.getBody()).data()).isSameAs(mockResponse);
         verify(authService).login(any());
     }
 
@@ -79,18 +76,19 @@ class AuthControllerTest {
         var response = controller.refresh(request);
 
         assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
-        assertThat(response.getBody()).isSameAs(mockResponse);
+        assertThat(response.getBody()).isInstanceOf(ApiResponse.class);
+        assertThat(((ApiResponse<?>) response.getBody()).data()).isSameAs(mockResponse);
         verify(authService).refresh(any());
     }
 
     @Test
-    void logoutReturnsNoContent() {
+    void logoutReturnsOk() {
         AuthenticatedUser user = mock(AuthenticatedUser.class);
         lenient().when(user.id()).thenReturn(UUID.randomUUID());
 
         var response = controller.logout(user);
 
-        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.NO_CONTENT);
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
         verify(authService).logout(user.id());
     }
 
@@ -104,64 +102,66 @@ class AuthControllerTest {
 
         var response = controller.me(user);
 
-        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.NO_CONTENT);
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
+        assertThat(response.getBody()).isInstanceOf(ApiResponse.class);
+        assertThat(((ApiResponse<?>) response.getBody()).data()).isSameAs(mockResponse);
         verify(authService).me(userId);
     }
 
-    @Test
-    void changePasswordReturnsNoContent() {
+@Test
+    void changePasswordReturnsOk() {
         AuthenticatedUser user = mock(AuthenticatedUser.class);
         UUID userId = UUID.randomUUID();
         lenient().when(user.id()).thenReturn(userId);
-        com.etribunal.identity.auth.dto.ChangePasswordRequest request = new com.etribunal.identity.auth.dto.ChangePasswordRequest("old", "new");
+        ChangePasswordRequest request = new ChangePasswordRequest("old", "new");
 
         var response = controller.changePassword(user, request);
 
-        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.NO_CONTENT);
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
         verify(authService).changePassword(userId, request);
     }
 
     @Test
-    void forgotPasswordReturnsNoContent() {
-        com.etribunal.identity.auth.dto.ForgotPasswordRequest request = new com.etribunal.identity.auth.dto.ForgotPasswordRequest("test@test.com");
+    void forgotPasswordReturnsOk() {
+        ForgotPasswordRequest request = new ForgotPasswordRequest("test@test.com");
         var response = controller.forgotPassword(request);
 
-        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.NO_CONTENT);
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
         verify(authService).forgotPassword(request);
     }
 
     @Test
-    void resetPasswordReturnsNoContent() {
-        com.etribunal.identity.auth.dto.ResetPasswordRequest request = new com.etribunal.identity.auth.dto.ResetPasswordRequest("token", "NewPass1");
+    void resetPasswordReturnsOk() {
+        ResetPasswordRequest request = new ResetPasswordRequest("token", "NewPass1");
         var response = controller.resetPassword(request);
 
-        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.NO_CONTENT);
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
         verify(authService).resetPassword(request);
     }
 
     @Test
-    void verifyEmailReturnsNoContent() {
-        com.etribunal.identity.auth.dto.VerifyEmailRequest request = new com.etribunal.identity.auth.dto.VerifyEmailRequest("token");
+    void verifyEmailReturnsOk() {
+        VerifyEmailRequest request = new VerifyEmailRequest("token");
         var response = controller.verifyEmail(request);
 
-        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.NO_CONTENT);
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
         verify(authService).verifyEmail(request.token());
     }
 
     @Test
-    void resendVerificationReturnsNoContent() {
-        com.etribunal.identity.auth.dto.ResendVerificationRequest request = new com.etribunal.identity.auth.dto.ResendVerificationRequest("test@test.com");
+    void resendVerificationReturnsOk() {
+        ResendVerificationRequest request = new ResendVerificationRequest("test@test.com");
         var response = controller.resendVerification(request);
 
-        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.NO_CONTENT);
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
         verify(authService).resendVerificationEmail(request.email());
     }
 
     @Test
-    void checkExistenceReturnsNoContent() {
+    void checkExistenceReturnsOk() {
         var response = controller.checkExistence("email", "username");
 
-        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.NO_CONTENT);
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.OK);
         verify(authService).checkExistence("email", "username");
     }
 }

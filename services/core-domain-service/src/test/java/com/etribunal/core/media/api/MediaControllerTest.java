@@ -106,11 +106,12 @@ class MediaControllerTest {
         when(currentUser.requiredUserId(request))
                 .thenThrow(new IllegalStateException("Usuario no autenticado"));
 
+        UUID caseId = UUID.randomUUID();
+        MediaController.RequestUploadDto dto =
+                new MediaController.RequestUploadDto("image/jpeg", "photo.jpg", 1024);
+
         org.assertj.core.api.Assertions.assertThatThrownBy(
-                        () -> controller.requestUpload(
-                                UUID.randomUUID(), "A",
-                                new MediaController.RequestUploadDto("image/jpeg", "photo.jpg", 1024),
-                                request))
+                        () -> controller.requestUpload(caseId, "A", dto, request))
                 .isInstanceOf(IllegalStateException.class);
 
         verify(mediaService, never()).requestUpload(any(), any(), any(), any());

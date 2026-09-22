@@ -5,8 +5,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class EmailTemplates {
 
-    public EmailTemplates() {}
-
     /** Recibe la URL completa (incluye el token) construida por el caller. */
     public String passwordResetBody(String resetUrl, String language) {
         if ("en".equals(language)) {

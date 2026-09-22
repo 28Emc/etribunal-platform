@@ -125,7 +125,7 @@ class InteractionExecutorTest {
         assertThat(result.status()).isEqualTo("SUCCESS");
         verify(eventPublisher).publishActivity(
                 eq(AutomationInteractionType.COMMENT), eq(caseUuid), eq(userUuid), anyString());
-        verify(analyticsRecorder).record(
+        verify(analyticsRecorder).recordInteraction(
                 eq(AutomationInteractionType.COMMENT), eq(caseUuid), eq(userUuid), anyString());
         verify(caseRepository).incrementSuccessfulInteractions(isNull());
     }
@@ -178,7 +178,7 @@ class InteractionExecutorTest {
 
         // Perfil con pico fuerte a las 20:00 (hora UTC)
         when(activityProfileService.weightForHour(anyInt())).thenReturn(0.02);
-        when(activityProfileService.weightForHour(eq(20))).thenReturn(0.5);
+        when(activityProfileService.weightForHour(20)).thenReturn(0.5);
 
         Instant base = Instant.parse("2026-09-03T09:00:00Z");
         List<Instant> times = ex.computeSchedule(4, base, 24, 30, 180);

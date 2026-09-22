@@ -52,8 +52,9 @@ class InteractionPlannerTest {
         when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.just(plan));
 
         InteractionPlanner.PlanResult result = planner.generate(
-                "case-1", "Test Case", "Side A", "Side B", "politica",
-                3, 50, pool, "author", "sideb", 3
+                new InteractionPlanner.PlanInput(
+                        "case-1", "Test Case", "Side A", "Side B", "politica",
+                        3, 50, pool, "author", "sideb", 3)
         ).block();
 
         assertThat(result).isNotNull();
@@ -71,8 +72,9 @@ class InteractionPlannerTest {
         );
 
         InteractionPlanner.PlanResult result = planner.generate(
-                "case-1", "Test Case", "Side A", "Side B", "politica",
-                3, 50, pool, "author", null, 3
+                new InteractionPlanner.PlanInput(
+                        "case-1", "Test Case", "Side A", "Side B", "politica",
+                        3, 50, pool, "author", null, 3)
         ).block();
 
         assertThat(result).isNotNull();
@@ -93,8 +95,9 @@ class InteractionPlannerTest {
         when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.just(plan));
 
         InteractionPlanner.PlanResult result = planner.generate(
-                "case-1", "Test", "A", "B", "politica",
-                1, 50, pool, "author", null, 3
+                new InteractionPlanner.PlanInput(
+                        "case-1", "Test", "A", "B", "politica",
+                        1, 50, pool, "author", null, 3)
         ).block();
 
         assertThat(result).isNotNull();

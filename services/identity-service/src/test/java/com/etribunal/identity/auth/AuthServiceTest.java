@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.etribunal.common.domain.exception.BadRequestException;
 import com.etribunal.common.domain.exception.ConflictException;
+import com.etribunal.common.domain.exception.NotFoundException;
 import com.etribunal.common.domain.exception.UnauthorizedException;
 import com.etribunal.common.security.JwtTokenProvider;
 import com.etribunal.identity.auth.dto.ChangePasswordRequest;
@@ -464,5 +465,176 @@ class AuthServiceTest {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    private record RefreshFixture(
+            JwtTokenProvider provider, String refreshToken, String jti, UserEntity user) {}
+
+    private RefreshFixture refreshFixture() {
+        JwtTokenProvider provider =
+                new JwtTokenProvider(
+                        ACCESS_SECRET.getBytes(),
+                        REFRESH_SECRET.getBytes(),
+                        "etribunal",
+                        Duration.ofMinutes(15),
+                        Duration.ofDays(7));
+        UUID userId = UUID.randomUUID();
+        String refreshToken = provider.generateRefreshToken(userId, "ana_t");
+        String jti = provider.parseRefreshToken(refreshToken).orElseThrow().getJWTID();
+        UserEntity user = new UserEntity();
+        user.setId(userId);
+        return new RefreshFixture(provider, refreshToken, jti, user);
+    }
+
+    @Test
+    void meReturnsActiveUser() {
+        when(userRepository.findById(existingUser.getId())).thenReturn(Optional.of(existingUser));
+
+        var response = authService.me(existingUser.getId());
+
+        assertThat(response.username()).isEqualTo("ana_t");
+    }
+
+    @Test
+    void meThrowsWhenUserNotFound() {
+        when(userRepository.findById(existingUser.getId())).thenReturn(Optional.empty());
+
+        UUID id = existingUser.getId();
+        assertThatThrownBy(() -> authService.me(id)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void meThrowsWhenUserInactive() {
+        existingUser.setStatus("SUSPENDED");
+        when(userRepository.findById(existingUser.getId())).thenReturn(Optional.of(existingUser));
+
+        UUID id = existingUser.getId();
+        assertThatThrownBy(() -> authService.me(id)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void refreshRejectedWhenNoSessionStored() {
+        RefreshFixture fx = refreshFixture();
+        setField(authService, "jwtTokenProvider", fx.provider());
+        when(valueOperations.get(AuthService.SESSION_PREFIX + fx.user().getId()))
+                .thenReturn(null);
+
+        RefreshRequest request = new RefreshRequest(fx.refreshToken());
+        assertThatThrownBy(() -> authService.refresh(request))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessageContaining("revocada");
+    }
+
+    @Test
+    void refreshRejectedWhenUserInactive() {
+        RefreshFixture fx = refreshFixture();
+        setField(authService, "jwtTokenProvider", fx.provider());
+        fx.user().setStatus("SUSPENDED");
+        when(valueOperations.get(AuthService.SESSION_PREFIX + fx.user().getId())).thenReturn(fx.jti());
+        when(userRepository.findById(fx.user().getId())).thenReturn(Optional.of(fx.user()));
+
+        RefreshRequest request = new RefreshRequest(fx.refreshToken());
+        assertThatThrownBy(() -> authService.refresh(request))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessageContaining("inactiva");
+    }
+
+    @Test
+    void refreshThrowsWhenUserNotFound() {
+        RefreshFixture fx = refreshFixture();
+        setField(authService, "jwtTokenProvider", fx.provider());
+        when(valueOperations.get(AuthService.SESSION_PREFIX + fx.user().getId())).thenReturn(fx.jti());
+        when(userRepository.findById(fx.user().getId())).thenReturn(Optional.empty());
+
+        RefreshRequest request = new RefreshRequest(fx.refreshToken());
+        assertThatThrownBy(() -> authService.refresh(request))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void verifyEmailSkipsWhenAlreadyVerified() {
+        existingUser.setEmailVerified(true);
+        existingUser.setVerificationToken(AuthService.hashToken("t"));
+        existingUser.setVerificationExpires(Instant.now().plus(Duration.ofHours(1)));
+        when(userRepository.findByVerificationToken(AuthService.hashToken("t")))
+                .thenReturn(Optional.of(existingUser));
+
+        authService.verifyEmail("t");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void resendVerificationSendsNewToken() {
+        existingUser.setEmailVerified(false);
+        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNull("ana@test.com"))
+                .thenReturn(Optional.of(existingUser));
+
+        authService.resendVerificationEmail("ANA@test.com");
+
+        verify(userRepository).save(existingUser);
+        assertThat(existingUser.getVerificationToken()).isNotBlank();
+        assertThat(existingUser.getVerificationExpires()).isAfter(Instant.now());
+        verify(emailProvider).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void resendVerificationSkipsAlreadyVerified() {
+        existingUser.setEmailVerified(true);
+        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNull("ana@test.com"))
+                .thenReturn(Optional.of(existingUser));
+
+        authService.resendVerificationEmail("ana@test.com");
+
+        verify(userRepository, never()).save(any());
+        verify(emailProvider, never()).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void resendVerificationSkipsSocialAccount() {
+        existingUser.setEmailVerified(false);
+        existingUser.setPasswordHash(null);
+        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNull("ana@test.com"))
+                .thenReturn(Optional.of(existingUser));
+
+        authService.resendVerificationEmail("ana@test.com");
+
+        verify(userRepository, never()).save(any());
+        verify(emailProvider, never()).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void forgotPasswordSkipsSocialAccount() {
+        existingUser.setPasswordHash(null);
+        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNull("ana@test.com"))
+                .thenReturn(Optional.of(existingUser));
+
+        authService.forgotPassword(new ForgotPasswordRequest("ana@test.com"));
+
+        verify(userRepository, never()).save(any());
+        verify(emailProvider, never()).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void changePasswordThrowsWhenUserNotFound() {
+        when(userRepository.findById(existingUser.getId())).thenReturn(Optional.empty());
+
+        UUID id = existingUser.getId();
+        ChangePasswordRequest request = new ChangePasswordRequest("a", "b");
+        assertThatThrownBy(() -> authService.changePassword(id, request))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void loginBlankAttemptsValueTreatedAsZero() {
+        when(valueOperations.get(AuthService.ATTEMPTS_PREFIX + "ana")).thenReturn("   ");
+        when(userRepository.findByEmailIgnoreCaseAndDeletedAtNull("ana"))
+                .thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("bad1", "hashed")).thenReturn(false);
+
+        LoginRequest request = new LoginRequest("ana", "bad1");
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(UnauthorizedException.class);
+        verify(valueOperations).increment(AuthService.ATTEMPTS_PREFIX + "ana");
     }
 }

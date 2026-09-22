@@ -17,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class AutomationOrchestrator {
@@ -203,39 +202,15 @@ public class AutomationOrchestrator {
 
             List<String> recentTopics = getRecentTopics();
 
-            int casesCreated = 0;
-            int casesFailed = 0;
-            int interactionsScheduled = 0;
-
-            for (int i = 0; i < dailyCases; i++) {
-                try {
-                    CaseGenerator.CaseResult result = caseGenerator.generateCase(
-                            runId, i, recentTopics, pool, dryRun).block();
-
-                    if (result != null
-                            && (result.status() == AutomationCaseStatus.CREATED
-                                || (dryRun && result.status() == AutomationCaseStatus.PLANNED))) {
-                        casesCreated++;
-                        recentTopics.add(result.generated().title());
-                        if (!dryRun && result.caseId() != null) {
-                            interactionsScheduled += planAndScheduleInteractions(
-                                    runId, result, pool, usersPerCase, intensity, maxPerUser);
-                        }
-                    } else {
-                        casesFailed++;
-                    }
-                } catch (Exception e) {
-                    log.error("Failed to generate case {}: {}", i, e.getMessage());
-                    casesFailed++;
-                }
-            }
+            GenerationSummary summary = generateCasesForRun(
+                    new GenerationContext(runId, dailyCases, recentTopics, pool, dryRun, usersPerCase, intensity, maxPerUser));
 
             log.info("Run {} scheduled {} interactions across {} created cases",
-                    runId, interactionsScheduled, casesCreated);
+                    runId, summary.interactionsScheduled(), summary.casesCreated());
 
-            self.finishRun(runId, casesCreated, casesFailed);
+            self.finishRun(runId, summary.casesCreated(), summary.casesFailed());
 
-            if (interactionsScheduled > 0) {
+            if (summary.interactionsScheduled() > 0) {
                 broadcastQueueStatus();
             }
 
@@ -256,6 +231,55 @@ public class AutomationOrchestrator {
             ));
         }
     }
+
+    private GenerationSummary generateCasesForRun(GenerationContext ctx) {
+        int casesCreated = 0;
+        int casesFailed = 0;
+        int interactionsScheduled = 0;
+
+        UUID runId = ctx.runId();
+        List<String> recentTopics = ctx.recentTopics();
+        List<UserSelector.BotUser> pool = ctx.pool();
+        boolean dryRun = ctx.dryRun();
+
+        for (int i = 0; i < ctx.dailyCases(); i++) {
+            try {
+                CaseGenerator.CaseResult result = caseGenerator.generateCase(
+                        runId, i, recentTopics, pool, dryRun).block();
+
+                if (result != null
+                        && (result.status() == AutomationCaseStatus.CREATED
+                            || (dryRun && result.status() == AutomationCaseStatus.PLANNED))) {
+                    casesCreated++;
+                    recentTopics.add(result.generated().title());
+                    if (!dryRun && result.caseId() != null) {
+                        interactionsScheduled += planAndScheduleInteractions(
+                                runId, result, pool, ctx.usersPerCase(), ctx.intensity(), ctx.maxPerUser());
+                    }
+                } else {
+                    casesFailed++;
+                }
+            } catch (Exception e) {
+                log.error("Failed to generate case {}: {}", i, e.getMessage());
+                casesFailed++;
+            }
+        }
+
+        return new GenerationSummary(casesCreated, casesFailed, interactionsScheduled);
+    }
+
+    private record GenerationContext(
+            UUID runId,
+            int dailyCases,
+            List<String> recentTopics,
+            List<UserSelector.BotUser> pool,
+            boolean dryRun,
+            int usersPerCase,
+            int intensity,
+            int maxPerUser
+    ) {}
+
+    private record GenerationSummary(int casesCreated, int casesFailed, int interactionsScheduled) {}
 
     @Transactional
     public void finishRun(UUID runId, int casesCreated, int casesFailed) {
@@ -317,17 +341,19 @@ public class AutomationOrchestrator {
             AutomationCaseEntity automationCase = automationCaseOpt.get();
 
             InteractionPlanner.PlanResult plan = interactionPlanner.generate(
-                    result.caseId(),
-                    generated.title(),
-                    generated.sideAContent(),
-                    generated.sideBContent(),
-                    generated.category(),
-                    interactionCount,
-                    intensity,
-                    pool,
-                    result.authorId(),
-                    result.sideBUserId(),
-                    maxPerUser
+                    new InteractionPlanner.PlanInput(
+                            result.caseId(),
+                            generated.title(),
+                            generated.sideAContent(),
+                            generated.sideBContent(),
+                            generated.category(),
+                            interactionCount,
+                            intensity,
+                            pool,
+                            result.authorId(),
+                            result.sideBUserId(),
+                            maxPerUser
+                    )
             ).block();
 
             if (plan == null || plan.interactions().isEmpty()) {
@@ -433,7 +459,7 @@ public class AutomationOrchestrator {
                     result.put(K_ERROR_MESSAGE, run.getErrorMessage());
                     return result;
                 })
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public Map<String, Object> getQueueStatus() {

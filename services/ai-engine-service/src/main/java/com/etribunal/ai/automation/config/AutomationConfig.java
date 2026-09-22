@@ -151,26 +151,27 @@ public class AutomationConfig {
 
     // Helper methods for random range picking
     public int pickDailyCases() {
-        return dailyCasesMin + (int) (Math.random() * (dailyCasesMax - dailyCasesMin + 1));
+        return RandomSupport.pick(dailyCasesMin, dailyCasesMax);
     }
 
     public int pickUsersPerCase() {
-        return usersPerCaseMin + (int) (Math.random() * (usersPerCaseMax - usersPerCaseMin + 1));
+        return RandomSupport.pick(usersPerCaseMin, usersPerCaseMax);
     }
 
     public int pickIntensity() {
-        return intensityMin + (int) (Math.random() * (intensityMax - intensityMin + 1));
+        return RandomSupport.pick(intensityMin, intensityMax);
     }
 
     public int pickMaxPerUser() {
-        return maxInteractionsPerUserPerCaseMin + (int) (Math.random() * (maxInteractionsPerUserPerCaseMax - maxInteractionsPerUserPerCaseMin + 1));
+        return RandomSupport.pick(maxInteractionsPerUserPerCaseMin, maxInteractionsPerUserPerCaseMax);
     }
 
     public int pickSchedulingInterval() {
-        return schedulingIntervalMin + (int) (Math.random() * (schedulingIntervalMax - schedulingIntervalMin + 1));
+        return RandomSupport.pick(schedulingIntervalMin, schedulingIntervalMax);
     }
 
     public static class AiConfig {
+
         @NotBlank
         private String provider = "gemini";
 
@@ -349,5 +350,13 @@ public class AutomationConfig {
 
         public int getHttpTimeoutSeconds() { return httpTimeoutSeconds; }
         public void setHttpTimeoutSeconds(int httpTimeoutSeconds) { this.httpTimeoutSeconds = httpTimeoutSeconds; }
+    }
+
+    private static final class RandomSupport {
+        private static final java.util.Random RANDOM = new java.util.Random();
+
+        private static int pick(int min, int max) {
+            return min + RANDOM.nextInt(max - min + 1);
+        }
     }
 }

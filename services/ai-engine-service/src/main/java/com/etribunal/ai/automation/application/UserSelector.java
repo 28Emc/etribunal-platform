@@ -21,7 +21,7 @@ public class UserSelector {
     public record UserAssignment(String userId, int interactionCount) {}
 
     public List<BotUser> selectDailyPool(int size) {
-        List<BotUser> eligible = jdbcTemplate.query(
+        return jdbcTemplate.query(
             """
             SELECT id, username FROM users
             WHERE is_bot = true
@@ -34,7 +34,6 @@ public class UserSelector {
             (rs, rowNum) -> new BotUser(rs.getString("id"), rs.getString("username")),
             size
         );
-        return eligible;
     }
 
     public List<UserAssignment> selectAndAssign(
@@ -47,7 +46,7 @@ public class UserSelector {
         List<BotUser> available = pool.stream()
                 .filter(u -> !u.id().equals(authorId))
                 .filter(u -> !u.id().equals(sideBUserId))
-                .collect(Collectors.toList());
+                .collect(Collectors.toCollection(ArrayList::new));
 
         if (available.isEmpty()) {
             return Collections.emptyList();

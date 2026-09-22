@@ -54,14 +54,6 @@ public class MockAIProvider implements AIProvider {
         int interactionCount = input.interactionCount();
 
         for (int i = 0; i < interactionCount; i++) {
-            String userId = "user-" + (i % 3 + 1);
-            com.etribunal.ai.automation.domain.AutomationInteractionType type;
-            if (i % 3 == 0) type = com.etribunal.ai.automation.domain.AutomationInteractionType.COMMENT;
-            else if (i % 3 == 1) type = com.etribunal.ai.automation.domain.AutomationInteractionType.REPLY;
-            else type = com.etribunal.ai.automation.domain.AutomationInteractionType.REACTION;
-
-            String content = "Interacción mock #" + (i + 1) + " para el caso: " + input.title();
-
             interactions.add(new PlannedInteraction(
                     com.etribunal.ai.automation.domain.AutomationInteractionType.COMMENT,
                     "neutral",

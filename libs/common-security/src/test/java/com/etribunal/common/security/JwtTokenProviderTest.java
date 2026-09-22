@@ -94,14 +94,11 @@ class JwtTokenProviderTest {
     void secretsShorterThan32BytesRejected() {
         byte[] shortSecret = "short".getBytes();
         byte[] refreshSecret = REFRESH_SECRET.getBytes();
+        Duration accessTtl = Duration.ofMinutes(15);
+        Duration refreshTtl = Duration.ofDays(7);
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> new JwtTokenProvider(
-                        shortSecret,
-                        refreshSecret,
-                        "etribunal",
-                        Duration.ofMinutes(15),
-                        Duration.ofDays(7)));
+                () -> new JwtTokenProvider(shortSecret, refreshSecret, "etribunal", accessTtl, refreshTtl));
 
         assertThat(exception.getMessage()).contains("JWT_ACCESS_SECRET");
     }
@@ -125,26 +122,25 @@ class JwtTokenProviderTest {
 
     @Test
     void nullIssuerRejectedAtConstruction() {
+        byte[] accessSecret = ACCESS_SECRET.getBytes();
+        byte[] refreshSecret = REFRESH_SECRET.getBytes();
+        Duration accessTtl = Duration.ofMinutes(15);
+        Duration refreshTtl = Duration.ofDays(7);
+
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> new JwtTokenProvider(
-                        ACCESS_SECRET.getBytes(),
-                        REFRESH_SECRET.getBytes(),
-                        null,
-                        Duration.ofMinutes(15),
-                        Duration.ofDays(7)));
+                () -> new JwtTokenProvider(accessSecret, refreshSecret, null, accessTtl, refreshTtl));
 
         assertThat(exception.getMessage()).contains("issuer");
     }
 
     @Test
     void nullTtlRejectedAtConstruction() {
+        byte[] accessSecret = ACCESS_SECRET.getBytes();
+        byte[] refreshSecret = REFRESH_SECRET.getBytes();
+        Duration refreshTtl = Duration.ofDays(7);
+
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> new JwtTokenProvider(
-                        ACCESS_SECRET.getBytes(),
-                        REFRESH_SECRET.getBytes(),
-                        "etribunal",
-                        null,
-                        Duration.ofDays(7)));
+                () -> new JwtTokenProvider(accessSecret, refreshSecret, "etribunal", null, refreshTtl));
 
         assertThat(exception.getMessage()).contains("TTL");
     }

@@ -3,7 +3,6 @@ package com.etribunal.ai.automation.api;
 import com.etribunal.ai.automation.application.AutomationOrchestrator;
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.infrastructure.settings.AutomationSettingsService;
-import com.etribunal.common.security.JwtTokenProvider;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -38,8 +37,7 @@ public class AutomationWebSocketController {
             SimpMessageSendingOperations messagingTemplate,
             AutomationOrchestrator orchestrator,
             AutomationSettingsService settingsService,
-            EngagementService engagementService,
-            JwtTokenProvider jwtTokenProvider
+            EngagementService engagementService
     ) {
         this.messagingTemplate = messagingTemplate;
         this.orchestrator = orchestrator;

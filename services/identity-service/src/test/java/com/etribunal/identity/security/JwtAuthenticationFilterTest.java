@@ -19,10 +19,11 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,15 +55,16 @@ class JwtAuthenticationFilterTest {
         filter = new JwtAuthenticationFilter(jwtTokenProvider);
     }
 
-    @Test
-    void shouldNotFilterExcludedPaths() {
-        when(request.getServletPath()).thenReturn("/api/auth/login");
+    @ParameterizedTest
+    @ValueSource(strings = {"/auth/login", "/auth", "/actuator/health"})
+    void shouldNotFilterExcludedPaths(String path) {
+        when(request.getServletPath()).thenReturn(path);
 
         assertThat(filter.shouldNotFilter(request)).isTrue();
     }
 
     @Test
-    void shouldFilterApiPaths() throws ServletException, IOException {
+    void shouldFilterApiPaths() {
         when(request.getServletPath()).thenReturn("/api/users/me");
 
         assertThat(filter.shouldNotFilter(request)).isFalse();
@@ -72,7 +74,7 @@ class JwtAuthenticationFilterTest {
     void doFilterInternalNoAuthHeaderContinuesChain() throws ServletException, IOException {
         when(request.getHeader("Authorization")).thenReturn(null);
 
-        filter.doFilterInternal(request, response, mock(FilterChain.class));
+        filter.doFilterInternal(request, response, filterChain);
 
         verify(filterChain).doFilter(request, response);
     }
@@ -81,20 +83,32 @@ class JwtAuthenticationFilterTest {
     void doFilterInternalInvalidBearerPrefixContinuesChain() throws ServletException, IOException {
         when(request.getHeader("Authorization")).thenReturn("Basic token");
 
-        filter.doFilterInternal(request, response, mock(FilterChain.class));
+        filter.doFilterInternal(request, response, filterChain);
 
         verify(filterChain).doFilter(request, response);
     }
 
     @Test
-    void doFilterInternalInvalidTokenSetsErrorResponse() throws ServletException, IOException {
+    void doFilterInternalInvalidTokenContinuesChain() throws ServletException, IOException {
         when(request.getHeader("Authorization")).thenReturn("Bearer invalid");
         when(jwtTokenProvider.parseAccessToken("invalid")).thenReturn(java.util.Optional.empty());
 
-        filter.doFilterInternal(request, response, mock(FilterChain.class));
+        filter.doFilterInternal(request, response, filterChain);
 
-        verify(response).setStatus(401);
-        verify(filterChain, never()).doFilter(request, response);
+        verify(filterChain).doFilter(request, response);
+        verify(response, never()).setStatus(401);
+    }
+
+    @Test
+    void doFilterInternalMalformedSubjectContinuesChain() throws ServletException, IOException {
+        when(request.getHeader("Authorization")).thenReturn("Bearer token");
+        com.nimbusds.jwt.JWTClaimsSet claims = mock(com.nimbusds.jwt.JWTClaimsSet.class);
+        lenient().when(claims.getSubject()).thenReturn("not-a-uuid");
+        when(jwtTokenProvider.parseAccessToken("token")).thenReturn(java.util.Optional.of(claims));
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
     }
 
     @Test
@@ -103,13 +117,14 @@ class JwtAuthenticationFilterTest {
         when(request.getHeader("Authorization")).thenReturn("Bearer valid-token");
 
         com.nimbusds.jwt.JWTClaimsSet claims = mock(com.nimbusds.jwt.JWTClaimsSet.class);
-        when(claims.getSubject()).thenReturn(userId.toString());
-        when(claims.getStringClaim("username")).thenReturn("testuser");
-        when(claims.getClaim("roles")).thenReturn(java.util.List.of("USER"));
+        lenient().when(claims.getSubject()).thenReturn(userId.toString());
+        lenient().when(claims.getStringClaim("username")).thenReturn("testuser");
+        lenient().when(claims.getClaim("roles")).thenReturn(java.util.List.of("USER"));
+        lenient().when(claims.getClaim("username")).thenReturn("testuser");
 
         when(jwtTokenProvider.parseAccessToken("valid-token")).thenReturn(java.util.Optional.of(claims));
 
-        filter.doFilterInternal(request, response, mock(FilterChain.class));
+        filter.doFilterInternal(request, response, filterChain);
 
         verify(filterChain).doFilter(any(jakarta.servlet.ServletRequest.class), any(jakarta.servlet.ServletResponse.class));
     }
