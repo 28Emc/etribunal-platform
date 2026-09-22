@@ -19,6 +19,7 @@ import com.etribunal.core.notifications.NotificationService;
 import com.etribunal.core.moderation.ModerationService;
 import com.etribunal.core.reactions.ReactionRepository;
 import com.etribunal.core.users.InternalUsersClient;
+import java.lang.reflect.InvocationTargetException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -251,6 +252,104 @@ class CommentServiceAdditionalTest {
         return entity;
     }
 
+    @Test
+    void createCommentWithParentIdCreatesReply() {
+        UUID parentId = UUID.randomUUID();
+        CommentEntity parent = comment(UUID.randomUUID(), userId, null);
+        when(commentRepository.findById(parentId)).thenReturn(Optional.of(parent));
+        when(commentRepository.save(any(CommentEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(usersClient.summaries(anyList())).thenReturn(List.of(
+                new com.etribunal.core.users.UserSummary(userId, "author", "https://x.com/a.png", false)));
+
+        var response = commentService.createComment(caseId, userId, "reply content", parentId, false);
+
+        assertThat(response.parent_id()).isEqualTo(parentId);
+        verify(moderationService).moderateCommentAsync(any(), any());
+    }
+
+    @Test
+    void createCommentAnonymousAuthorIsMasked() {
+        when(commentRepository.save(any(CommentEntity.class)))
+                .thenAnswer(inv -> {
+                    CommentEntity c = inv.getArgument(0);
+                    c.setAnonymous(true);
+                    return c;
+                });
+        when(usersClient.summaries(anyList())).thenReturn(List.of(
+                new com.etribunal.core.users.UserSummary(userId, "realuser", "https://x.com/a.png", true)));
+
+        var response = commentService.createComment(caseId, userId, "anonymous comment", null, true);
+
+        assertThat(response.is_anonymous()).isTrue();
+        assertThat(response.user().username()).isEqualTo(com.etribunal.core.cases.CaseService.MASKED_USERNAME);
+    }
+
+    @Test
+    void deleteCommentByOwnerRemovesAndDecrementsCounter() {
+        CommentEntity comment = comment(UUID.randomUUID(), userId, null);
+        CommentEntity reply = comment(UUID.randomUUID(), userId, comment.getId());
+        when(commentRepository.findByIdAndDeletedAtIsNull(comment.getId()))
+                .thenReturn(Optional.of(comment));
+        when(commentRepository.findByParentIdOrderByCreatedAtAsc(comment.getId()))
+                .thenReturn(List.of(reply));
+
+        commentService.deleteComment(comment.getId(), userId);
+
+        verify(commentRepository).delete(comment);
+        verify(caseRepository).adjustCommentCounter(caseId, -2);
+    }
+
+    @Test
+    void deleteCommentByNonOwnerThrowsForbidden() {
+        CommentEntity comment = comment(UUID.randomUUID(), userId, null);
+        when(commentRepository.findByIdAndDeletedAtIsNull(comment.getId()))
+                .thenReturn(Optional.of(comment));
+        UUID intruder = UUID.randomUUID();
+
+        assertThatThrownBy(() -> commentService.deleteComment(comment.getId(), intruder))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("403");
+        verify(commentRepository, never()).delete(any());
+    }
+
+    @Test
+    void assertDepthAllowedAllowsSingleLevelReply() {
+        CommentEntity parent = comment(UUID.randomUUID(), userId, null);
+        CommentServiceTestHelper.assertDepthAllowed(commentService, parent);
+    }
+
+    @Test
+    void assertDepthAllowedRejectsMaxDepth() {
+        UUID rootId = UUID.randomUUID();
+        CommentEntity level1 = comment(UUID.randomUUID(), userId, rootId);
+        CommentEntity level2 = comment(UUID.randomUUID(), userId, level1.getId());
+        lenient().when(commentRepository.findById(level2.getId())).thenReturn(Optional.of(level2));
+        lenient().when(commentRepository.findById(rootId)).thenReturn(Optional.of(comment(rootId, userId, null)));
+
+        assertThatThrownBy(() -> CommentServiceTestHelper.assertDepthAllowed(commentService, level2))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("profundidad");
+    }
+
+    @Test
+    void requireCaseThrowsWhenNotFound() {
+        lenient().when(caseRepository.findById(any())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> CommentServiceTestHelper.requireCase(commentService, UUID.randomUUID()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Caso no encontrado");
+    }
+
+    @Test
+    void requireCommentThrowsWhenNotFound() {
+        lenient().when(commentRepository.findByIdAndDeletedAtIsNull(any())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> CommentServiceTestHelper.requireComment(commentService, UUID.randomUUID()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Comentario no encontrado");
+    }
+
     // Helper class to access private methods via reflection
     static class CommentServiceTestHelper {
         static Map<UUID, Long> reactionCountMap(CommentService service, ReactionRepository repo, List<UUID> ids) {
@@ -269,6 +368,54 @@ class CommentServiceAdditionalTest {
                 var method = CommentService.class.getDeclaredMethod("fetchSummaries", LinkedHashSet.class);
                 method.setAccessible(true);
                 return (Map<UUID, com.etribunal.core.users.UserSummary>) method.invoke(service, ids);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        static void assertDepthAllowed(CommentService service, CommentEntity parent) {
+            try {
+                var method = CommentService.class.getDeclaredMethod("assertDepthAllowed", CommentEntity.class);
+                method.setAccessible(true);
+                method.invoke(service, parent);
+            } catch (InvocationTargetException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof ResponseStatusException) {
+                    throw (ResponseStatusException) cause;
+                }
+                throw new IllegalStateException(cause);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        static void requireCase(CommentService service, UUID caseId) {
+            try {
+                var method = CommentService.class.getDeclaredMethod("requireCase", UUID.class);
+                method.setAccessible(true);
+                method.invoke(service, caseId);
+            } catch (InvocationTargetException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof ResponseStatusException) {
+                    throw (ResponseStatusException) cause;
+                }
+                throw new IllegalStateException(cause);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        static void requireComment(CommentService service, UUID commentId) {
+            try {
+                var method = CommentService.class.getDeclaredMethod("requireComment", UUID.class);
+                method.setAccessible(true);
+                method.invoke(service, commentId);
+            } catch (InvocationTargetException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof ResponseStatusException) {
+                    throw (ResponseStatusException) cause;
+                }
+                throw new IllegalStateException(cause);
             } catch (ReflectiveOperationException e) {
                 throw new IllegalStateException(e);
             }

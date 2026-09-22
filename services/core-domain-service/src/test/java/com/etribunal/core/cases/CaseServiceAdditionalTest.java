@@ -386,6 +386,173 @@ class CaseServiceAdditionalTest {
         assertThat(slug).hasSize(100);
     }
 
+    @Test
+    void getCaseLogsViewForAuthenticatedUser() {
+        UUID caseId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        CaseEntity entity = caseEntity(caseId, "Test Case");
+        when(caseRepository.findById(caseId)).thenReturn(Optional.of(entity));
+        lenient().when(currentUserResolver.currentUserId(request)).thenReturn(Optional.of(viewerId));
+
+        caseService.getCase(caseId, request);
+
+        verify(analyticsService).log(eq(InteractionAction.VIEW.name()), eq(caseId), eq(viewerId));
+    }
+
+    @Test
+    void getCaseDoesNotLogViewForUnauthenticatedUser() {
+        UUID caseId = UUID.randomUUID();
+        CaseEntity entity = caseEntity(caseId, "Test Case");
+        when(caseRepository.findById(caseId)).thenReturn(Optional.of(entity));
+        lenient().when(currentUserResolver.currentUserId(request)).thenReturn(Optional.empty());
+
+        caseService.getCase(caseId, request);
+
+        verify(analyticsService, never()).log(anyString(), any(), any());
+    }
+
+    @Test
+    void getCasesWithCategoryFilter() {
+        when(caseRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenAnswer(inv -> new PageImpl<>(List.of()));
+
+        caseService.getCases(0, 10, null, "Relationship", null, false, request);
+
+        verify(caseRepository).findAll(any(Specification.class), any(Pageable.class));
+    }
+
+    @Test
+    void getCasesWithSearchQuery() {
+        when(caseRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenAnswer(inv -> new PageImpl<>(List.of()));
+
+        caseService.getCases(0, 10, null, null, "search term", false, request);
+
+        verify(caseRepository).findAll(any(Specification.class), any(Pageable.class));
+    }
+
+    @Test
+    void updateCaseSideBCannotEditSideAFields() {
+        CaseEntity entity = caseEntity(UUID.randomUUID(), "Original Title");
+        entity.setSideAUserId(authorId);
+        entity.setSideBUserId(sideBId);
+        lenient().when(caseRepository.findById(entity.getId())).thenReturn(Optional.of(entity));
+        lenient().when(caseRepository.save(any(CaseEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CaseResponse response = caseService.updateCase(entity.getId(), sideBId,
+                new UpdateCaseRequest(
+                        "New Title", "New Side A", "New Side B",
+                        "Relationship", "New Subtitle A", "New Subtitle B", "New Both Wrong",
+                        null, null));
+
+        assertThat(response.title()).isEqualTo("Original Title");
+        assertThat(response.side_a_content()).isEqualTo("Contenido A");
+        assertThat(response.category()).isEqualTo("Other");
+    }
+
+    @Test
+    void updateCaseSideBCannotSetAnonymity() {
+        CaseEntity entity = caseEntity(UUID.randomUUID(), "Original Title");
+        entity.setSideAUserId(authorId);
+        entity.setSideBUserId(sideBId);
+        entity.setAnonymous(false);
+        lenient().when(caseRepository.findById(entity.getId())).thenReturn(Optional.of(entity));
+        lenient().when(caseRepository.save(any(CaseEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Side B cannot change anonymity - only Side A can
+        CaseResponse response = caseService.updateCase(entity.getId(), sideBId,
+                new UpdateCaseRequest(
+                        null, null, "New Side B",
+                        null, null, null, null,
+                        true, null));
+
+        assertThat(response.is_anonymous()).isFalse();
+    }
+
+    @Test
+    void deleteCaseThrowsWhenNotReported() {
+        CaseEntity entity = caseEntity(UUID.randomUUID(), "Case");
+        entity.setReportStatus(ReportStatus.NONE);
+        entity.setModerationStatus(ModerationStatus.APPROVED);
+        when(caseRepository.findById(entity.getId())).thenReturn(Optional.of(entity));
+
+        assertThatThrownBy(() -> caseService.deleteCase(entity.getId(), UUID.randomUUID(), "reason"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("revisión");
+    }
+
+    @Test
+    void deleteCaseThrowsWhenNotFlagged() {
+        CaseEntity entity = caseEntity(UUID.randomUUID(), "Case");
+        entity.setReportStatus(ReportStatus.REPORTED);
+        entity.setModerationStatus(ModerationStatus.APPROVED);
+        when(caseRepository.findById(entity.getId())).thenReturn(Optional.of(entity));
+
+        assertThatThrownBy(() -> caseService.deleteCase(entity.getId(), UUID.randomUUID(), "reason"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("revisión");
+    }
+
+    @Test
+    void getTrendingCasesReturnsEmptyWhenNoCases() {
+        when(caseRepository.findTrendingCases(any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        List<CaseResponse> results = caseService.getTrendingCases(10);
+
+        assertThat(results).isEmpty();
+    }
+
+    @Test
+    void getActiveUsersReturnsEmptyWhenNoActivity() {
+        lenient().when(caseRepository.findActiveUsersByRecentActivity(any(), any(Pageable.class)))
+                .thenReturn(List.of());
+
+        Map<String, Object> result = caseService.getActiveUsers(10);
+
+        assertThat(result.get("users")).isEqualTo(List.of());
+        assertThat(result.get("total")).isEqualTo(0);
+    }
+
+    @Test
+    void toResponseHandlesAnonymousUsers() {
+        CaseEntity entity = caseEntity(UUID.randomUUID(), "Anonymous Case");
+        entity.setAnonymous(true);
+        entity.setSideAUserId(authorId);
+        entity.setSideBUserId(sideBId);
+        when(usersClient.summaries(anyList())).thenReturn(List.of(
+                new UserSummary(authorId, "anon_user", "https://example.com/a.png", true),
+                new UserSummary(sideBId, "anon_user2", "https://example.com/b.png", true)));
+        lenient().when(currentUserResolver.currentUserId(request)).thenReturn(Optional.of(UUID.randomUUID()));
+
+        List<CaseResponse> responses = CaseServiceTestHelper.toResponse(caseService, List.of(entity), UUID.randomUUID());
+
+        assertThat(responses.get(0).side_a_user().is_anonymous()).isTrue();
+        assertThat(responses.get(0).side_a_user().username())
+                .isEqualTo(CaseService.MASKED_USERNAME);
+    }
+
+@Test
+    void toResponseShowsRealIdentityForSelf() {
+        CaseEntity entity = caseEntity(UUID.randomUUID(), "My Case");
+        entity.setAnonymous(true);
+        entity.setSideAUserId(authorId);
+        entity.setSideBUserId(sideBId);
+        when(usersClient.summaries(anyList())).thenReturn(List.of(
+                new UserSummary(authorId, "real_user", "https://example.com/a.png", true),
+                new UserSummary(sideBId, "real_user2", "https://example.com/b.png", true)));
+        lenient().when(currentUserResolver.currentUserId(request)).thenReturn(Optional.of(authorId));
+
+        List<CaseResponse> responses = CaseServiceTestHelper.toResponse(caseService, List.of(entity), authorId);
+
+        // Case-level anonymity is true, so is_anonymous() is true
+        // But the user sees their real identity (not masked) because they are the author
+        // The user's is_anonymous flag in UserDto reflects their system anonymity, not response masking
+        assertThat(responses.get(0).is_anonymous()).isTrue();
+        assertThat(responses.get(0).side_a_user().is_anonymous()).isTrue();
+        assertThat(responses.get(0).side_a_user().username()).isEqualTo("real_user");
+    }
+
     private CaseEntity caseEntity(UUID id, String title) {
         CaseEntity entity = new CaseEntity();
         entity.setType(CaseType.classic);
@@ -410,6 +577,16 @@ class CaseServiceAdditionalTest {
                 var method = CaseService.class.getDeclaredMethod("generateSlug", String.class);
                 method.setAccessible(true);
                 return (String) method.invoke(null, title);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        static List<CaseResponse> toResponse(CaseService service, List<CaseEntity> entities, UUID requesterId) {
+            try {
+                var method = CaseService.class.getDeclaredMethod("toResponse", List.class, UUID.class);
+                method.setAccessible(true);
+                return (List<CaseResponse>) method.invoke(service, entities, requesterId);
             } catch (ReflectiveOperationException e) {
                 throw new IllegalStateException(e);
             }
