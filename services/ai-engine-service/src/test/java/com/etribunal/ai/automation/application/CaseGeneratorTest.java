@@ -5,10 +5,8 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.etribunal.ai.automation.config.AutomationConfig;
-import com.etribunal.ai.automation.domain.AIProvider;
-import com.etribunal.ai.automation.domain.AutomationCaseStatus;
-import com.etribunal.ai.automation.domain.dtos.GeneratedCase;
-import com.etribunal.ai.automation.domain.dtos.GenerateCaseInput;
+import com.etribunal.ai.automation.domain.*;
+import com.etribunal.ai.automation.domain.dtos.*;
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.infrastructure.context.LiveContextService;
 import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
@@ -23,9 +21,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
 
-import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @ExtendWith(MockitoExtension.class)
@@ -63,6 +62,11 @@ class CaseGeneratorTest {
 
     private CaseGenerator caseGenerator;
 
+    private final UUID runId = UUID.randomUUID();
+    private final UUID authorId = UUID.randomUUID();
+    private final UUID sideBId = UUID.randomUUID();
+    private final String variationSeed = "abc12345";
+
     @BeforeEach
     void setUp() {
         lenient().when(config.isDryRun()).thenReturn(true);
@@ -74,7 +78,7 @@ class CaseGeneratorTest {
 
         caseGenerator = new CaseGenerator(
                 aiProvider, config, caseRepository, runRepository,
-                null, eventPublisher, engagementService, liveContextService, moderationService);
+                jdbcTemplate, eventPublisher, engagementService, liveContextService, moderationService);
     }
 
     @Test
@@ -175,5 +179,192 @@ class CaseGeneratorTest {
 
         assertThat(result).isNotNull();
         assertThat(result.status()).isEqualTo(AutomationCaseStatus.PLANNED);
+    }
+
+    // --- Tests for private methods via reflection ---
+
+    @Test
+    void pickRandomUserId_returnsNullForEmptyPool() {
+        String result = CaseGeneratorTestHelper.pickRandomUserId(caseGenerator, List.of());
+        assertThat(result).isNull();
+    }
+
+    @Test
+    void pickRandomUserId_returnsUserFromPool() {
+        List<UserSelector.BotUser> pool = List.of(
+                new UserSelector.BotUser("user-1", "bot1"),
+                new UserSelector.BotUser("user-2", "bot2")
+        );
+        String result = CaseGeneratorTestHelper.pickRandomUserId(caseGenerator, pool);
+        assertThat(result).isIn("user-1", "user-2");
+    }
+
+    @Test
+    void pickSideBUser_excludesAuthor() {
+        List<UserSelector.BotUser> pool = List.of(
+                new UserSelector.BotUser("author-id", "author-bot"),
+                new UserSelector.BotUser("other-1", "bot-1"),
+                new UserSelector.BotUser("other-2", "bot-2")
+        );
+        String result = CaseGeneratorTestHelper.pickSideBUser(caseGenerator, pool, "author-id");
+        assertThat(result).isIn("other-1", "other-2");
+    }
+
+    @Test
+    void pickSideBUser_returnsNullWhenOnlyAuthor() {
+        List<UserSelector.BotUser> pool = List.of(
+                new UserSelector.BotUser("author-id", "author-bot")
+        );
+        String result = CaseGeneratorTestHelper.pickSideBUser(caseGenerator, pool, "author-id");
+        assertThat(result).isNull();
+    }
+
+    // --- Tests for public API functionality that exercises private methods ---
+
+@Test
+    void generateCase_nonDryRun_createsCaseWithCorrectFields() {
+        UUID runId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+        UUID sideBId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+        List<UserSelector.BotUser> pool = List.of(
+                new UserSelector.BotUser(authorId.toString(), "author-bot-1"),
+                new UserSelector.BotUser(sideBId.toString(), "sideb-bot-1"),
+                new UserSelector.BotUser(otherId.toString(), "other-bot-1")
+        );
+        
+lenient().when(config.isDryRun()).thenReturn(false);
+        lenient().when(config.getLanguage()).thenReturn("es");
+        lenient().when(config.pickIntensity()).thenReturn(50);
+        when(aiProvider.generateCase(any(GenerateCaseInput.class)))
+                .thenReturn(Mono.just(new GeneratedCase(
+                        "Test Title", "Test Description", "Side A content", "Side B content",
+                        "politica", "vote", "Sub A", "Sub B", "Both wrong", java.util.Map.of())));
+        
+        lenient().when(jdbcTemplate.update(anyString(), any(Object[].class))).thenReturn(1);
+        lenient().when(runRepository.findById(runId)).thenReturn(Optional.of(new AutomationRunEntity()));
+        lenient().when(caseRepository.findByCaseId(anyString())).thenReturn(Optional.empty());
+        lenient().when(caseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        lenient().doNothing().when(eventPublisher).publishCaseCreated(any(), any(), any(), any());
+        lenient().doNothing().when(moderationService).requestTextModeration(anyString(), anyString(), anyString(), anyString());
+        lenient().when(moderationService.getModerationStatus(anyString())).thenReturn("APPROVED");
+        
+        CaseGenerator.CaseResult result = caseGenerator.generateCase(runId, 0, List.of(), pool, false).block();
+        
+        assertThat(result).isNotNull();
+        assertThat(result.status()).isEqualTo(AutomationCaseStatus.CREATED);
+        assertThat(result.generated().title()).isEqualTo("Test Title");
+    }
+
+@Test
+    void generateCase_voteType_createsWaitingCaseWithInviteToken() {
+        UUID runId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+        UUID sideBId = UUID.randomUUID();
+        List<UserSelector.BotUser> pool = List.of(
+                new UserSelector.BotUser(authorId.toString(), "author-bot-1"),
+                new UserSelector.BotUser(sideBId.toString(), "sideb-bot-1")
+        );
+        
+        lenient().when(config.isDryRun()).thenReturn(false);
+        lenient().when(config.getLanguage()).thenReturn("es");
+        lenient().when(config.pickIntensity()).thenReturn(50);
+        lenient().when(aiProvider.generateCase(any(GenerateCaseInput.class)))
+                .thenReturn(Mono.just(new GeneratedCase(
+                        "Vote Case", "Description", "Side A", "Side B",
+                        "politica", "vote", "Sub A", "Sub B", "Both wrong", java.util.Map.of())));
+        
+        lenient().when(jdbcTemplate.update(anyString(), any(Object[].class))).thenReturn(1);
+        lenient().when(runRepository.findById(runId)).thenReturn(Optional.of(new AutomationRunEntity()));
+        lenient().when(caseRepository.findByCaseId(anyString())).thenReturn(Optional.empty());
+        lenient().when(caseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        lenient().doNothing().when(eventPublisher).publishCaseCreated(any(), any(), any(), any());
+        lenient().doNothing().when(moderationService).requestTextModeration(anyString(), anyString(), anyString(), anyString());
+        lenient().when(moderationService.getModerationStatus(anyString())).thenReturn("APPROVED");
+        lenient().when(jdbcTemplate.queryForObject(anyString(), any(Object[].class), eq(String.class))).thenReturn("APPROVED");
+        
+        CaseGenerator.CaseResult result = caseGenerator.generateCase(runId, 0, List.of(), pool, false).block();
+        
+        assertThat(result).isNotNull();
+        assertThat(result.status()).isEqualTo(AutomationCaseStatus.CREATED);
+    }
+
+    @Test
+    void generateCase_nonDryRun_persistsCaseWithCorrectFields() {
+        UUID runId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+        UUID sideBId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+        List<UserSelector.BotUser> pool = List.of(
+                new UserSelector.BotUser(authorId.toString(), "author-bot-1"),
+                new UserSelector.BotUser(sideBId.toString(), "sideb-bot-1"),
+                new UserSelector.BotUser(otherId.toString(), "other-bot-1")
+        );
+        
+        lenient().when(config.isDryRun()).thenReturn(false);
+        lenient().when(config.getLanguage()).thenReturn("es");
+        lenient().when(config.pickIntensity()).thenReturn(50);
+        lenient().when(aiProvider.generateCase(any(GenerateCaseInput.class)))
+                .thenReturn(Mono.just(new GeneratedCase(
+                        "Test Title", "Test Description", "Side A content", "Side B content",
+                        "politica", "vote", "Sub A", "Sub B", "Both wrong", java.util.Map.of())));
+        
+        lenient().when(jdbcTemplate.update(anyString(), any(Object[].class))).thenReturn(1);
+        lenient().when(runRepository.findById(runId)).thenReturn(Optional.of(new AutomationRunEntity()));
+        lenient().when(caseRepository.findByCaseId(anyString())).thenReturn(Optional.empty());
+        lenient().when(caseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        lenient().doNothing().when(eventPublisher).publishCaseCreated(any(), any(), any(), any());
+        lenient().doNothing().when(moderationService).requestTextModeration(anyString(), anyString(), anyString(), anyString());
+        lenient().when(moderationService.getModerationStatus(anyString())).thenReturn("APPROVED");
+        lenient().when(jdbcTemplate.queryForObject(anyString(), any(Object[].class), eq(String.class))).thenReturn("APPROVED");
+        
+        CaseGenerator.CaseResult result = caseGenerator.generateCase(runId, 0, List.of(), pool, false).block();
+        
+        assertThat(result).isNotNull();
+        assertThat(result.status()).isEqualTo(AutomationCaseStatus.CREATED);
+        assertThat(result.generated().title()).isEqualTo("Test Title");
+    }
+
+    // Helper class to access private methods via reflection
+    static class CaseGeneratorTestHelper {
+        static String pickRandomUserId(CaseGenerator service, List<UserSelector.BotUser> pool) {
+            try {
+                var method = CaseGenerator.class.getDeclaredMethod("pickRandomUserId", List.class);
+                method.setAccessible(true);
+                return (String) method.invoke(service, pool);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        static String pickSideBUser(CaseGenerator service, List<UserSelector.BotUser> pool, String authorId) {
+            try {
+                var method = CaseGenerator.class.getDeclaredMethod("pickSideBUser", List.class, String.class);
+                method.setAccessible(true);
+                return (String) method.invoke(service, pool, authorId);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        static boolean isTerminalModerationStatus(String status) {
+            try {
+                var method = CaseGenerator.class.getDeclaredMethod("isTerminalModerationStatus", String.class);
+                method.setAccessible(true);
+                return (boolean) method.invoke(null, status);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        static List<String> loadSuccessExamples(CaseGenerator service) {
+            try {
+                var method = CaseGenerator.class.getDeclaredMethod("loadSuccessExamples");
+                method.setAccessible(true);
+                return (List<String>) method.invoke(service);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
     }
 }
