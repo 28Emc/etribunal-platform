@@ -8,6 +8,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
@@ -144,7 +145,7 @@ class ModerationServiceTest {
     void processQueuedJobsProcessesCaseJob() {
         UUID caseId = UUID.randomUUID();
         ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob("CASE", caseId, "contenido");
-        lenient().when(queue.poll()).thenReturn(job, null);
+        lenient().when(queue.poll()).thenReturn(job, (ModerationQueue.ModerationJob) null);
         lenient().when(caseRepository.findById(caseId)).thenReturn(Optional.of(new CaseEntity()));
         lenient().when(provider.moderateText(anyString())).thenReturn(Mono.just(new ModerationResult(ModerationStatus.APPROVED, 0.1, List.of(), Map.of())));
 
@@ -159,7 +160,7 @@ class ModerationServiceTest {
     void processQueuedJobsProcessesCommentJob() {
         UUID commentId = UUID.randomUUID();
         ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob("COMMENT", commentId, "contenido");
-        lenient().when(queue.poll()).thenReturn(job, null);
+        lenient().when(queue.poll()).thenReturn(job, (ModerationQueue.ModerationJob) null);
         lenient().when(commentRepository.findById(commentId)).thenReturn(Optional.of(new CommentEntity()));
         lenient().when(provider.moderateText(anyString())).thenReturn(Mono.just(new ModerationResult(ModerationStatus.APPROVED, 0.1, List.of(), Map.of())));
 
@@ -173,7 +174,7 @@ class ModerationServiceTest {
     void processQueuedJobsProcessesCaseImageJob() {
         UUID imageId = UUID.randomUUID();
         ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob("CASE_IMAGE", imageId, "https://img/1.jpg");
-        lenient().when(queue.poll()).thenReturn(job, null);
+        lenient().when(queue.poll()).thenReturn(job, (ModerationQueue.ModerationJob) null);
         lenient().when(caseImageRepository.findById(imageId)).thenReturn(Optional.of(new CaseImageEntity()));
         lenient().when(provider.moderateImage(anyString())).thenReturn(Mono.just(new ModerationResult(ModerationStatus.APPROVED, 0.1, List.of(), Map.of())));
 
@@ -187,7 +188,7 @@ class ModerationServiceTest {
     void processQueuedJobsSkipsMissingEntities() {
         UUID caseId = UUID.randomUUID();
         ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob("CASE", caseId, "contenido");
-        lenient().when(queue.poll()).thenReturn(job, null);
+        lenient().when(queue.poll()).thenReturn(job, (ModerationQueue.ModerationJob) null);
         lenient().when(caseRepository.findById(caseId)).thenReturn(Optional.empty());
 
         moderationService.processQueuedJobs();
@@ -212,5 +213,58 @@ class ModerationServiceTest {
         when(logRepository.findByModerationStatus(ModerationStatus.FLAGGED)).thenReturn(flagged);
 
         assertThat(moderationService.getFlaggedContent()).hasSize(1);
+    }
+
+    @Test
+    void processQueuedJobsHandlesProviderError() {
+        UUID caseId = UUID.randomUUID();
+        ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob("CASE", caseId, "contenido");
+        lenient().when(queue.poll()).thenReturn(job, (ModerationQueue.ModerationJob) null);
+        lenient().when(caseRepository.findById(caseId)).thenReturn(Optional.of(new CaseEntity()));
+        lenient().when(provider.moderateText(anyString())).thenReturn(Mono.error(new RuntimeException("API error")));
+
+        moderationService.processQueuedJobs();
+
+        verify(queue, org.mockito.Mockito.atLeastOnce()).poll();
+        verify(caseRepository, org.mockito.Mockito.atLeastOnce()).findById(caseId);
+    }
+
+    @Test
+    void processQueuedJobsHandlesCaseNotFoundAfterPoll() {
+        UUID caseId = UUID.randomUUID();
+        ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob("CASE", caseId, "contenido");
+        lenient().when(queue.poll()).thenReturn(job, (ModerationQueue.ModerationJob) null);
+        lenient().when(caseRepository.findById(caseId)).thenReturn(Optional.empty());
+
+        moderationService.processQueuedJobs();
+
+        verify(queue, org.mockito.Mockito.atLeastOnce()).poll();
+        verify(caseRepository, org.mockito.Mockito.atLeastOnce()).findById(caseId);
+        verify(provider, org.mockito.Mockito.never()).moderateText(anyString());
+    }
+
+    @Test
+    void getModerationHistoryReturnsEmptyForUnknownType() {
+        UUID targetId = UUID.randomUUID();
+        when(logRepository.findByTargetTypeAndTargetId("UNKNOWN", targetId)).thenReturn(List.of());
+
+        assertThat(moderationService.getModerationHistory("UNKNOWN", targetId)).isEmpty();
+    }
+
+    @Test
+    void queueSizeReturnsZeroWhenEmpty() {
+        when(queue.size()).thenReturn(0);
+
+        assertThat(moderationService.queueSize()).isZero();
+    }
+
+    @Test
+    void moderateCaseContentAsyncMultipleCallsEnqueueMultipleJobs() {
+        UUID caseId = UUID.randomUUID();
+
+        moderationService.moderateCaseContentAsync(caseId, "t", "a", "b");
+        moderationService.moderateCaseContentAsync(caseId, "t2", "a2", "b2");
+
+        verify(queue, times(2)).enqueue(any());
     }
 }
