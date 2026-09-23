@@ -9,6 +9,7 @@ import com.etribunal.core.cases.CaseEntity;
 import com.etribunal.core.cases.CaseRepository;
 import com.etribunal.core.cases.domain.CaseImageEntity;
 import com.etribunal.core.cases.repository.CaseImageRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -171,5 +172,128 @@ class MediaServiceTest {
                 .isEqualTo(HttpStatus.FORBIDDEN.value());
         verify(imageRepository, never()).delete(any());
         verify(presignedUrlService, never()).deleteObject(any());
+    }
+
+    @Test
+    void getCaseImages_returnsImages() {
+        CaseImageEntity img1 = new CaseImageEntity();
+        img1.setId(UUID.randomUUID());
+        img1.setCaseId(caseId);
+        img1.setStorageKey("cases/img1.jpg");
+        img1.setOrderIndex(0);
+
+        CaseImageEntity img2 = new CaseImageEntity();
+        img2.setId(UUID.randomUUID());
+        img2.setCaseId(caseId);
+        img2.setStorageKey("cases/img2.jpg");
+        img2.setOrderIndex(1);
+
+        when(imageRepository.findByCaseIdOrderByOrderIndexAsc(caseId))
+                .thenReturn(List.of(img1, img2));
+
+        List<CaseImageEntity> images = mediaService.getCaseImages(caseId);
+
+        assertThat(images).hasSize(2);
+        assertThat(images.get(0).getStorageKey()).isEqualTo("cases/img1.jpg");
+        assertThat(images.get(1).getStorageKey()).isEqualTo("cases/img2.jpg");
+    }
+
+    @Test
+    void getCaseImages_returnsEmpty_whenNoImages() {
+        when(imageRepository.findByCaseIdOrderByOrderIndexAsc(caseId))
+                .thenReturn(List.of());
+
+        assertThat(mediaService.getCaseImages(caseId)).isEmpty();
+    }
+
+    @Test
+    void deleteAllCaseImages_deletesAllImages() {
+        CaseImageEntity img1 = new CaseImageEntity();
+        img1.setId(UUID.randomUUID());
+        img1.setCaseId(caseId);
+        img1.setStorageKey("cases/img1.jpg");
+
+        CaseImageEntity img2 = new CaseImageEntity();
+        img2.setId(UUID.randomUUID());
+        img2.setCaseId(caseId);
+        img2.setStorageKey("cases/img2.jpg");
+
+        when(imageRepository.findByCaseIdOrderByOrderIndexAsc(caseId))
+                .thenReturn(List.of(img1, img2));
+
+        mediaService.deleteAllCaseImages(caseId);
+
+        verify(presignedUrlService).deleteObject("cases/img1.jpg");
+        verify(presignedUrlService).deleteObject("cases/img2.jpg");
+        verify(imageRepository).deleteAll(List.of(img1, img2));
+    }
+
+    @Test
+    void deleteAllCaseImages_noopWhenNoImages() {
+        when(imageRepository.findByCaseIdOrderByOrderIndexAsc(caseId))
+                .thenReturn(List.of());
+
+        mediaService.deleteAllCaseImages(caseId);
+
+        verify(presignedUrlService, never()).deleteObject(any());
+        verify(imageRepository).deleteAll(List.of());
+    }
+
+    @Test
+    void isParticipant_allowsSideA() {
+        CaseEntity entity = new CaseEntity();
+        entity.setSideAUserId(participantId);
+        entity.setSideBUserId(UUID.randomUUID());
+
+        boolean result = MediaServiceTestHelper.isParticipant(mediaService, caseId, participantId);
+
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void isParticipant_allowsSideB() {
+        CaseEntity entity = new CaseEntity();
+        entity.setSideAUserId(UUID.randomUUID());
+        entity.setSideBUserId(participantId);
+
+        boolean result = MediaServiceTestHelper.isParticipant(mediaService, caseId, participantId);
+
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void isParticipant_rejectsOutsider() {
+        CaseEntity entity = new CaseEntity();
+        entity.setSideAUserId(UUID.randomUUID());
+        entity.setSideBUserId(UUID.randomUUID());
+
+        boolean result = MediaServiceTestHelper.isParticipant(mediaService, caseId, outsiderId);
+
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void isParticipant_returnsFalseForDeletedCase() {
+        CaseEntity entity = new CaseEntity();
+        entity.setSideAUserId(participantId);
+        entity.setDeletedAt(java.time.Instant.now());
+
+        when(caseRepository.findById(caseId)).thenReturn(Optional.of(entity));
+
+        boolean result = MediaServiceTestHelper.isParticipant(mediaService, caseId, participantId);
+
+        assertThat(result).isFalse();
+    }
+
+    static class MediaServiceTestHelper {
+        static boolean isParticipant(MediaService service, UUID caseId, UUID userId) {
+            try {
+                var method = MediaService.class.getDeclaredMethod("isParticipant", UUID.class, UUID.class);
+                method.setAccessible(true);
+                return (boolean) method.invoke(service, caseId, userId);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
     }
 }
