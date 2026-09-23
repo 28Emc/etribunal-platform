@@ -72,6 +72,49 @@ class CoreEmailServiceTest {
     }
 
     @Test
+    void sendCaseReportedEmailUsesModeratorEmailWhenNoCreator() {
+        CaseEntity caseEntity = new CaseEntity();
+        caseEntity.setTitle("Caso sin creador");
+        caseEntity.setSideAUserId(null);
+        when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
+        when(templates.caseReportedBody("Caso sin creador", "spam")).thenReturn("<html>body</html>");
+        when(templates.getModeratorEmail()).thenReturn("mod@etribunal.com");
+
+        service.sendCaseReportedEmail(caseId, "spam");
+
+        ArgumentCaptor<String> to = ArgumentCaptor.forClass(String.class);
+        verify(emailProvider).sendEmail(to.capture(), eq("Tu caso ha sido reportado - eTribunal"), any());
+        assertThat(to.getValue()).isEqualTo("mod@etribunal.com");
+    }
+
+    @Test
+    void sendCaseCreatedWithImagesEmailUsesModeratorUsernameWhenNoCreator() {
+        CaseEntity caseEntity = new CaseEntity();
+        caseEntity.setTitle("Caso con imágenes");
+        caseEntity.setSideAContent("Contenido");
+        caseEntity.setType(com.etribunal.core.cases.CaseType.vote);
+        caseEntity.setCategory("legal");
+        caseEntity.setSideAUserId(null);
+
+        CaseImageEntity img = new CaseImageEntity();
+        img.setUrl("https://cdn/img/1.jpg");
+
+        when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
+        when(caseImageRepository.findByCaseIdOrderByOrderIndexAsc(caseId)).thenReturn(List.of(img));
+        when(templates.getModeratorEmail()).thenReturn("mod@etribunal.com");
+        when(templates.caseReportedToModeratorBody(
+                eq("Caso con imágenes"), eq("Contenido"), eq("vote"), eq("legal"),
+                eq("unknown"), eq(caseId.toString()), any()))
+                .thenReturn("<html>mod body</html>");
+
+        service.sendCaseCreatedWithImagesEmail(caseId);
+
+        verify(templates).caseReportedToModeratorBody(
+                eq("Caso con imágenes"), eq("Contenido"), eq("vote"), eq("legal"),
+                eq("unknown"), eq(caseId.toString()), any());
+    }
+
+    @Test
     void sendCaseCreatedWithImagesEmailSendsToModeratorWithImageUrls() {
         CaseEntity caseEntity = new CaseEntity();
         caseEntity.setTitle("Caso con imágenes");

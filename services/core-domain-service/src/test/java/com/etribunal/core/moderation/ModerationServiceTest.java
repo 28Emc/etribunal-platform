@@ -265,4 +265,62 @@ void processQueuedJobsHandlesCaseNotFoundAfterPoll() {
 
         verify(queue, times(2)).enqueue(any());
     }
+
+    @Test
+    void moderateCommentSyncSkipsWhenCommentNotFound() {
+        UUID commentId = UUID.randomUUID();
+        ModerationResult result = new ModerationResult(ModerationStatus.FLAGGED, 0.8, List.of("spam"), Map.of());
+
+        when(provider.moderateText(anyString())).thenReturn(Mono.just(result));
+        when(commentRepository.findById(commentId)).thenReturn(Optional.empty());
+
+        ModerationResult returned = moderationService.moderateCommentSync(commentId, "contenido").block();
+
+        assertThat(returned.status()).isEqualTo(ModerationStatus.FLAGGED);
+        verify(provider).moderateText("contenido");
+        verify(commentRepository, never()).save(any());
+    }
+
+    @Test
+    void moderateCaseImageSyncSkipsWhenImageNotFound() {
+        UUID imageId = UUID.randomUUID();
+        ModerationResult result = new ModerationResult(ModerationStatus.REJECTED, 0.95, List.of("nsfw"), Map.of());
+
+        when(provider.moderateImage(anyString())).thenReturn(Mono.just(result));
+        when(caseImageRepository.findById(imageId)).thenReturn(Optional.empty());
+
+        ModerationResult returned = moderationService.moderateCaseImageSync(imageId, "https://img/1.jpg").block();
+
+        assertThat(returned.status()).isEqualTo(ModerationStatus.REJECTED);
+        verify(provider).moderateImage("https://img/1.jpg");
+        verify(caseImageRepository, never()).save(any());
+    }
+
+    @Test
+    void processQueuedJobsSkipsMissingComment() {
+        UUID commentId = UUID.randomUUID();
+        ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob("COMMENT", commentId, "contenido");
+        lenient().when(queue.poll()).thenReturn(job, (ModerationQueue.ModerationJob) null);
+        lenient().when(commentRepository.findById(commentId)).thenReturn(Optional.empty());
+
+        moderationService.processQueuedJobs();
+
+        verify(queue, org.mockito.Mockito.atLeastOnce()).poll();
+        verify(commentRepository, org.mockito.Mockito.atLeastOnce()).findById(commentId);
+        verify(provider, never()).moderateText(anyString());
+    }
+
+    @Test
+    void processQueuedJobsSkipsMissingCaseImage() {
+        UUID imageId = UUID.randomUUID();
+        ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob("CASE_IMAGE", imageId, "https://img/1.jpg");
+        lenient().when(queue.poll()).thenReturn(job, (ModerationQueue.ModerationJob) null);
+        lenient().when(caseImageRepository.findById(imageId)).thenReturn(Optional.empty());
+
+        moderationService.processQueuedJobs();
+
+        verify(queue, org.mockito.Mockito.atLeastOnce()).poll();
+        verify(caseImageRepository, org.mockito.Mockito.atLeastOnce()).findById(imageId);
+        verify(provider, never()).moderateImage(anyString());
+    }
 }
