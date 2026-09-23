@@ -130,6 +130,7 @@ public class ModerationService {
                                     .subscribe();
                         }
                     }
+                    default -> log.warn("Unknown moderation target type: {}", currentJob.targetType());
                 }
             } catch (Exception e) {
                 log.error("Error processing moderation job {}: {}", currentJob.id(), e.getMessage());

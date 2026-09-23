@@ -16,7 +16,6 @@ import com.etribunal.ai.automation.repository.AutomationRunRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
@@ -61,11 +60,6 @@ class CaseGeneratorTest {
     private AiModerationService moderationService;
 
     private CaseGenerator caseGenerator;
-
-    private final UUID runId = UUID.randomUUID();
-    private final UUID authorId = UUID.randomUUID();
-    private final UUID sideBId = UUID.randomUUID();
-    private final String variationSeed = "abc12345";
 
     @BeforeEach
     void setUp() {
@@ -122,7 +116,6 @@ class CaseGeneratorTest {
                 new UserSelector.BotUser("author-1", "author-bot-1"),
                 new UserSelector.BotUser("sideb-1", "sideb-bot-1")
         );
-        String variationSeed = "abc12345";
         when(aiProvider.generateCase(any(GenerateCaseInput.class)))
                 .thenReturn(Mono.just(new GeneratedCase(
                         "Test Title", "Test Description", "Side A content", "Side B content",

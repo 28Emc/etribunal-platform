@@ -1,5 +1,6 @@
 package com.etribunal.core.media.application;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
@@ -36,5 +37,11 @@ class PresignedUrlServiceTest {
         assertThatThrownBy(() -> service.generateUploadUrl("image/jpeg", "file.jpg", 6 * 1024 * 1024))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("5MB limit");
+    }
+
+    @Test
+    void deleteObject_doesNotThrowWhenS3Fails() {
+        PresignedUrlService service = new PresignedUrlService(null, "etribunal-media");
+        assertThatCode(() -> service.deleteObject("cases/test.jpg")).doesNotThrowAnyException();
     }
 }

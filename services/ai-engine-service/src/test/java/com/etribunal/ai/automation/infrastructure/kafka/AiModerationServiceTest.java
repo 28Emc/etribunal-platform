@@ -24,6 +24,7 @@ class AiModerationServiceTest {
 
     @BeforeEach
     void setUp() {
+        // no common setup required
     }
 
     @Test

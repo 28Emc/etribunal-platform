@@ -18,7 +18,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 public class UploadService {
 
     private static final Logger log = LoggerFactory.getLogger(UploadService.class);
-    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024;
+    private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
     private static final String[] ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"};
 
     private final S3Client s3Client;

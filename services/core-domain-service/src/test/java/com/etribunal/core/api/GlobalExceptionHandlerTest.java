@@ -138,5 +138,6 @@ class GlobalExceptionHandlerTest {
 
     @SuppressWarnings("unused")
     private void sample(String value) {
+        assertThat(value).isNotBlank();
     }
 }

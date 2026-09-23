@@ -13,7 +13,6 @@ import reactor.core.publisher.Mono;
 
 import java.io.InputStream;
 import java.util.*;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -61,23 +60,24 @@ public class LocalModerationProvider implements ModerationProvider {
     private void compileRegexPatterns() {
         // URLs sospechosos (acortadores, dominios extraños)
         regexPatterns.add(Pattern.compile(
-                "(?i)(bit\\.ly|tinyurl|t\\.co|goo\\.gl|ow\\.ly|is\\.gd|buff\\.ly|adf\\.ly|bc\\.vc|shorte\\.st|clck\\.ru|cutt\\.ly|rb\\.gy|rebrand\\.ly|shorturl|url\\.es|tiny\\.cc|v\\.gd|x\\.co|yourls|shrink|lnkd\\.in|ow\\.ly)"));
+                "(?:bit\\.ly|tinyurl|t\\.co|goo\\.gl|ow\\.ly|is\\.gd|buff\\.ly|adf\\.ly|bc\\.vc|shorte\\.st|clck\\.ru|cutt\\.ly|rb\\.gy|rebrand\\.ly|shorturl|url\\.es|tiny\\.cc|v\\.gd|x\\.co|yourls|lnkd\\.in)",
+                Pattern.CASE_INSENSITIVE));
 
         // Teléfonos (patrón genérico)
         regexPatterns.add(Pattern.compile(
-                "(?i)(\\+?\\d{1,3}[-.\s]?)?\\(?\\d{2,4}\\)?[-.\s]?\\d{3,4}[-.\s]?\\d{3,4}"));
+                "(?i)(?:\\+?\\d{1,3}[-.\\s]?)?\\(?\\d{2,4}\\)?[-.\\s]?\\d{3,4}[-.\\s]?\\d{3,4}"));
 
         // Emails
         regexPatterns.add(Pattern.compile(
-                "(?i)\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"));
+                "(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", Pattern.CASE_INSENSITIVE));
 
         // Doxxing - direcciones
         regexPatterns.add(Pattern.compile(
-                "(?i)(calle|avenida|avda|plaza|paseo|carrera|cr\\.|cl\\.|transversal|tv\\.|diagonal|dg\\.)\\s+\\d+"));
+                "(?i)(?:calle|avenida|avda|plaza|paseo|carrera|cr\\.|cl\\.|transversal|tv\\.|diagonal|dg\\.)\\s+\\d+"));
 
         // Spam - repetición excesiva
         regexPatterns.add(Pattern.compile(
-                "(?i)\\b(\\w+)\\s+\\1\\s+\\1\\b")); // 3 palabras iguales seguidas
+                "(?i)\\b(\\w+)\\s+\\1\\s+\\1\\b"));
 
         // Spam - MAYÚSCULAS excesivas
         regexPatterns.add(Pattern.compile(
@@ -99,42 +99,53 @@ public class LocalModerationProvider implements ModerationProvider {
             double riskScore = 0.0;
             List<String> matchedRules = new ArrayList<>();
 
-            // 1. Diccionarios
-            for (Map.Entry<String, Set<String>> entry : dictionaries.entrySet()) {
-                String category = entry.getKey();
-                Set<String> words = entry.getValue();
-                for (String word : words) {
-                    if (normalized.contains(word.toLowerCase())) {
-                        riskScore += getCategoryWeight(category);
-                        matchedRules.add("dict:" + category + ":" + word);
-                    }
-                }
-            }
+            riskScore += scoreDictionaries(normalized, matchedRules);
+            riskScore += scoreRegexPatterns(text, matchedRules);
+            riskScore += scoreLengthAnomalies(text, matchedRules);
 
-            // 2. Regex patterns
-            for (Pattern pattern : regexPatterns) {
-                Matcher matcher = pattern.matcher(text);
-                if (matcher.find()) {
-                    riskScore += 0.15;
-                    matchedRules.add("regex:" + pattern.pattern().substring(0, Math.min(50, pattern.pattern().length())));
-                }
-            }
-
-            // 3. Longitud sospechosa (muy corto o muy largo sin espacios)
-            if (text.length() > 10000 && !text.contains(" ")) {
-                riskScore += 0.2;
-                matchedRules.add("length:excessive_no_spaces");
-            }
-
-            // Cap risk score
             riskScore = Math.min(riskScore, 1.0);
-
-            ModerationStatus status = riskScore >= minRiskScore ? ModerationStatus.FLAGGED : ModerationStatus.APPROVED;
+            ModerationStatus status = riskScore >= minRiskScore
+                    ? ModerationStatus.FLAGGED
+                    : ModerationStatus.APPROVED;
 
             return new ModerationResult(status, riskScore, matchedRules, Map.of(
                     "normalized_length", normalized.length(),
                     "original_length", text.length()));
         });
+    }
+
+    private double scoreDictionaries(String normalized, List<String> matchedRules) {
+        double score = 0.0;
+        for (Map.Entry<String, Set<String>> entry : dictionaries.entrySet()) {
+            String category = entry.getKey();
+            for (String word : entry.getValue()) {
+                if (normalized.contains(word.toLowerCase())) {
+                    score += getCategoryWeight(category);
+                    matchedRules.add("dict:" + category + ":" + word);
+                }
+            }
+        }
+        return score;
+    }
+
+    private double scoreRegexPatterns(String text, List<String> matchedRules) {
+        double score = 0.0;
+        for (Pattern pattern : regexPatterns) {
+            if (pattern.matcher(text).find()) {
+                score += 0.15;
+                String preview = pattern.pattern().substring(0, Math.min(50, pattern.pattern().length()));
+                matchedRules.add("regex:" + preview);
+            }
+        }
+        return score;
+    }
+
+    private double scoreLengthAnomalies(String text, List<String> matchedRules) {
+        if (text.length() > 10000 && !text.contains(" ")) {
+            matchedRules.add("length:excessive_no_spaces");
+            return 0.2;
+        }
+        return 0.0;
     }
 
     @Override

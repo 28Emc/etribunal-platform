@@ -13,10 +13,14 @@ public class ConsoleEmailProvider implements EmailProvider {
 
     @Override
     public void sendEmail(String to, String subject, String htmlBody) {
-        log.info(
-                "[EMAIL-CONSOLE] To: {} | Subject: {} | Body preview: {}",
-                to,
-                subject,
-                htmlBody.replaceAll("<[^>]+>", "").substring(0, Math.min(120, htmlBody.length())));
+        if (log.isInfoEnabled()) {
+            String textPreview = htmlBody.replaceAll("<[^>]+>", "");
+            int previewLen = Math.min(120, textPreview.length());
+            log.info(
+                    "[EMAIL-CONSOLE] To: {} | Subject: {} | Body preview: {}",
+                    to,
+                    subject,
+                    textPreview.substring(0, previewLen));
+        }
     }
 }

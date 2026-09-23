@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import com.etribunal.ai.automation.application.UserSelector;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +26,7 @@ class UserSelectorTest {
 
     @BeforeEach
     void setUp() {
+        // No common state needed: each test configures its own mocks and data.
     }
 
     @Test
@@ -86,7 +86,6 @@ class UserSelectorTest {
 
     @Test
     void selectAndAssign_respectsMaxPerUser() {
-        String otherId = UUID.randomUUID().toString();
         List<UserSelector.BotUser> pool = List.of(
                 new UserSelector.BotUser(UUID.randomUUID().toString(), "other")
         );

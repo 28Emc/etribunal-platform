@@ -21,7 +21,6 @@ import com.etribunal.core.reactions.ReactionRepository;
 import com.etribunal.core.users.InternalUsersClient;
 import java.lang.reflect.InvocationTargetException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +31,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
@@ -143,7 +141,8 @@ class CommentServiceAdditionalTest {
         when(commentRepository.findByIdAndDeletedAtIsNull(commentId))
                 .thenReturn(Optional.of(existing));
 
-        assertThatThrownBy(() -> commentService.updateComment(commentId, UUID.randomUUID(), "contenido"))
+        UUID intruder = UUID.randomUUID();
+        assertThatThrownBy(() -> commentService.updateComment(commentId, intruder, "contenido"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("403");
         verify(commentRepository, never()).save(any());
@@ -179,7 +178,7 @@ class CommentServiceAdditionalTest {
 
     @Test
     void reactionCountMapReturnsEmptyForEmptyList() {
-        Map<UUID, Long> counts = CommentServiceTestHelper.reactionCountMap(commentService, reactionRepository, List.of());
+        Map<UUID, Long> counts = CommentServiceTestHelper.reactionCountMap(commentService, List.of());
         assertThat(counts).isEmpty();
     }
 
@@ -192,14 +191,14 @@ class CommentServiceAdditionalTest {
         when(crc.getTotal()).thenReturn(5L);
         when(reactionRepository.countByCommentIdGrouped(List.of(cid))).thenReturn(List.of(crc));
 
-        Map<UUID, Long> counts = CommentServiceTestHelper.reactionCountMap(commentService, reactionRepository, List.of(cid));
-        assertThat(counts.get(cid)).isEqualTo(5L);
+        Map<UUID, Long> counts = CommentServiceTestHelper.reactionCountMap(commentService, List.of(cid));
+        assertThat(counts).containsEntry(cid, 5L);
     }
 
     @Test
     void fetchSummariesReturnsEmptyForEmptySet() {
         Map<UUID, com.etribunal.core.users.UserSummary> summaries =
-                CommentServiceTestHelper.fetchSummaries(commentService, usersClient, new LinkedHashSet<>());
+                CommentServiceTestHelper.fetchSummaries(commentService, new LinkedHashSet<>());
         assertThat(summaries).isEmpty();
     }
 
@@ -213,7 +212,7 @@ class CommentServiceAdditionalTest {
                 new com.etribunal.core.users.UserSummary(id2, "user2", "https://x.com/2.png", false)));
 
         Map<UUID, com.etribunal.core.users.UserSummary> summaries =
-                CommentServiceTestHelper.fetchSummaries(commentService, usersClient, ids);
+                CommentServiceTestHelper.fetchSummaries(commentService, ids);
 
         assertThat(summaries).hasSize(2);
         assertThat(summaries.get(id1).username()).isEqualTo("user1");
@@ -307,7 +306,8 @@ class CommentServiceAdditionalTest {
                 .thenReturn(Optional.of(comment));
         UUID intruder = UUID.randomUUID();
 
-        assertThatThrownBy(() -> commentService.deleteComment(comment.getId(), intruder))
+        UUID commentUuid = comment.getId();
+        assertThatThrownBy(() -> commentService.deleteComment(commentUuid, intruder))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("403");
         verify(commentRepository, never()).delete(any());
@@ -336,7 +336,8 @@ class CommentServiceAdditionalTest {
     void requireCaseThrowsWhenNotFound() {
         lenient().when(caseRepository.findById(any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> CommentServiceTestHelper.requireCase(commentService, UUID.randomUUID()))
+        UUID missingCaseId = UUID.randomUUID();
+        assertThatThrownBy(() -> CommentServiceTestHelper.requireCase(commentService, missingCaseId))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Caso no encontrado");
     }
@@ -345,14 +346,15 @@ class CommentServiceAdditionalTest {
     void requireCommentThrowsWhenNotFound() {
         lenient().when(commentRepository.findByIdAndDeletedAtIsNull(any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> CommentServiceTestHelper.requireComment(commentService, UUID.randomUUID()))
+        UUID missingCommentId = UUID.randomUUID();
+        assertThatThrownBy(() -> CommentServiceTestHelper.requireComment(commentService, missingCommentId))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Comentario no encontrado");
     }
 
     // Helper class to access private methods via reflection
     static class CommentServiceTestHelper {
-        static Map<UUID, Long> reactionCountMap(CommentService service, ReactionRepository repo, List<UUID> ids) {
+        static Map<UUID, Long> reactionCountMap(CommentService service, List<UUID> ids) {
             try {
                 var method = CommentService.class.getDeclaredMethod("reactionCountMap", List.class);
                 method.setAccessible(true);
@@ -363,7 +365,7 @@ class CommentServiceAdditionalTest {
         }
 
         static Map<UUID, com.etribunal.core.users.UserSummary> fetchSummaries(
-                CommentService service, InternalUsersClient client, LinkedHashSet<UUID> ids) {
+                CommentService service, LinkedHashSet<UUID> ids) {
             try {
                 var method = CommentService.class.getDeclaredMethod("fetchSummaries", LinkedHashSet.class);
                 method.setAccessible(true);

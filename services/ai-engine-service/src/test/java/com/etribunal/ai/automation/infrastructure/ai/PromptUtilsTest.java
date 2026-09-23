@@ -10,14 +10,15 @@ class PromptUtilsTest {
     void caseGenerationPrompt_containsRequiredFields() {
         String prompt = PromptUtils.caseGenerationPrompt("es", 50);
 
-        assertThat(prompt).contains("REGLAS DE SEGURIDAD OBLIGATORIAS");
-        assertThat(prompt).contains("SCHEMA JSON OBLIGATORIO");
-        assertThat(prompt).contains("title");
-        assertThat(prompt).contains("sideAContent");
-        assertThat(prompt).contains("sideBContent");
-        assertThat(prompt).contains("category");
-        assertThat(prompt).contains("caseType");
-        assertThat(prompt).contains("Responde SOLO con JSON válido");
+        assertThat(prompt).contains(
+                "REGLAS DE SEGURIDAD OBLIGATORIAS",
+                "SCHEMA JSON OBLIGATORIO",
+                "title",
+                "sideAContent",
+                "sideBContent",
+                "category",
+                "caseType",
+                "Responde SOLO con JSON válido");
     }
 
     @Test
@@ -31,56 +32,40 @@ class PromptUtilsTest {
     void interactionPlanningPrompt_containsSchema() {
         String prompt = PromptUtils.interactionPlanningPrompt();
 
-        assertThat(prompt).contains("COMMENT");
-        assertThat(prompt).contains("REPLY");
-        assertThat(prompt).contains("REACTION");
-        assertThat(prompt).contains("VOTE");
-        assertThat(prompt).contains("replyToIndex");
-        assertThat(prompt).contains("Responde SOLO con un JSON");
+        assertThat(prompt).contains("COMMENT", "REPLY", "REACTION", "VOTE", "replyToIndex", "Responde SOLO con un JSON");
     }
 
     @Test
     void commentGenerationPrompt_containsRequiredFields() {
         String prompt = PromptUtils.commentGenerationPrompt("es", 50);
 
-        assertThat(prompt).contains("REGLAS DE SEGURIDAD OBLIGATORIAS");
-        assertThat(prompt).contains("content");
-        assertThat(prompt).contains("Responde SOLO con JSON");
+        assertThat(prompt).contains("REGLAS DE SEGURIDAD OBLIGATORIAS", "content", "Responde SOLO con JSON");
     }
 
     @Test
     void replyGenerationPrompt_containsRequiredFields() {
         String prompt = PromptUtils.replyGenerationPrompt("es", 50);
 
-        assertThat(prompt).contains("REGLAS DE SEGURIDAD OBLIGATORIAS");
-        assertThat(prompt).contains("content");
-        assertThat(prompt).contains("Responde SOLO con JSON");
+        assertThat(prompt).contains("REGLAS DE SEGURIDAD OBLIGATORIAS", "content", "Responde SOLO con JSON");
     }
 
     @Test
     void moderationSafeWriting_containsRequiredRules() {
-        assertThat(PromptUtils.MODERATION_SAFE_WRITING).contains("NO generes contenido sexualmente expl");
-        assertThat(PromptUtils.MODERATION_SAFE_WRITING).contains("NO inventes datos personales reales");
-        assertThat(PromptUtils.MODERATION_SAFE_WRITING).contains("debate");
+        assertThat(PromptUtils.MODERATION_SAFE_WRITING)
+                .contains("NO generes contenido sexualmente expl", "NO inventes datos personales reales", "debate");
     }
 
     @Test
     void caseJsonSchema_containsRequiredFields() {
-        assertThat(PromptUtils.CASE_JSON_SCHEMA).contains("title");
-        assertThat(PromptUtils.CASE_JSON_SCHEMA).contains("sideAContent");
-        assertThat(PromptUtils.CASE_JSON_SCHEMA).contains("sideBContent");
-        assertThat(PromptUtils.CASE_JSON_SCHEMA).contains("category");
-        assertThat(PromptUtils.CASE_JSON_SCHEMA).contains("caseType");
-        assertThat(PromptUtils.CASE_JSON_SCHEMA).contains("sideASubtitle");
-        assertThat(PromptUtils.CASE_JSON_SCHEMA).contains("sideBSubtitle");
-        assertThat(PromptUtils.CASE_JSON_SCHEMA).contains("bothWrongSubtitle");
+        assertThat(PromptUtils.CASE_JSON_SCHEMA)
+                .contains("title", "sideAContent", "sideBContent", "category", "caseType",
+                        "sideASubtitle", "sideBSubtitle", "bothWrongSubtitle");
     }
 
     @Test
     void interactionPlanningPrompt_containsModerationRules() {
         String prompt = PromptUtils.interactionPlanningPrompt();
 
-        assertThat(prompt).contains("NO generes contenido sexualmente expl");
-        assertThat(prompt).contains("NO inventes datos personales reales");
+        assertThat(prompt).contains("NO generes contenido sexualmente expl", "NO inventes datos personales reales");
     }
 }

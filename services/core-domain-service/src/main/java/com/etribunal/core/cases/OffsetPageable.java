@@ -1,5 +1,6 @@
 package com.etribunal.core.cases;
 
+import java.util.Objects;
 import org.springframework.data.domain.AbstractPageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -47,5 +48,18 @@ public final class OffsetPageable extends AbstractPageRequest {
     @Override
     public Pageable withPage(int page) {
         return new OffsetPageable(page * getPageSize(), getPageSize(), sort);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof OffsetPageable that)) return false;
+        if (!super.equals(o)) return false;
+        return offset == that.offset && Objects.equals(sort, that.sort);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), offset, sort);
     }
 }

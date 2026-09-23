@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.etribunal.ai.automation.config.AutomationConfig;
-import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,8 +13,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -59,8 +56,7 @@ class EngagementServiceTest {
     void calculateScore_returnsPositive_whenHasInteractions() {
         int score = service.calculateScore(10, 5, 3, 2, 1, 100);
 
-        assertThat(score).isGreaterThan(0);
-        assertThat(score).isLessThanOrEqualTo(100);
+        assertThat(score).isGreaterThan(0).isLessThanOrEqualTo(100);
     }
 
     @Test
@@ -180,9 +176,10 @@ class EngagementServiceTest {
 
         Map<String, Object> summary = service.getAnalyticsSummary(5);
 
-        assertThat(summary).containsKeys("evaluatedCases", "averageScore", "topCases");
-        assertThat(summary.get("evaluatedCases")).isEqualTo(10);
-        assertThat(summary.get("averageScore")).isEqualTo(75);
+        assertThat(summary)
+                .containsKeys("evaluatedCases", "averageScore", "topCases")
+                .containsEntry("evaluatedCases", 10)
+                .containsEntry("averageScore", 75);
     }
 
     @Test
@@ -194,8 +191,9 @@ class EngagementServiceTest {
 
         Map<String, Object> summary = service.getAnalyticsSummary(5);
 
-        assertThat(summary.get("evaluatedCases")).isEqualTo(0);
-        assertThat(summary.get("averageScore")).isEqualTo(0);
+        assertThat(summary)
+                .containsEntry("evaluatedCases", 0)
+                .containsEntry("averageScore", 0);
     }
 
     @Test
@@ -205,8 +203,9 @@ class EngagementServiceTest {
 
         Map<String, Object> summary = service.getAnalyticsSummary(5);
 
-        assertThat(summary.get("evaluatedCases")).isEqualTo(0);
-        assertThat(summary.get("averageScore")).isEqualTo(0);
-        assertThat(summary.get("topCases")).isEqualTo(List.of());
+        assertThat(summary)
+                .containsEntry("evaluatedCases", 0)
+                .containsEntry("averageScore", 0)
+                .containsEntry("topCases", List.of());
     }
 }

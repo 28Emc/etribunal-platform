@@ -51,9 +51,7 @@ public final class CaseSpecifications {
 
     static Pageable pageable(int skip, int take, boolean trending) {
         int limit = Math.clamp(take, 1, 50);
-        Sort sort = trending
-                ? Sort.by(Sort.Direction.DESC, "totalVotes")
-                : Sort.by(Sort.Direction.DESC, "createdAt");
+        Sort sort = Sort.by(Sort.Direction.DESC, trending ? "totalVotes" : "createdAt");
         return new OffsetPageable(Math.max(skip, 0), limit, sort);
     }
 

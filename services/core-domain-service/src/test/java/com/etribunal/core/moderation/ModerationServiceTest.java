@@ -3,9 +3,8 @@ package com.etribunal.core.moderation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
@@ -17,7 +16,6 @@ import com.etribunal.core.cases.domain.CaseImageEntity;
 import com.etribunal.core.cases.repository.CaseImageRepository;
 import com.etribunal.core.comments.CommentEntity;
 import com.etribunal.core.comments.CommentRepository;
-import com.etribunal.core.reports.ReportStatus;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -195,7 +193,7 @@ class ModerationServiceTest {
 
         verify(queue, org.mockito.Mockito.atLeastOnce()).poll();
         verify(caseRepository, org.mockito.Mockito.atLeastOnce()).findById(caseId);
-        verify(provider, org.mockito.Mockito.never()).moderateText(anyString());
+        verify(provider, never()).moderateText(anyString());
     }
 
     @Test
@@ -230,7 +228,7 @@ class ModerationServiceTest {
     }
 
     @Test
-    void processQueuedJobsHandlesCaseNotFoundAfterPoll() {
+void processQueuedJobsHandlesCaseNotFoundAfterPoll() {
         UUID caseId = UUID.randomUUID();
         ModerationQueue.ModerationJob job = new ModerationQueue.ModerationJob("CASE", caseId, "contenido");
         lenient().when(queue.poll()).thenReturn(job, (ModerationQueue.ModerationJob) null);
@@ -240,7 +238,7 @@ class ModerationServiceTest {
 
         verify(queue, org.mockito.Mockito.atLeastOnce()).poll();
         verify(caseRepository, org.mockito.Mockito.atLeastOnce()).findById(caseId);
-        verify(provider, org.mockito.Mockito.never()).moderateText(anyString());
+        verify(provider, never()).moderateText("contenido");
     }
 
     @Test

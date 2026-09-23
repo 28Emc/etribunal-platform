@@ -47,23 +47,23 @@ public class ReactionsController {
 
     @DeleteMapping("/reactions")
     public ResponseEntity<ApiResponse<ReactionService.ReactionsSummary>> remove(
-            @RequestParam String target_type,
-            @RequestParam String target_id,
+            @RequestParam("target_type") String targetType,
+            @RequestParam("target_id") String targetId,
             @RequestParam String emoji,
             HttpServletRequest request) {
         UUID userId = currentUser.requiredUserId(request);
         return ResponseEntity.ok(ApiResponse.ok(reactionService.removeReaction(userId,
-                parseTarget(target_type), parseId(target_id), parseEmoji(emoji))));
+                parseTarget(targetType), parseId(targetId), parseEmoji(emoji))));
     }
 
     @GetMapping("/reactions")
     public ResponseEntity<ApiResponse<ReactionService.ReactionsSummary>> summary(
-            @RequestParam String target_type,
-            @RequestParam String target_id,
+            @RequestParam("target_type") String targetType,
+            @RequestParam("target_id") String targetId,
             HttpServletRequest request) {
         var requester = currentUser.currentUserId(request).orElse(null);
         return ResponseEntity.ok(ApiResponse.ok(reactionService.getReactions(
-                parseTarget(target_type), parseId(target_id), requester)));
+                parseTarget(targetType), parseId(targetId), requester)));
     }
 
     private static ReactionTarget parseTarget(String value) {

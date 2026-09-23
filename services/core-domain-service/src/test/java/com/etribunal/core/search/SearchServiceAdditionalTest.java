@@ -5,22 +5,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.etribunal.core.cases.CaseEntity;
-import com.etribunal.core.cases.CaseStatus;
-import com.etribunal.core.cases.CaseType;
-import com.etribunal.core.cases.ModerationStatus;
 import com.etribunal.core.users.InternalUsersClient;
 import com.etribunal.core.users.UserSummary;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
-import jakarta.persistence.TypedQuery;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -70,15 +63,15 @@ class SearchServiceAdditionalTest {
 
     @Test
     void quickSearchDelegatesToAdvancedSearch() {
-        UUID caseId = UUID.randomUUID();
         when(self.advancedSearch("test", "ALL", 0, 5, requesterId))
                 .thenReturn(Map.of("users", List.of(), "cases", List.of(), "hasMore", false));
 
         Map<String, Object> result = searchService.quickSearch("test", requesterId);
 
-        assertThat(result.get("users")).isEqualTo(List.of());
-        assertThat(result.get("cases")).isEqualTo(List.of());
-        assertThat(result.get("hasMore")).isEqualTo(false);
+        assertThat(result)
+                .containsEntry("users", List.of())
+                .containsEntry("cases", List.of())
+                .containsEntry("hasMore", false);
         verify(self).advancedSearch("test", "ALL", 0, 5, requesterId);
     }
 
@@ -90,7 +83,7 @@ class SearchServiceAdditionalTest {
         Map<String, Object> result = searchService.advancedSearch("john", "USERS", 0, 5, requesterId);
 
         assertThat(result.get("users")).isNotNull();
-        assertThat(result.get("cases")).isEqualTo(List.of());
+        assertThat(result).containsEntry("cases", List.of());
         verify(usersClient).searchUsers("john", 5, 0, requesterId);
     }
 
@@ -104,7 +97,7 @@ class SearchServiceAdditionalTest {
         Map<String, Object> result = searchService.advancedSearch("test", "CASES", 0, 5, requesterId);
 
         assertThat(result.get("cases")).isNotNull();
-        assertThat(result.get("users")).isEqualTo(List.of());
+        assertThat(result).containsEntry("users", List.of());
         verify(self).search("test", 0, 5, requesterId);
     }
 
@@ -132,9 +125,9 @@ class SearchServiceAdditionalTest {
         Map<String, Object> result = searchService.advancedSearch("@user123", "CASES", 0, 10, requesterId);
 
         assertThat(result.get("users")).isNotNull();
-        assertThat(result.get("cases")).isEqualTo(List.of());
+        assertThat(result).containsEntry("cases", List.of());
         verify(usersClient).searchUsers("user123", 10, 0, requesterId);
-        verify(self, org.mockito.Mockito.never()).search(anyString(), anyInt(), anyInt(), any());
+        verify(self, never()).search(anyString(), anyInt(), anyInt(), any());
     }
 
     @Test
@@ -152,8 +145,9 @@ class SearchServiceAdditionalTest {
     @Test
     void advancedSearchEmptyQueryReturnsEmpty() {
         Map<String, Object> result = searchService.advancedSearch("a", "ALL", 0, 10, requesterId);
-        assertThat(result.get("users")).isEqualTo(List.of());
-        assertThat(result.get("cases")).isEqualTo(List.of());
+        assertThat(result)
+                .containsEntry("users", List.of())
+                .containsEntry("cases", List.of());
     }
 
     private com.etribunal.core.cases.dto.CaseResponse buildCaseResponse(UUID caseId) {

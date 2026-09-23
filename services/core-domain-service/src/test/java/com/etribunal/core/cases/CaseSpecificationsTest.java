@@ -15,7 +15,11 @@ import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -39,43 +43,32 @@ class CaseSpecificationsTest {
 
     private int predicatesCount(Specification<CaseEntity> spec, CriteriaBuilder cb) {
         Root<CaseEntity> root = mock(Root.class);
-        when(root.get(anyString())).thenReturn(mock(Path.class));
+        Path<Object> path = mock(Path.class);
+        when(root.get(anyString())).thenReturn(path);
         Predicate first = cb.isNull(any());
-        when(((Path<Object>) mock(Path.class)).in(anyCollection())).thenReturn(first);
+        when(path.in(anyCollection())).thenReturn(first);
         spec.toPredicate(root, mock(jakarta.persistence.criteria.CriteriaQuery.class), cb);
         ArgumentCaptor<Predicate[]> captor = ArgumentCaptor.forClass(Predicate[].class);
         verify(cb).and(captor.capture());
         return captor.getValue().length;
     }
 
-    @Test
-    void feedAppliesStatusAndModerationPredicates() {
+    @ParameterizedTest
+    @MethodSource("feedArguments")
+    void feedBuildsExpectedPredicates(String query, String category, int expectedPredicates) {
         Predicate predicate = mock(Predicate.class);
         CriteriaBuilder cb = fullyStubbedBuilder(predicate);
         Specification<CaseEntity> spec = CaseSpecifications.feed(
-                null, null, null, null, false);
+                query, category, null, null, false);
 
-        assertThat(predicatesCount(spec, cb)).isEqualTo(3);
+        assertThat(predicatesCount(spec, cb)).isEqualTo(expectedPredicates);
     }
 
-    @Test
-    void feedAddsSearchPredicateWhenQueryProvided() {
-        Predicate predicate = mock(Predicate.class);
-        CriteriaBuilder cb = fullyStubbedBuilder(predicate);
-        Specification<CaseEntity> spec = CaseSpecifications.feed(
-                " Caso ", null, null, null, false);
-
-        assertThat(predicatesCount(spec, cb)).isEqualTo(4);
-    }
-
-    @Test
-    void feedSkipsCategoryWhenAll() {
-        Predicate predicate = mock(Predicate.class);
-        CriteriaBuilder cb = fullyStubbedBuilder(predicate);
-        Specification<CaseEntity> spec = CaseSpecifications.feed(
-                null, "All", null, null, false);
-
-        assertThat(predicatesCount(spec, cb)).isEqualTo(3);
+    private static Stream<Arguments> feedArguments() {
+        return Stream.of(
+                Arguments.of(null, null, 3),
+                Arguments.of(" Caso ", null, 4),
+                Arguments.of(null, "All", 3));
     }
 
     @Test
@@ -104,7 +97,8 @@ class CaseSpecificationsTest {
         CriteriaBuilder cb = fullyStubbedBuilder(predicate);
         Specification<CaseEntity> spec = CaseSpecifications.isPrivate();
         Root<CaseEntity> root = mock(Root.class);
-        when(root.get(anyString())).thenReturn(mock(Path.class));
+        Path<Object> path = mock(Path.class);
+        when(root.get(anyString())).thenReturn(path);
 
         assertThat(spec.toPredicate(root,
                 mock(jakarta.persistence.criteria.CriteriaQuery.class), cb)).isSameAs(predicate);

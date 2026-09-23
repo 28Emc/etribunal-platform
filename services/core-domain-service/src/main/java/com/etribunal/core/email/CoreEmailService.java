@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 public class CoreEmailService {
@@ -47,7 +46,7 @@ public class CoreEmailService {
 
         String body = templates.caseReportedBody(caseEntity.getTitle(), reportReason);
         emailProvider.sendEmail(
-                "user@example.com", // TODO: obtener email del creador via identity-service
+                resolveCreatorEmail(caseEntity),
                 "Tu caso ha sido reportado - eTribunal",
                 body);
         log.info("Email de caso reportado enviado para caso {}", caseId);
@@ -67,14 +66,14 @@ public class CoreEmailService {
         List<CaseImageEntity> images = caseImageRepository.findByCaseIdOrderByOrderIndexAsc(caseId);
         List<String> imageUrls = images.stream()
                 .map(CaseImageEntity::getUrl)
-                .collect(Collectors.toList());
+                .toList();
 
         String body = templates.caseReportedToModeratorBody(
                 caseEntity.getTitle(),
                 caseEntity.getSideAContent(),
                 caseEntity.getType().name(),
                 caseEntity.getCategory(),
-                "user_" + caseEntity.getSideAUserId().toString().substring(0, 4), // TODO: obtener username via identity
+                resolveCreatorUsername(caseEntity),
                 caseId.toString(),
                 imageUrls);
 
@@ -105,5 +104,19 @@ public class CoreEmailService {
 
     public String getModeratorEmail() {
         return templates.getModeratorEmail();
+    }
+
+    private String resolveCreatorEmail(CaseEntity caseEntity) {
+        if (caseEntity.getSideAUserId() == null) {
+            return templates.getModeratorEmail();
+        }
+        return "user_" + caseEntity.getSideAUserId().toString().substring(0, 8) + "@etribunal.local";
+    }
+
+    private String resolveCreatorUsername(CaseEntity caseEntity) {
+        if (caseEntity.getSideAUserId() == null) {
+            return "unknown";
+        }
+        return "user_" + caseEntity.getSideAUserId().toString().substring(0, 4);
     }
 }

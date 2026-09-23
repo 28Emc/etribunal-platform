@@ -1,10 +1,11 @@
 package com.etribunal.ai.automation.infrastructure.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
-import reactor.test.StepVerifier;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class OutputValidatorTest {
 
@@ -20,6 +21,26 @@ class OutputValidatorTest {
         assertThat(dto.getValue()).isEqualTo(42);
     }
 
+    @ParameterizedTest
+    @MethodSource("validJsonVariants")
+    void validate_parsesEmbeddedJson(String json, String expectedName) {
+        TestDto dto = validator.validate(json, TestDto.class).block();
+
+        assertThat(dto).isNotNull();
+        assertThat(dto.getName()).isEqualTo(expectedName);
+    }
+
+    static java.util.stream.Stream<Arguments> validJsonVariants() {
+        return java.util.stream.Stream.of(
+                Arguments.of("```json\n{\"name\":\"test\"}\n```", "test"),
+                Arguments.of("```\n{\"name\":\"test\"}\n```", "test"),
+                Arguments.of("Some text before {\"name\":\"test\"} and after", "test"),
+                Arguments.of("{\n  \"name\": \"test\"\n}", "test"),
+                Arguments.of("{\"name\":\"Hello {world}\"}", "Hello {world}"),
+                Arguments.of("{\"name\":\"He said \\\"hello\\\"\"}", "He said \"hello\"")
+        );
+    }
+
     @Test
     void validate_returnsParsedArray_whenValidJsonArray() {
         String json = "[{\"name\":\"a\"},{\"name\":\"b\"}]";
@@ -28,33 +49,6 @@ class OutputValidatorTest {
         assertThat(array).hasSize(2);
         assertThat(array[0].getName()).isEqualTo("a");
         assertThat(array[1].getName()).isEqualTo("b");
-    }
-
-    @Test
-    void validate_stripsMarkdownCodeFences() {
-        String json = "```json\n{\"name\":\"test\"}\n```";
-        TestDto dto = validator.validate(json, TestDto.class).block();
-
-        assertThat(dto).isNotNull();
-        assertThat(dto.getName()).isEqualTo("test");
-    }
-
-    @Test
-    void validate_stripsMarkdownWithLanguage() {
-        String json = "```\n{\"name\":\"test\"}\n```";
-        TestDto dto = validator.validate(json, TestDto.class).block();
-
-        assertThat(dto).isNotNull();
-        assertThat(dto.getName()).isEqualTo("test");
-    }
-
-    @Test
-    void validate_extractsOutermostJsonObject() {
-        String mixed = "Some text before {\"name\":\"test\"} and after";
-        TestDto dto = validator.validate(mixed, TestDto.class).block();
-
-        assertThat(dto).isNotNull();
-        assertThat(dto.getName()).isEqualTo("test");
     }
 
     @Test
@@ -72,24 +66,6 @@ class OutputValidatorTest {
 
         assertThat(dto).isNotNull();
         assertThat(dto.getOuter().getInner().getName()).isEqualTo("nested");
-    }
-
-    @Test
-    void validate_skipsStringsWithBraces() {
-        String json = "{\"name\":\"Hello {world}\"}";
-        TestDto dto = validator.validate(json, TestDto.class).block();
-
-        assertThat(dto).isNotNull();
-        assertThat(dto.getName()).isEqualTo("Hello {world}");
-    }
-
-    @Test
-    void validate_handlesEscapedQuotes() {
-        String json = "{\"name\":\"He said \\\"hello\\\"\"}";
-        TestDto dto = validator.validate(json, TestDto.class).block();
-
-        assertThat(dto).isNotNull();
-        assertThat(dto.getName()).isEqualTo("He said \"hello\"");
     }
 
     @Test
@@ -111,8 +87,6 @@ class OutputValidatorTest {
     @Test
     void cleanJson_removesMarkdownFences() {
         String withFence = "```json\n{\"test\":true}\n```";
-        OutputValidator validator = new OutputValidator();
-        // Test via private method reflection or integration test
         TestDto dto = validator.validate(withFence, TestDto.class).block();
         assertThat(dto).isNotNull();
         assertThat(dto.isTest()).isTrue();

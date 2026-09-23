@@ -7,7 +7,6 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,15 +14,11 @@ import static org.mockito.Mockito.when;
 import com.etribunal.core.analytics.AnalyticsService;
 import com.etribunal.core.analytics.InteractionAction;
 import com.etribunal.core.cases.dto.CaseResponse;
-import com.etribunal.core.cases.dto.CreateCaseRequest;
-import com.etribunal.core.cases.dto.RespondSideBRequest;
 import com.etribunal.core.cases.dto.UpdateCaseRequest;
-import java.util.Arrays;
 import com.etribunal.core.comments.CommentRepository;
 import com.etribunal.core.config.FrontendUrlProperties;
 import com.etribunal.core.moderation.ModerationService;
 import com.etribunal.core.reactions.ReactionRepository;
-import com.etribunal.core.reactions.ReactionTarget;
 import com.etribunal.core.reports.ReportStatus;
 import com.etribunal.core.saved.CaseShareRepository;
 import com.etribunal.core.saved.SavedCaseRepository;
@@ -34,24 +29,18 @@ import com.etribunal.core.votes.CaseVoteEntity;
 import com.etribunal.core.votes.VoteRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
@@ -307,8 +296,11 @@ class CaseServiceAdditionalTest {
         entity.setSideAUserId(authorId);
         when(caseRepository.findById(entity.getId())).thenReturn(Optional.of(entity));
 
-        assertThatThrownBy(() -> caseService.updateCase(entity.getId(), UUID.randomUUID(),
-                new UpdateCaseRequest("New", null, null, null, null, null, null, null, null)))
+        UUID caseUuid = entity.getId();
+        UUID otherUser = UUID.randomUUID();
+        UpdateCaseRequest updateRequest =
+                new UpdateCaseRequest("New", null, null, null, null, null, null, null, null);
+        assertThatThrownBy(() -> caseService.updateCase(caseUuid, otherUser, updateRequest))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("No tienes permisos");
     }
@@ -322,7 +314,7 @@ class CaseServiceAdditionalTest {
 
         Map<String, Object> result = caseService.deleteCase(entity.getId(), UUID.randomUUID(), "spam");
 
-        assertThat(result.get("success")).isEqualTo(true);
+        assertThat(result).containsEntry("success", true);
         assertThat(entity.getDeletedAt()).isNotNull();
         verify(caseRepository).save(entity);
     }
@@ -334,7 +326,9 @@ class CaseServiceAdditionalTest {
         entity.setModerationStatus(ModerationStatus.APPROVED);
         when(caseRepository.findById(entity.getId())).thenReturn(Optional.of(entity));
 
-        assertThatThrownBy(() -> caseService.deleteCase(entity.getId(), UUID.randomUUID(), "reason"))
+        UUID caseUuid = entity.getId();
+        UUID moderatorId = UUID.randomUUID();
+        assertThatThrownBy(() -> caseService.deleteCase(caseUuid, moderatorId, "reason"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("revisión");
     }
@@ -396,7 +390,7 @@ class CaseServiceAdditionalTest {
 
         caseService.getCase(caseId, request);
 
-        verify(analyticsService).log(eq(InteractionAction.VIEW.name()), eq(caseId), eq(viewerId));
+        verify(analyticsService).log(InteractionAction.VIEW.name(), caseId, viewerId);
     }
 
     @Test
@@ -476,9 +470,12 @@ class CaseServiceAdditionalTest {
         entity.setModerationStatus(ModerationStatus.APPROVED);
         when(caseRepository.findById(entity.getId())).thenReturn(Optional.of(entity));
 
-        assertThatThrownBy(() -> caseService.deleteCase(entity.getId(), UUID.randomUUID(), "reason"))
+        UUID caseUuid = entity.getId();
+        UUID moderatorId = UUID.randomUUID();
+        assertThatThrownBy(() -> caseService.deleteCase(caseUuid, moderatorId, "reason"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("revisión");
+        assertThat(entity.getDeletedAt()).isNull();
     }
 
     @Test
@@ -488,9 +485,13 @@ class CaseServiceAdditionalTest {
         entity.setModerationStatus(ModerationStatus.APPROVED);
         when(caseRepository.findById(entity.getId())).thenReturn(Optional.of(entity));
 
-        assertThatThrownBy(() -> caseService.deleteCase(entity.getId(), UUID.randomUUID(), "reason"))
+        UUID caseUuid = entity.getId();
+        UUID moderatorId = UUID.randomUUID();
+        assertThatThrownBy(() -> caseService.deleteCase(caseUuid, moderatorId, "reason"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("revisión");
+        assertThat(entity.getDeletedAt()).isNull();
+        verify(caseRepository, never()).save(entity);
     }
 
     @Test
@@ -510,8 +511,9 @@ class CaseServiceAdditionalTest {
 
         Map<String, Object> result = caseService.getActiveUsers(10);
 
-        assertThat(result.get("users")).isEqualTo(List.of());
-        assertThat(result.get("total")).isEqualTo(0);
+        assertThat(result)
+                .containsEntry("users", List.of())
+                .containsEntry("total", 0);
     }
 
     @Test

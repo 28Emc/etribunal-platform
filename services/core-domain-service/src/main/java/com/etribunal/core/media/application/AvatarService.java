@@ -21,7 +21,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 public class AvatarService {
 
     private static final Logger log = LoggerFactory.getLogger(AvatarService.class);
-    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024;
+    private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
     private static final List<String> ALLOWED_TYPES =
             List.of("image/jpeg", "image/png", "image/gif", "image/webp");
 

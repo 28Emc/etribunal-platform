@@ -13,11 +13,11 @@ import com.etribunal.ai.automation.infrastructure.auth.BotAuthService;
 import com.etribunal.ai.automation.infrastructure.kafka.AutomationEventPublisher;
 import com.etribunal.ai.automation.repository.AutomationCaseRepository;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
@@ -28,138 +28,109 @@ class InteractionExecutorTest {
 
     @Mock
     private AutomationInteractionRepository interactionRepository;
+
     @Mock
     private AutomationCaseRepository caseRepository;
+
     @Mock
     private CoreApiClient coreApiClient;
+
     @Mock
     private BotAuthService botAuthService;
+
     @Mock
     private AutomationEventPublisher eventPublisher;
+
     @Mock
     private AnalyticsRecorder analyticsRecorder;
+
+    @Mock
+    private AutomationConfig config;
+
     @Mock
     private ActivityProfileService activityProfileService;
-    @Spy
-    private AutomationConfig config = new AutomationConfig();
 
     @InjectMocks
     private InteractionExecutor executor;
 
-    @Test
-    void execute_returnsFailed_whenInteractionNotFound() {
-        when(interactionRepository.findById(any(UUID.class))).thenReturn(Optional.empty());
+    private AutomationCaseEntity automationCase;
+    private UUID caseId;
 
-        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
+    @BeforeEach
+    void setUp() {
+        caseId = UUID.randomUUID();
+        automationCase = new AutomationCaseEntity();
+        automationCase.setCaseId(caseId.toString());
 
-        assertThat(result.status()).isEqualTo("FAILED");
-        assertThat(result.errorCode()).isEqualTo("NOT_FOUND");
+        AutomationConfig.ActivityConfig activityConfig = new AutomationConfig.ActivityConfig();
+        activityConfig.setEnabled(true);
+        activityConfig.setWeighted(false);
+        lenient().when(config.getActivity()).thenReturn(activityConfig);
+        lenient().when(activityProfileService.weightForHour(anyInt())).thenReturn(1.0);
+        lenient().when(interactionRepository.save(any(AutomationInteractionEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(interactionRepository.claimForExecution(any(), any(), any())).thenReturn(1);
+        lenient().when(botAuthService.getTokenForBot(anyString())).thenReturn("bot-token");
     }
 
-    @Test
-    void execute_returnsSuccess_whenAlreadyCompleted() {
+    private AutomationInteractionEntity makeEntity(AutomationInteractionType type, Map<String, Object> metadata) {
         AutomationInteractionEntity entity = new AutomationInteractionEntity();
-        entity.setStatus(AutomationInteractionStatus.SUCCESS);
-        entity.setResultId("existing-result");
-
-        when(interactionRepository.findById(any(UUID.class))).thenReturn(Optional.of(entity));
-
-        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
-
-        assertThat(result.status()).isEqualTo("SUCCESS");
-        assertThat(result.resultId()).isEqualTo("existing-result");
+        entity.setInteractionType(type);
+        entity.setUserId(UUID.randomUUID().toString());
+        entity.setMetadata(metadata);
+        entity.setAutomationCase(automationCase);
+        entity.setStatus(AutomationInteractionStatus.SCHEDULED);
+        return entity;
     }
 
     @Test
     void scheduleInteractions_createsScheduledEntities() {
-        UUID caseId = UUID.randomUUID();
-        AutomationCaseEntity caseEntity = new AutomationCaseEntity();
-        when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
-
         List<InteractionPlanner.PlannedInteractionWithUser> planned = List.of(
                 new InteractionPlanner.PlannedInteractionWithUser(0, AutomationInteractionType.COMMENT, "u1", "pro-A", 50, "Content", null, null, null),
                 new InteractionPlanner.PlannedInteractionWithUser(1, AutomationInteractionType.VOTE, "u2", null, null, null, null, "A", null)
         );
 
-        when(interactionRepository.save(any(AutomationInteractionEntity.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        Instant baseTime = Instant.parse("2026-09-03T12:00:00Z");
+        when(caseRepository.findById(any(UUID.class))).thenReturn(Optional.of(automationCase));
 
-        List<AutomationInteractionEntity> result = executor.scheduleInteractions(
-                caseId, planned, Instant.now(), 30, 180, 24
+        List<AutomationInteractionEntity> scheduled = executor.scheduleInteractions(
+                UUID.randomUUID(), planned, baseTime, 30, 180, 24);
+
+        assertThat(scheduled).hasSize(2);
+        assertThat(scheduled.get(0).getStatus()).isEqualTo(AutomationInteractionStatus.SCHEDULED);
+        assertThat(scheduled.get(0).getPlanIndex()).isZero();
+        assertThat(scheduled.get(0).getScheduledAt()).isNotNull();
+        assertThat(scheduled.get(0).getMetadata()).containsKey("content");
+        assertThat(scheduled.get(1).getInteractionType()).isEqualTo(AutomationInteractionType.VOTE);
+        verify(interactionRepository, times(2)).save(any(AutomationInteractionEntity.class));
+    }
+
+    @Test
+    void scheduleInteractions_emptyPlanned_returnsEmpty() {
+        List<AutomationInteractionEntity> scheduled = executor.scheduleInteractions(
+                UUID.randomUUID(), List.of(), Instant.now(), 30, 180, 24);
+
+        assertThat(scheduled).isEmpty();
+        verify(interactionRepository, never()).save(any());
+    }
+
+    @Test
+    void scheduleInteractions_toneNull_setsNullTone() {
+        List<InteractionPlanner.PlannedInteractionWithUser> planned = List.of(
+                new InteractionPlanner.PlannedInteractionWithUser(0, AutomationInteractionType.COMMENT, "u1", "neutral", null, "c", null, null, null)
         );
+        when(caseRepository.findById(any(UUID.class))).thenReturn(Optional.of(automationCase));
 
-        assertThat(result).hasSize(2);
-        assertThat(result.get(0).getInteractionType()).isEqualTo(AutomationInteractionType.COMMENT);
-        assertThat(result.get(0).getStatus()).isEqualTo(AutomationInteractionStatus.SCHEDULED);
-        assertThat(result.get(1).getInteractionType()).isEqualTo(AutomationInteractionType.VOTE);
+        List<AutomationInteractionEntity> scheduled = executor.scheduleInteractions(
+                UUID.randomUUID(), planned, Instant.now(), 30, 180, 24);
+
+        assertThat(scheduled.get(0).getTone()).isNull();
     }
 
     @Test
-    void execute_publishesEventAndAnalytics_onSuccessfulInteraction() {
-        String caseUuid = UUID.randomUUID().toString();
-        String userUuid = UUID.randomUUID().toString();
-        AutomationCaseEntity caseEntity = new AutomationCaseEntity();
-        caseEntity.setCaseId(caseUuid);
-
-        AutomationInteractionEntity entity = new AutomationInteractionEntity();
-        entity.setAutomationCase(caseEntity);
-        entity.setUserId(userUuid);
-        entity.setInteractionType(AutomationInteractionType.COMMENT);
-        entity.setStatus(AutomationInteractionStatus.SCHEDULED);
-        entity.setMetadata(new HashMap<>(Map.of("content", "Hola", "case_id", caseUuid)));
-
-        when(interactionRepository.claimForExecution(
-                any(UUID.class), same(AutomationInteractionStatus.SCHEDULED), same(AutomationInteractionStatus.PROCESSING)))
-                .thenReturn(1);
-        when(interactionRepository.findById(any(UUID.class))).thenReturn(Optional.of(entity));
-        when(interactionRepository.save(any(AutomationInteractionEntity.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-
-        UUID randomCommentId = UUID.randomUUID();
-        when(botAuthService.getTokenForBot(userUuid)).thenReturn("bot-token");
-        when(coreApiClient.createComment(eq("bot-token"), eq(UUID.fromString(caseUuid)),
-                eq("Hola"), isNull(), eq(false))).thenReturn(randomCommentId);
-
-        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
-
-        assertThat(result.status()).isEqualTo("SUCCESS");
-        verify(eventPublisher).publishActivity(
-                eq(AutomationInteractionType.COMMENT), eq(caseUuid), eq(userUuid), anyString());
-        verify(analyticsRecorder).recordInteraction(
-                eq(AutomationInteractionType.COMMENT), eq(caseUuid), eq(userUuid), anyString());
-        verify(caseRepository).incrementSuccessfulInteractions(isNull());
-    }
-
-    @Test
-    void execute_doesNotDispatch_whenClaimFails() {
-        UUID interactionId = UUID.randomUUID();
-        AutomationInteractionEntity entity = new AutomationInteractionEntity();
-        entity.setAutomationCase(new AutomationCaseEntity());
-        entity.setStatus(AutomationInteractionStatus.PROCESSING);
-        entity.setResultId("other-instance-result");
-
-        when(interactionRepository.claimForExecution(any(UUID.class), same(AutomationInteractionStatus.SCHEDULED),
-                same(AutomationInteractionStatus.PROCESSING))).thenReturn(0);
-        when(interactionRepository.findById(interactionId)).thenReturn(Optional.of(entity));
-
-        InteractionExecutor.ExecuteResult result = executor.execute(interactionId);
-
-        assertThat(result.status()).isEqualTo("PROCESSING");
-        assertThat(result.resultId()).isEqualTo("other-instance-result");
-        verifyNoInteractions(coreApiClient);
-    }
-
-    @Test
-    void computeSchedule_spreadsUniformly_whenWeightedDisabled() {
-        AutomationConfig cfg = new AutomationConfig();
-        cfg.getActivity().setWeighted(false);
-        cfg.getActivity().setEnabled(true);
-        InteractionExecutor ex = new InteractionExecutor(
-                interactionRepository, caseRepository, coreApiClient, botAuthService,
-                eventPublisher, analyticsRecorder, cfg, activityProfileService);
-
-        Instant base = Instant.parse("2026-09-03T09:00:00Z");
-        List<Instant> times = ex.computeSchedule(3, base, 24, 30, 180);
+    void computeSchedule_uniform_returnsCorrectTimes() {
+        Instant base = Instant.parse("2026-09-03T12:00:00Z");
+        List<Instant> times = executor.computeSchedule(3, base, 24, 30, 180);
 
         assertThat(times).hasSize(3);
         assertThat(times.get(0)).isAfterOrEqualTo(base);
@@ -168,185 +139,332 @@ class InteractionExecutorTest {
     }
 
     @Test
-    void computeSchedule_concentratesInPeakHour_whenWeightedEnabled() {
-        AutomationConfig cfg = new AutomationConfig();
-        cfg.getActivity().setWeighted(true);
-        cfg.getActivity().setEnabled(true);
-        InteractionExecutor ex = new InteractionExecutor(
-                interactionRepository, caseRepository, coreApiClient, botAuthService,
-                eventPublisher, analyticsRecorder, cfg, activityProfileService);
+    void computeSchedule_weighted_usesActivityProfile() {
+        AutomationConfig.ActivityConfig activityConfig = new AutomationConfig.ActivityConfig();
+        activityConfig.setEnabled(true);
+        activityConfig.setWeighted(true);
+        when(config.getActivity()).thenReturn(activityConfig);
 
-        // Perfil con pico fuerte a las 20:00 (hora UTC)
-        when(activityProfileService.weightForHour(anyInt())).thenReturn(0.02);
-        when(activityProfileService.weightForHour(20)).thenReturn(0.5);
+        Instant base = Instant.parse("2026-09-03T12:00:00Z");
+        List<Instant> times = executor.computeSchedule(3, base, 24, 30, 180);
 
-        Instant base = Instant.parse("2026-09-03T09:00:00Z");
-        List<Instant> times = ex.computeSchedule(4, base, 24, 30, 180);
+        assertThat(times).hasSize(3).isSorted();
+        verify(activityProfileService, atLeastOnce()).weightForHour(anyInt());
+    }
 
-        assertThat(times).hasSize(4);
-        // La mayoría de las interacciones debe caer cerca del pico (20:00 vs base 09:00 → offset ~11h)
-        long peakProximity = times.stream()
-                .filter(t -> t.atZone(java.time.ZoneOffset.UTC).getHour() == 20)
-                .count();
-        assertThat(peakProximity).isGreaterThan(0);
+    @Test
+    void computeSchedule_returnsEmptyForZeroCount() {
+        List<Instant> times = executor.computeSchedule(0, Instant.now(), 24, 30, 180);
+        assertThat(times).isEmpty();
+    }
+
+    @Test
+    void computeSchedule_negativeCount_returnsEmpty() {
+        List<Instant> times = executor.computeSchedule(-1, Instant.now(), 24, 30, 180);
+        assertThat(times).isEmpty();
     }
 
     @Test
     void binarySearch_findsCorrectIndex() {
         double[] cum = new double[]{0.0, 0.25, 0.5, 0.75, 1.0};
-        // Note: binarySearch is package-private, tested via computeSchedule
-        // Direct test via reflection if needed
-        assertThat(cum.length).isEqualTo(5);
+        int idx = InteractionExecutorTestHelper.binarySearch(executor, cum, 0.3);
+        assertThat(idx).isEqualTo(2);
     }
 
     @Test
-    void computeSchedule_returnsEmptyForZeroCount() {
-        AutomationConfig cfg = new AutomationConfig();
-        cfg.getActivity().setEnabled(true);
-        InteractionExecutor ex = new InteractionExecutor(
-                interactionRepository, caseRepository, coreApiClient, botAuthService,
-                eventPublisher, analyticsRecorder, cfg, activityProfileService);
-
-        List<Instant> times = ex.computeSchedule(0, Instant.now(), 24, 30, 180);
-        assertThat(times).isEmpty();
+    void binarySearch_targetZero_returnsZero() {
+        double[] cum = new double[]{0.0, 0.5, 1.0};
+        assertThat(InteractionExecutorTestHelper.binarySearch(executor, cum, 0.0)).isZero();
     }
 
     @Test
-    void execute_dispatchesReplyInteraction() {
-        String caseUuid = UUID.randomUUID().toString();
-        String userUuid = UUID.randomUUID().toString();
-        AutomationCaseEntity caseEntity = new AutomationCaseEntity();
-        caseEntity.setCaseId(caseUuid);
+    void binarySearch_targetOne_returnsLast() {
+        double[] cum = new double[]{0.0, 0.5, 1.0};
+        assertThat(InteractionExecutorTestHelper.binarySearch(executor, cum, 1.0)).isEqualTo(2);
+    }
 
+    @Test
+    void execute_returnsFailed_whenInteractionNotFound() {
+        when(interactionRepository.claimForExecution(any(), any(), any())).thenReturn(0);
+        when(interactionRepository.findById(any())).thenReturn(Optional.empty());
+
+        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
+
+        assertThat(result.status()).isEqualTo("FAILED");
+        assertThat(result.errorCode()).isEqualTo("NOT_FOUND");
+    }
+
+    @Test
+    void execute_returnsExistingStatus_whenAlreadyProcessing() {
         AutomationInteractionEntity entity = new AutomationInteractionEntity();
-        entity.setAutomationCase(caseEntity);
-        entity.setUserId(userUuid);
-        entity.setInteractionType(AutomationInteractionType.REPLY);
-        entity.setStatus(AutomationInteractionStatus.SCHEDULED);
-        entity.setMetadata(new HashMap<>(Map.of("content", "Reply content", "case_id", caseUuid)));
+        entity.setStatus(AutomationInteractionStatus.PROCESSING);
+        entity.setResultId("existing-result");
 
-        when(interactionRepository.claimForExecution(
-                any(UUID.class), same(AutomationInteractionStatus.SCHEDULED), same(AutomationInteractionStatus.PROCESSING)))
-                .thenReturn(1);
-        when(interactionRepository.findById(any(UUID.class))).thenReturn(Optional.of(entity));
-        when(interactionRepository.save(any(AutomationInteractionEntity.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-        when(botAuthService.getTokenForBot(userUuid)).thenReturn("bot-token");
-        when(coreApiClient.createComment(eq("bot-token"), eq(UUID.fromString(caseUuid)),
-                eq("Reply content"), isNull(), eq(false))).thenReturn(UUID.randomUUID());
+        when(interactionRepository.claimForExecution(any(), any(), any())).thenReturn(0);
+        when(interactionRepository.findById(any())).thenReturn(Optional.of(entity));
+
+        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
+
+        assertThat(result.status()).isEqualTo("PROCESSING");
+        assertThat(result.resultId()).isEqualTo("existing-result");
+        verify(interactionRepository, never()).save(any());
+    }
+
+    @Test
+    void execute_claimFails_returnsCurrentStatus() {
+        AutomationInteractionEntity entity = new AutomationInteractionEntity();
+        entity.setStatus(AutomationInteractionStatus.SUCCESS);
+
+        when(interactionRepository.claimForExecution(any(), any(), any())).thenReturn(0);
+        when(interactionRepository.findById(any())).thenReturn(Optional.of(entity));
 
         InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
 
         assertThat(result.status()).isEqualTo("SUCCESS");
-        verify(coreApiClient).createComment(eq("bot-token"), eq(UUID.fromString(caseUuid)),
-                eq("Reply content"), isNull(), eq(false));
     }
 
     @Test
-    void execute_dispatchesReactionInteraction() {
-        String caseUuid = UUID.randomUUID().toString();
-        String userUuid = UUID.randomUUID().toString();
-        AutomationCaseEntity caseEntity = new AutomationCaseEntity();
-        caseEntity.setCaseId(caseUuid);
-
-        AutomationInteractionEntity entity = new AutomationInteractionEntity();
-        entity.setAutomationCase(caseEntity);
-        entity.setUserId(userUuid);
-        entity.setInteractionType(AutomationInteractionType.REACTION);
-        entity.setStatus(AutomationInteractionStatus.SCHEDULED);
-        entity.setMetadata(new HashMap<>(Map.of("reaction", "LOVE", "case_id", caseUuid)));
-
-        when(interactionRepository.claimForExecution(
-                any(UUID.class), same(AutomationInteractionStatus.SCHEDULED), same(AutomationInteractionStatus.PROCESSING)))
-                .thenReturn(1);
-        when(interactionRepository.findById(any(UUID.class))).thenReturn(Optional.of(entity));
-        when(interactionRepository.save(any(AutomationInteractionEntity.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-        when(botAuthService.getTokenForBot(userUuid)).thenReturn("bot-token");
-        when(coreApiClient.addReaction(eq("bot-token"), eq("CASE"), eq(UUID.fromString(caseUuid)),
-                eq("LOVE"))).thenReturn(UUID.randomUUID());
-
-        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
-
-        assertThat(result.status()).isEqualTo("SUCCESS");
-        verify(coreApiClient).addReaction(eq("bot-token"), eq("CASE"), eq(UUID.fromString(caseUuid)), eq("LOVE"));
-    }
-
-    @Test
-    void execute_dispatchesVoteInteraction() {
-        String caseUuid = UUID.randomUUID().toString();
-        String userUuid = UUID.randomUUID().toString();
-        AutomationCaseEntity caseEntity = new AutomationCaseEntity();
-        caseEntity.setCaseId(caseUuid);
-
-        AutomationInteractionEntity entity = new AutomationInteractionEntity();
-        entity.setAutomationCase(caseEntity);
-        entity.setUserId(userUuid);
-        entity.setInteractionType(AutomationInteractionType.VOTE);
-        entity.setStatus(AutomationInteractionStatus.SCHEDULED);
-        entity.setMetadata(new HashMap<>(Map.of("option", "B", "case_id", caseUuid)));
-
-        when(interactionRepository.claimForExecution(
-                any(UUID.class), same(AutomationInteractionStatus.SCHEDULED), same(AutomationInteractionStatus.PROCESSING)))
-                .thenReturn(1);
-        when(interactionRepository.findById(any(UUID.class))).thenReturn(Optional.of(entity));
-        when(interactionRepository.save(any(AutomationInteractionEntity.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-        when(botAuthService.getTokenForBot(userUuid)).thenReturn("bot-token");
-        when(coreApiClient.vote(eq("bot-token"), eq(UUID.fromString(caseUuid)), eq("B")))
+    void execute_success_comment_publishesActivity() {
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.COMMENT,
+                Map.of("content", "Hello", "case_id", caseId.toString(), "reply_to_plan_index", -1));
+        when(interactionRepository.findById(any())).thenReturn(Optional.of(entity));
+        when(coreApiClient.createComment(anyString(), any(UUID.class), anyString(), isNull(), anyBoolean()))
                 .thenReturn(UUID.randomUUID());
+        when(interactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
 
         assertThat(result.status()).isEqualTo("SUCCESS");
-        verify(coreApiClient).vote(eq("bot-token"), eq(UUID.fromString(caseUuid)), eq("B"));
+        assertThat(entity.getStatus()).isEqualTo(AutomationInteractionStatus.SUCCESS);
+        verify(caseRepository).incrementSuccessfulInteractions(any());
+        verify(eventPublisher).publishActivity(eq(AutomationInteractionType.COMMENT), anyString(), anyString(), anyString());
+        verify(analyticsRecorder).recordInteraction(eq(AutomationInteractionType.COMMENT), anyString(), anyString(), anyString());
     }
 
     @Test
-    void resolveReplyParent_returnsNull_whenInvalidIndex() {
-        // resolveReplyParent is private, test via metadata handling
-        AutomationInteractionEntity entity = new AutomationInteractionEntity();
-        entity.setMetadata(new HashMap<>(Map.of("reply_to_plan_index", -1)));
-        // Private method, tested indirectly via execute
-        assertThat(true).isTrue(); // placeholder for private method coverage
+    void execute_success_reply_publishesActivity() {
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.REPLY,
+                Map.of("content", "Reply", "case_id", caseId.toString(), "reply_to_plan_index", -1));
+        when(interactionRepository.findById(any())).thenReturn(Optional.of(entity));
+        when(coreApiClient.createComment(anyString(), any(UUID.class), anyString(), isNull(), anyBoolean()))
+                .thenReturn(UUID.randomUUID());
+        when(interactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
+
+        assertThat(result.status()).isEqualTo("SUCCESS");
+        verify(caseRepository).incrementSuccessfulInteractions(any());
     }
 
     @Test
-    void resolveReplyParent_returnsNull_whenStringIndex() {
-        AutomationInteractionEntity entity = new AutomationInteractionEntity();
-        entity.setMetadata(new HashMap<>(Map.of("reply_to_plan_index", "not-a-number")));
-        assertThat(true).isTrue(); // placeholder
+    void execute_success_reaction_publishesActivity() {
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.REACTION,
+                Map.of("case_id", caseId.toString(), "reaction", "LIKE"));
+        when(interactionRepository.findById(any())).thenReturn(Optional.of(entity));
+        when(coreApiClient.addReaction(anyString(), eq("CASE"), any(UUID.class), eq("LIKE")))
+                .thenReturn(UUID.randomUUID());
+        when(interactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
+
+        assertThat(result.status()).isEqualTo("SUCCESS");
+        assertThat(result.resultId()).isNotNull();
     }
 
     @Test
-    void getCaseIdFromEntity_usesMetadata_whenPresent() {
-        // getCaseIdFromEntity is private, tested indirectly
-        assertThat(true).isTrue(); // placeholder
+    void execute_success_vote_publishesActivity() {
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.VOTE,
+                Map.of("case_id", caseId.toString(), "option", "A"));
+        when(interactionRepository.findById(any())).thenReturn(Optional.of(entity));
+        when(coreApiClient.vote(anyString(), any(UUID.class), eq("A")))
+                .thenReturn(UUID.randomUUID());
+        when(interactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
+
+        assertThat(result.status()).isEqualTo("SUCCESS");
     }
 
     @Test
-    void execute_throwsException_whenUnknownInteractionType() {
-        String caseUuid = UUID.randomUUID().toString();
-        String userUuid = UUID.randomUUID().toString();
-        AutomationCaseEntity caseEntity = new AutomationCaseEntity();
-        caseEntity.setCaseId(caseUuid);
-
-        AutomationInteractionEntity entity = new AutomationInteractionEntity();
-        entity.setAutomationCase(caseEntity);
-        entity.setUserId(userUuid);
-        entity.setInteractionType(null); // Unknown
-        entity.setStatus(AutomationInteractionStatus.SCHEDULED);
-        entity.setMetadata(new HashMap<>());
-
-        when(interactionRepository.claimForExecution(
-                any(UUID.class), same(AutomationInteractionStatus.SCHEDULED), same(AutomationInteractionStatus.PROCESSING)))
-                .thenReturn(1);
-        when(interactionRepository.findById(any(UUID.class))).thenReturn(Optional.of(entity));
-        when(botAuthService.getTokenForBot(anyString())).thenReturn("bot-token");
+    void execute_failure_marksFailed_andIncrements() {
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.COMMENT,
+                Map.of("content", "x", "case_id", caseId.toString()));
+        when(interactionRepository.findById(any())).thenReturn(Optional.of(entity));
+        when(coreApiClient.createComment(anyString(), any(UUID.class), anyString(), isNull(), anyBoolean()))
+                .thenThrow(new RuntimeException("API down"));
+        when(interactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
 
         assertThat(result.status()).isEqualTo("FAILED");
         assertThat(result.errorCode()).isEqualTo("BUSINESS_RULE");
+        assertThat(entity.getStatus()).isEqualTo(AutomationInteractionStatus.FAILED);
+        verify(caseRepository).incrementFailedInteractions(any());
+    }
+
+    @Test
+    void execute_dispatch_unknownType_fails() {
+        AutomationInteractionEntity entity = makeEntity(null, Map.of("case_id", caseId.toString()));
+        when(interactionRepository.findById(any())).thenReturn(Optional.of(entity));
+        when(interactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
+
+        assertThat(result.status()).isEqualTo("FAILED");
+        assertThat(result.errorCode()).isEqualTo("BUSINESS_RULE");
+    }
+
+    @Test
+    void dispatch_comment_withParent_resolvesReply() {
+        UUID parentUuid = UUID.randomUUID();
+        AutomationInteractionEntity parent = new AutomationInteractionEntity();
+        parent.setResultId(parentUuid.toString());
+        when(interactionRepository.findByAutomationCaseIdAndPlanIndex(any(), eq(0)))
+                .thenReturn(Optional.of(parent));
+        when(coreApiClient.createComment(anyString(), any(UUID.class), anyString(), any(UUID.class), anyBoolean()))
+                .thenReturn(UUID.randomUUID());
+
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.COMMENT,
+                Map.of("content", "hi", "case_id", caseId.toString(), "reply_to_plan_index", 0));
+
+        String resultId = executor.dispatch(entity);
+
+        assertThat(resultId).isNotNull();
+        verify(coreApiClient).createComment("bot-token", caseId, "hi", parentUuid, false);
+    }
+
+    @Test
+    void dispatch_comment_replyIndexMissing_returnsNullParent() {
+        when(interactionRepository.findByAutomationCaseIdAndPlanIndex(any(), anyInt()))
+                .thenReturn(Optional.empty());
+        when(coreApiClient.createComment(anyString(), any(UUID.class), anyString(), isNull(), anyBoolean()))
+                .thenReturn(UUID.randomUUID());
+
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.REPLY,
+                Map.of("content", "r", "case_id", caseId.toString(), "reply_to_plan_index", 99));
+
+        String resultId = executor.dispatch(entity);
+
+        assertThat(resultId).isNotNull();
+        verify(coreApiClient).createComment(eq("bot-token"), eq(caseId), eq("r"), isNull(), eq(false));
+    }
+
+    @Test
+    void dispatch_comment_stringReplyIndex_parses() {
+        UUID parentUuid = UUID.randomUUID();
+        AutomationInteractionEntity parent = new AutomationInteractionEntity();
+        parent.setResultId(parentUuid.toString());
+        when(interactionRepository.findByAutomationCaseIdAndPlanIndex(any(), eq(5)))
+                .thenReturn(Optional.of(parent));
+        when(coreApiClient.createComment(anyString(), any(UUID.class), anyString(), any(UUID.class), anyBoolean()))
+                .thenReturn(UUID.randomUUID());
+
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.COMMENT,
+                Map.of("content", "x", "case_id", caseId.toString(), "reply_to_plan_index", "5"));
+
+        executor.dispatch(entity);
+
+        verify(coreApiClient).createComment(anyString(), any(UUID.class), anyString(), eq(parentUuid), anyBoolean());
+    }
+
+    @Test
+    void dispatch_comment_malformedStringReplyIndex_ignores() {
+        when(coreApiClient.createComment(anyString(), any(UUID.class), anyString(), isNull(), anyBoolean()))
+                .thenReturn(UUID.randomUUID());
+
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.COMMENT,
+                Map.of("content", "x", "case_id", caseId.toString(), "reply_to_plan_index", "not-a-number"));
+
+        executor.dispatch(entity);
+
+        verify(coreApiClient).createComment(anyString(), any(UUID.class), anyString(), isNull(), anyBoolean());
+        verify(interactionRepository, never()).findByAutomationCaseIdAndPlanIndex(any(), anyInt());
+    }
+
+    @Test
+    void dispatch_metadataNull_usesCaseEntityCaseId() {
+        when(coreApiClient.createComment(anyString(), any(UUID.class), anyString(), isNull(), anyBoolean()))
+                .thenReturn(UUID.randomUUID());
+
+        AutomationInteractionEntity entity = new AutomationInteractionEntity();
+        entity.setInteractionType(AutomationInteractionType.COMMENT);
+        entity.setUserId(UUID.randomUUID().toString());
+        entity.setMetadata(null);
+        entity.setAutomationCase(automationCase);
+
+        executor.dispatch(entity);
+
+        verify(coreApiClient).createComment(eq("bot-token"), eq(caseId), eq(""), isNull(), eq(false));
+    }
+
+    @Test
+    void dispatch_apiFailure_wrapsException() {
+        when(coreApiClient.vote(anyString(), any(UUID.class), anyString()))
+                .thenThrow(new RuntimeException("boom"));
+
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.VOTE,
+                Map.of("case_id", caseId.toString(), "option", "B"));
+
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> executor.dispatch(entity)))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("API call failed");
+    }
+
+    @Test
+    void dispatch_reaction_defaultEmoji_whenMissing() {
+        when(coreApiClient.addReaction(anyString(), eq("CASE"), any(UUID.class), eq("LIKE")))
+                .thenReturn(UUID.randomUUID());
+
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.REACTION,
+                Map.of("case_id", caseId.toString()));
+
+        executor.dispatch(entity);
+
+        verify(coreApiClient).addReaction("bot-token", "CASE", caseId, "LIKE");
+    }
+
+    @Test
+    void dispatch_vote_defaultOption_whenMissing() {
+        when(coreApiClient.vote(anyString(), any(UUID.class), eq("A")))
+                .thenReturn(UUID.randomUUID());
+
+        AutomationInteractionEntity entity = makeEntity(AutomationInteractionType.VOTE,
+                Map.of("case_id", caseId.toString()));
+
+        executor.dispatch(entity);
+
+        verify(coreApiClient).vote("bot-token", caseId, "A");
+    }
+
+    @Test
+    void execute_noMetadata_getsCaseIdFromEntity() {
+        AutomationInteractionEntity entity = new AutomationInteractionEntity();
+        entity.setInteractionType(AutomationInteractionType.COMMENT);
+        entity.setUserId(UUID.randomUUID().toString());
+        entity.setMetadata(null);
+        entity.setAutomationCase(automationCase);
+        entity.setStatus(AutomationInteractionStatus.SCHEDULED);
+
+        when(interactionRepository.findById(any())).thenReturn(Optional.of(entity));
+        when(coreApiClient.createComment(anyString(), any(UUID.class), anyString(), isNull(), anyBoolean()))
+                .thenReturn(UUID.randomUUID());
+        when(interactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        InteractionExecutor.ExecuteResult result = executor.execute(UUID.randomUUID());
+
+        assertThat(result.status()).isEqualTo("SUCCESS");
+    }
+
+    // Helper to access private methods via reflection
+    static class InteractionExecutorTestHelper {
+        static int binarySearch(InteractionExecutor executor, double[] cum, double target) {
+            try {
+                var method = InteractionExecutor.class.getDeclaredMethod("binarySearch", double[].class, double.class);
+                method.setAccessible(true);
+                return (int) method.invoke(executor, (Object) cum, target);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
     }
 }

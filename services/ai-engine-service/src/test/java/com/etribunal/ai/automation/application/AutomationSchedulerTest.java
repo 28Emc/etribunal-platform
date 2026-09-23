@@ -1,12 +1,9 @@
 package com.etribunal.ai.automation.application;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.etribunal.ai.automation.config.AutomationConfig;
-import com.etribunal.ai.automation.domain.AutomationInteractionEntity;
-import com.etribunal.ai.automation.domain.AutomationInteractionStatus;
 import com.etribunal.ai.automation.infrastructure.analytics.ActivityProfileService;
 import com.etribunal.ai.automation.infrastructure.analytics.EngagementService;
 import com.etribunal.ai.automation.repository.AutomationInteractionRepository;

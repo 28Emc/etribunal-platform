@@ -48,6 +48,8 @@ class CoreEmailServiceTest {
     void sendCaseReportedEmailSendsToCreatorWhenCaseExists() {
         CaseEntity caseEntity = new CaseEntity();
         caseEntity.setTitle("Caso reportado");
+        UUID creatorId = UUID.randomUUID();
+        caseEntity.setSideAUserId(creatorId);
         when(caseRepository.findById(caseId)).thenReturn(Optional.of(caseEntity));
         when(templates.caseReportedBody("Caso reportado", "spam")).thenReturn("<html>body</html>");
 
@@ -56,7 +58,7 @@ class CoreEmailServiceTest {
         ArgumentCaptor<String> to = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
         verify(emailProvider).sendEmail(to.capture(), eq("Tu caso ha sido reportado - eTribunal"), body.capture());
-        assertThat(to.getValue()).isEqualTo("user@example.com");
+        assertThat(to.getValue()).isEqualTo("user_" + creatorId.toString().substring(0, 8) + "@etribunal.local");
         assertThat(body.getValue()).isEqualTo("<html>body</html>");
     }
 
@@ -116,7 +118,7 @@ class CoreEmailServiceTest {
 
         service.sendCaseEditedAfterReportEmail(caseId);
 
-        verify(emailProvider).sendEmail(eq("mod@etribunal.com"), eq("Caso reportado ha sido editado - eTribunal"), eq("<html>body</html>"));
+        verify(emailProvider).sendEmail("mod@etribunal.com", "Caso reportado ha sido editado - eTribunal", "<html>body</html>");
     }
 
     @Test

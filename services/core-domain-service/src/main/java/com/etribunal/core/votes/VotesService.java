@@ -50,7 +50,6 @@ public class VotesService {
 
         var existing = voteRepository.findByCaseIdAndUserId(caseId, userId);
 
-        boolean isNewVote = existing.isEmpty();
         VoteType previous = existing.map(CaseVoteEntity::getVoteType).orElse(null);
 
         if (existing.isPresent()) {
@@ -76,10 +75,7 @@ public class VotesService {
         analyticsService.log(InteractionAction.VOTE.name(), caseId, userId,
                 Map.of(KEY_VOTE_TYPE, voteType.name(), "is_update", false));
 
-        // Notify case author and Side B (if exists) about new vote
-        if (isNewVote) {
-            notifyNewVote(entity, userId, voteType);
-        }
+        notifyNewVote(entity, userId, voteType);
 
         return respond(caseId, voteType);
     }

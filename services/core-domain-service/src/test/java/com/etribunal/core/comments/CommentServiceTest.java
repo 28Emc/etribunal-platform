@@ -305,6 +305,37 @@ class CommentServiceTest {
         return entity;
     }
 
+    @Test
+    void getNewCommentsCountReturnsZeroWhenNoComments() {
+        UUID newCaseId = UUID.randomUUID();
+        when(caseRepository.findById(newCaseId)).thenReturn(Optional.of(createPublicCase(newCaseId)));
+        when(commentRepository.countByCaseIdAndParentIdIsNullAndDeletedAtIsNullAndCreatedAtAfter(eq(newCaseId), any(Instant.class))).thenReturn(0L);
+        long count = commentService.getNewCommentsCount(newCaseId, "2026-01-01T00:00:00Z");
+        assertThat(count).isZero();
+    }
+
+    @Test
+    void getRepliesReturnsEmptyListWhenNoReplies() {
+        UUID parentId = UUID.randomUUID();
+        CommentEntity parent = new CommentEntity();
+        setField(parent, "id", parentId);
+        when(commentRepository.findByIdAndDeletedAtIsNull(parentId)).thenReturn(Optional.of(parent));
+        when(commentRepository.findByParentIdOrderByCreatedAtAsc(parentId)).thenReturn(List.of());
+        List<CommentResponse> replies = commentService.getReplies(parentId);
+        assertThat(replies).isEmpty();
+    }
+
+    private CaseEntity createPublicCase(UUID caseId) {
+        CaseEntity entity = new CaseEntity();
+        entity.setType(com.etribunal.core.cases.CaseType.classic);
+        entity.setTitle("Caso");
+        entity.setSideAContent("A");
+        entity.setSideAUserId(userId);
+        entity.setStatus(CaseStatus.PUBLIC);
+        setField(entity, "id", caseId);
+        return entity;
+    }
+
     private static void setField(Object target, String name, Object value) {
         try {
             var field = target.getClass().getDeclaredField(name);

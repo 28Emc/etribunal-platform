@@ -348,42 +348,49 @@ public class CaseService {
         }
 
         if (isSideA) {
-            if (dto.title() != null) {
-                entity.setTitle(dto.title().trim());
-            }
-            if (dto.side_a_content() != null) {
-                entity.setSideAContent(dto.side_a_content().trim());
-            }
-            if (dto.side_a_subtitle() != null) {
-                entity.setSideASubtitle(dto.side_a_subtitle());
-            }
-            if (dto.category() != null) {
-                entity.setCategory(dto.category());
-            }
-            if (dto.is_anonymous() != null) {
-                entity.setAnonymous(dto.is_anonymous());
-            }
-            if (dto.is_private() != null) {
-                entity.setPrivate(dto.is_private());
-            }
-            if (dto.both_wrong_subtitle() != null) {
-                entity.setBothWrongSubtitle(dto.both_wrong_subtitle());
-            }
+            applySideAUpdates(entity, dto);
         }
-
         if (isSideB) {
-            if (dto.side_b_content() != null) {
-                entity.setSideBContent(dto.side_b_content().trim());
-            }
-            if (dto.side_b_subtitle() != null) {
-                entity.setSideBSubtitle(dto.side_b_subtitle());
-            }
+            applySideBUpdates(entity, dto);
         }
 
         moderationService.moderateCaseContentAsync(
                 entity.getId(), entity.getTitle(), entity.getSideAContent(), entity.getSideBContent());
 
         return toResponse(List.of(entity), userId).getFirst();
+    }
+
+    private void applySideAUpdates(CaseEntity entity, UpdateCaseRequest dto) {
+        if (dto.title() != null) {
+            entity.setTitle(dto.title().trim());
+        }
+        if (dto.side_a_content() != null) {
+            entity.setSideAContent(dto.side_a_content().trim());
+        }
+        if (dto.side_a_subtitle() != null) {
+            entity.setSideASubtitle(dto.side_a_subtitle());
+        }
+        if (dto.category() != null) {
+            entity.setCategory(dto.category());
+        }
+        if (dto.is_anonymous() != null) {
+            entity.setAnonymous(dto.is_anonymous());
+        }
+        if (dto.is_private() != null) {
+            entity.setPrivate(dto.is_private());
+        }
+        if (dto.both_wrong_subtitle() != null) {
+            entity.setBothWrongSubtitle(dto.both_wrong_subtitle());
+        }
+    }
+
+    private void applySideBUpdates(CaseEntity entity, UpdateCaseRequest dto) {
+        if (dto.side_b_content() != null) {
+            entity.setSideBContent(dto.side_b_content().trim());
+        }
+        if (dto.side_b_subtitle() != null) {
+            entity.setSideBSubtitle(dto.side_b_subtitle());
+        }
     }
 
     // ──────────────────────── Delete Case (Moderator) ────────────────────────
@@ -476,11 +483,25 @@ public class CaseService {
                     .collect(Collectors.toMap(UserSummary::id, Function.identity())));
         }
 
-        // Batch enrich: saved, shared, user_reaction, user_vote
-        Set<UUID> savedIds = Set.of();
-        Set<UUID> sharedIds = Set.of();
-        Map<UUID, String> reactionMap = Map.of();
-        Map<UUID, String> voteMap = Map.of();
+        EnrichmentData data = loadEnrichment(caseIds, requesterId);
+
+        List<CaseResponse> responses = new ArrayList<>(cases.size());
+        for (CaseEntity c : cases) {
+            responses.add(buildCaseResponse(c, requesterId, summaries, data));
+        }
+        return responses;
+    }
+
+    private record EnrichmentData(
+            Set<UUID> savedIds,
+            Set<UUID> sharedIds,
+            Map<UUID, String> reactionMap,
+            Map<UUID, String> voteMap,
+            Map<UUID, Map<String, Long>> reactionCounts,
+            Map<UUID, Long> commentCounts) {
+    }
+
+    private EnrichmentData loadEnrichment(List<UUID> caseIds, UUID requesterId) {
         Map<UUID, Map<String, Long>> reactionCounts = new HashMap<>();
         Map<UUID, Long> commentCounts = new HashMap<>();
 
@@ -491,14 +512,16 @@ public class CaseService {
                         .computeIfAbsent(row.getTargetId(), k -> new HashMap<>())
                         .put(row.getEmoji().name(), row.getTotal());
             }
-
-            // total_comments es la fuente de verdad: evita counters stale/desfasados
-            // para el trending y el feed (mismo enfoque que reactions_summary)
             for (CommentRepository.CaseCommentCount row :
                     commentRepository.countByCaseIdIn(caseIds)) {
                 commentCounts.put(row.getCaseId(), row.getTotal());
             }
         }
+
+        Set<UUID> savedIds = Set.of();
+        Set<UUID> sharedIds = Set.of();
+        Map<UUID, String> reactionMap = Map.of();
+        Map<UUID, String> voteMap = Map.of();
 
         if (requesterId != null && !caseIds.isEmpty()) {
             savedIds = new HashSet<>(savedCaseRepository
@@ -506,65 +529,70 @@ public class CaseService {
             sharedIds = new HashSet<>(caseShareRepository
                     .findCaseIdsByUserIdAndCaseIdIn(requesterId, caseIds));
 
-            List<Object[]> reactionRows = reactionRepository
-                    .findEmojiByTargetTypeAndTargetIdInAndUserId(
-                            ReactionTarget.CASE, caseIds, requesterId);
             reactionMap = new HashMap<>();
-            for (Object[] row : reactionRows) {
-                UUID targetId = (UUID) row[0];
-                Emoji emoji = (Emoji) row[1];
-                reactionMap.put(targetId, emoji.name());
+            for (Object[] row : reactionRepository
+                    .findEmojiByTargetTypeAndTargetIdInAndUserId(
+                            ReactionTarget.CASE, caseIds, requesterId)) {
+                reactionMap.put((UUID) row[0], ((Emoji) row[1]).name());
             }
 
-            List<CaseVoteEntity> votes = voteRepository
-                    .findByUserIdAndCaseIdIn(requesterId, caseIds);
             voteMap = new HashMap<>();
-            for (CaseVoteEntity v : votes) {
+            for (CaseVoteEntity v : voteRepository
+                    .findByUserIdAndCaseIdIn(requesterId, caseIds)) {
                 voteMap.put(v.getCaseId(), v.getVoteType().name());
             }
         }
 
-        List<CaseResponse> responses = new ArrayList<>(cases.size());
-        for (CaseEntity c : cases) {
-            responses.add(new CaseResponse(
-                    c.getId(),
-                    c.getType().name(),
-                    c.getStatus().name(),
-                    c.getCategory(),
-                    c.getTitle(),
-                    c.getSlug(),
-                    c.getSideAContent(),
-                    c.getSideBContent(),
-                    c.getSideASubtitle(),
-                    c.getSideBSubtitle(),
-                    c.getBothWrongSubtitle(),
-                    c.getContentLanguage(),
-                    c.isAnonymous(),
-                    c.isPrivate(),
-                    c.getCreatedAt(),
-                    c.getUpdatedAt(),
-                    c.getSideAUserId(),
-                    c.getSideBUserId(),
-                    toMaskedDto(summaries.get(c.getSideAUserId()), requesterId),
-                    c.getSideBUserId() != null
+        return new EnrichmentData(savedIds, sharedIds, reactionMap, voteMap,
+                reactionCounts, commentCounts);
+    }
+
+    private CaseResponse buildCaseResponse(CaseEntity c, UUID requesterId,
+                                           Map<UUID, UserSummary> summaries,
+                                           EnrichmentData data) {
+        Map<String, Long> reactions = data.reactionCounts()
+                .getOrDefault(c.getId(), Map.of());
+        String userReaction = data.reactionMap().get(c.getId());
+        String userVote = data.voteMap().get(c.getId());
+        int totalComments = Math.toIntExact(data.commentCounts().getOrDefault(c.getId(), 0L));
+
+        return new CaseResponse(
+                c.getId(),
+                c.getType().name(),
+                c.getStatus().name(),
+                c.getCategory(),
+                c.getTitle(),
+                c.getSlug(),
+                c.getSideAContent(),
+                c.getSideBContent(),
+                c.getSideASubtitle(),
+                c.getSideBSubtitle(),
+                c.getBothWrongSubtitle(),
+                c.getContentLanguage(),
+                c.isAnonymous(),
+                c.isPrivate(),
+                c.getCreatedAt(),
+                c.getUpdatedAt(),
+                c.getSideAUserId(),
+                c.getSideBUserId(),
+                toMaskedDto(summaries.get(c.getSideAUserId()), requesterId),
+                c.getSideBUserId() != null
                             ? toMaskedDto(summaries.get(c.getSideBUserId()), requesterId)
                             : null,
-                    c.getTotalVotes(),
-                    c.getVotesA(),
-                    c.getVotesB(),
-                    c.getVotesBothWrong(),
-                    Math.toIntExact(commentCounts.getOrDefault(c.getId(), 0L)),
-                    c.getTotalViews(),
-                    c.getTotalShares(),
-                    c.getTotalAnchors(),
-                    c.getModerationStatus().name(),
-                    savedIds.contains(c.getId()),
-                    sharedIds.contains(c.getId()),
-                    reactionMap.get(c.getId()),
-                    voteMap.get(c.getId()),
-                    toReactionsSummary(reactionCounts.get(c.getId()))));
-        }
-        return responses;
+                c.getTotalVotes(),
+                c.getVotesA(),
+                c.getVotesB(),
+                c.getVotesBothWrong(),
+                totalComments,
+                c.getTotalViews(),
+                c.getTotalShares(),
+                c.getTotalAnchors(),
+                c.getModerationStatus().name(),
+                data.savedIds().contains(c.getId()),
+                data.sharedIds().contains(c.getId()),
+                userReaction,
+                userVote,
+                toReactionsSummary(reactions));
     }
 
     private static CaseResponse.ReactionsSummary toReactionsSummary(Map<String, Long> counts) {
@@ -614,10 +642,11 @@ public class CaseService {
      */
     private static String generateSlug(String title) {
         String slug = title.toLowerCase()
-                .replaceAll("[^a-z0-9\\s-]", "")  // remover caracteres especiales
-                .replaceAll("\\s+", "-")          // espacios a guiones
-                .replaceAll("-+", "-")            // múltiples guiones a uno
-                .replaceAll("^-|-$", "");         // quitar guiones al inicio/final
+                .replaceAll("[^a-z0-9\\s-]", "")
+                .replaceAll("\\s+", "-")
+                .replaceAll("-+", "-")
+                .replaceAll("^-", "")
+                .replaceAll("-$", "");
         return slug.length() > 100 ? slug.substring(0, 100) : slug;
     }
 

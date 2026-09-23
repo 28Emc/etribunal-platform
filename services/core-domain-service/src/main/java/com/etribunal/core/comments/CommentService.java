@@ -76,7 +76,7 @@ public class CommentService {
             top = commentRepository.findTopLevelBeforeCursor(
                     caseId, cursor.date(), cursor.id(), pageable);
         } else {
-            Instant afterDate = parseDate(after, true);
+            Instant afterDate = parseDate(after);
             top = commentRepository
                     .findByCaseIdAndParentIdIsNullAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
                             caseId, pageable);
@@ -100,7 +100,7 @@ public class CommentService {
     @Transactional(readOnly = true)
     public long getNewCommentsCount(UUID caseId, String since) {
         requireCase(caseId);
-        Instant sinceDate = parseDate(since, true);
+        Instant sinceDate = parseDate(since);
         if (sinceDate == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Parámetro \"since\" requerido");
@@ -369,7 +369,7 @@ public class CommentService {
                         "Comentario no encontrado"));
     }
 
-    private static Instant parseDate(String value, boolean allowBlank) {
+    private static Instant parseDate(String value) {
         if (value == null || value.isBlank()) {
             return null;
         }

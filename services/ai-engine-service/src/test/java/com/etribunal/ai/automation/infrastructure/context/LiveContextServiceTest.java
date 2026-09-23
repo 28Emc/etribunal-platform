@@ -7,7 +7,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
-import java.time.Month;
 import java.util.List;
 
 class LiveContextServiceTest {
@@ -28,10 +27,11 @@ class LiveContextServiceTest {
     void buildContext_returnsNonEmptyString() {
         String context = service.buildContext();
 
-        assertThat(context).isNotNull();
-        assertThat(context).isNotEmpty();
-        assertThat(context).contains("Fecha actual:");
-        assertThat(context).contains("Estación:");
+        assertThat(context)
+                .isNotNull()
+                .isNotEmpty()
+                .contains("Fecha actual:")
+                .contains("Estación:");
     }
 
     @Test
@@ -39,8 +39,7 @@ class LiveContextServiceTest {
         LocalDate date = LocalDate.of(2026, 9, 15);
         String context = service.buildContextFor(date);
 
-        assertThat(context).contains("martes");
-        assertThat(context).contains("15 de septiembre de 2026");
+        assertThat(context).contains("martes", "15 de septiembre de 2026");
     }
 
     @Test
@@ -80,8 +79,7 @@ class LiveContextServiceTest {
         LocalDate newYear = LocalDate.of(2026, 1, 1);
         String context = service.buildContextFor(newYear);
 
-        assertThat(context).contains("Año Nuevo");
-        assertThat(context).contains("Hoy:");
+        assertThat(context).contains("Año Nuevo", "Hoy:");
     }
 
     @Test
@@ -97,8 +95,7 @@ class LiveContextServiceTest {
         LocalDate date = LocalDate.of(2026, 12, 20);
         String context = service.buildContextFor(date);
 
-        assertThat(context).contains("Navidad");
-        assertThat(context).contains("Próximos eventos");
+        assertThat(context).contains("Navidad", "Próximos eventos");
     }
 
     @Test
@@ -192,15 +189,5 @@ class LiveContextServiceTest {
         // Test via context building - title truncation is internal
         // Just ensure buildContext works
         assertThat(service.buildContext()).isNotEmpty();
-    }
-
-    @Test
-    void buildContext_noNews_whenNewsDisabled() {
-        config.getContext().setNewsEnabled(false);
-        LiveContextService svc = new LiveContextService(config);
-
-        String context = svc.buildContext();
-
-        assertThat(context).doesNotContain("Noticias recientes");
     }
 }

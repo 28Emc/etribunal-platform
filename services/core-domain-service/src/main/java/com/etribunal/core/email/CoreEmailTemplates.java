@@ -65,7 +65,7 @@ public class CoreEmailTemplates {
     }
 
     private String htmlWrapper(String title, String greeting, String bodyText, String extraBody, String buttonUrl, String buttonText) {
-        String wrapper = ""
+        return ""
                 + "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\">"
                 + "  <h2 style=\"color: #333;\">" + title + "</h2>"
                 + "  <p style=\"color: #666; font-size: 16px;\">" + greeting + "</p>"
@@ -76,7 +76,6 @@ public class CoreEmailTemplates {
                 + "  <hr style=\"border: none; border-top: 1px solid #eee; margin: 24px 0;\">"
                 + "  <p style=\"color: #ccc; font-size: 12px;\">eTribunal - Tu Tribunal Social</p>"
                 + "</div>";
-        return wrapper;
     }
 
     private String escapeHtml(String text) {

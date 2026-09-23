@@ -11,6 +11,9 @@ import com.etribunal.ai.automation.domain.dtos.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -128,14 +131,16 @@ class InteractionPlannerTest {
         assertThat(result.interactions().get(0).content()).isEmpty();
     }
 
-    @Test
-    void validatePlan_rejectsReplyWithoutContent() {
+    @ParameterizedTest
+    @MethodSource("invalidPlanCases")
+    void validatePlan_rejectsOrKeepsInvalidInteractions(AutomationInteractionType type, String content,
+            String reaction, String option, Integer replyToIndex, int expectedSize) {
         List<UserSelector.BotUser> pool = List.of(
                 new UserSelector.BotUser("u1", "bot1")
         );
 
         InteractionPlan plan = new InteractionPlan(List.of(
-                new PlannedInteraction(AutomationInteractionType.REPLY, null, null, "", null, null, 0)
+                new PlannedInteraction(type, null, null, content, reaction, option, replyToIndex)
         ));
 
         when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.just(plan));
@@ -146,77 +151,16 @@ class InteractionPlannerTest {
                         1, 50, pool, "author", null, 3)
         ).block();
 
-        assertThat(result.interactions()).isEmpty();
+        assertThat(result.interactions()).hasSize(expectedSize);
     }
 
-    @Test
-    void validatePlan_rejectsReplyWithInvalidReplyToIndex() {
-        List<UserSelector.BotUser> pool = List.of(
-                new UserSelector.BotUser("u1", "bot1")
+    static List<Arguments> invalidPlanCases() {
+        return List.of(
+                Arguments.of(AutomationInteractionType.REPLY, "", null, null, 0, 0),
+                Arguments.of(AutomationInteractionType.REPLY, "Reply content", null, null, 0, 0),
+                Arguments.of(AutomationInteractionType.REACTION, null, "INVALID", null, null, 1),
+                Arguments.of(AutomationInteractionType.VOTE, null, null, "X", null, 1)
         );
-
-        // replyToIndex >= position (0 >= 0)
-        InteractionPlan plan = new InteractionPlan(List.of(
-                new PlannedInteraction(AutomationInteractionType.REPLY, null, null, "Reply content", null, null, 0)
-        ));
-
-        when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.just(plan));
-
-        InteractionPlanner.PlanResult result = planner.generate(
-                new InteractionPlanner.PlanInput(
-                        "case-1", "Test", "A", "B", "politica",
-                        1, 50, pool, "author", null, 3)
-        ).block();
-
-        // Should remove the invalid REPLY
-        assertThat(result.interactions()).isEmpty();
-    }
-
-    @Test
-    void validatePlan_rejectsReactionWithInvalidEmoji() {
-        List<UserSelector.BotUser> pool = List.of(
-                new UserSelector.BotUser("u1", "bot1")
-        );
-
-        InteractionPlan plan = new InteractionPlan(List.of(
-                new PlannedInteraction(AutomationInteractionType.REACTION, null, null, null, "INVALID", null, null)
-        ));
-
-        when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.just(plan));
-
-        InteractionPlanner.PlanResult result = planner.generate(
-                new InteractionPlanner.PlanInput(
-                        "case-1", "Test", "A", "B", "politica",
-                        1, 50, pool, "author", null, 3)
-        ).block();
-
-        // Current implementation: REACTION with invalid emoji is not removed
-        assertThat(result.interactions()).hasSize(1);
-        assertThat(result.interactions().get(0).reaction()).isEqualTo("INVALID");
-    }
-
-    @Test
-    void validatePlan_rejectsVoteWithInvalidOption() {
-        List<UserSelector.BotUser> pool = List.of(
-                new UserSelector.BotUser("u1", "bot1")
-        );
-
-        InteractionPlan plan = new InteractionPlan(List.of(
-                new PlannedInteraction(AutomationInteractionType.VOTE, null, null, null, null, "X", null)
-        ));
-
-        when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.just(plan));
-
-        InteractionPlanner.PlanResult result = planner.generate(
-                new InteractionPlanner.PlanInput(
-                        "case-1", "Test", "A", "B", "politica",
-                        1, 50, pool, "author", null, 3)
-        ).block();
-
-        // Current implementation doesn't remove invalid VOTEs in repair phase
-        // (only COMMENT and REPLY are repaired)
-        assertThat(result.interactions()).hasSize(1);
-        assertThat(result.interactions().get(0).option()).isEqualTo("X");
     }
 
     @Test
@@ -243,7 +187,7 @@ class InteractionPlannerTest {
         assertThat(result).isNotNull();
         // Should have repaired: REPLY now points to index 0 (the COMMENT)
         assertThat(result.interactions()).hasSize(2);
-        assertThat(result.interactions().get(1).replyToCommentIndex()).isEqualTo(0);
+        assertThat(result.interactions().get(1).replyToCommentIndex()).isZero();
     }
 
     @Test
@@ -312,16 +256,47 @@ class InteractionPlannerTest {
         assertThat(result).isNotNull();
         // Should keep both interactions as replyToIndex is valid
         assertThat(result.interactions()).hasSize(2);
-        assertThat(result.interactions().get(1).replyToCommentIndex()).isEqualTo(0);
+        assertThat(result.interactions().get(1).replyToCommentIndex()).isZero();
     }
 
     @Test
-    void generate_withEmptyMono_returnsNull() {
+    void validatePlan_nullPlan_returnsError() throws Exception {
+        List<String> errors = invokeValidatePlan(null);
+
+        assertThat(errors).containsExactly("Plan is null");
+    }
+
+    @Test
+    void validatePlan_nullInteractions_returnsError() throws Exception {
+        InteractionPlan plan = new InteractionPlan(null);
+
+        List<String> errors = invokeValidatePlan(plan);
+
+        assertThat(errors).containsExactly("Plan is null");
+    }
+
+    @Test
+    void validatePlan_missingType_addsError() throws Exception {
+        InteractionPlan plan = new InteractionPlan(List.of(
+                new PlannedInteraction(null, null, null, "content", null, null, null)
+        ));
+
+        List<String> errors = invokeValidatePlan(plan);
+
+        assertThat(errors).containsExactly("Interaction 0: missing type");
+    }
+
+    @Test
+    void generate_missingTypePlan_isMergedWithFallbackRepair() {
         List<UserSelector.BotUser> pool = List.of(
                 new UserSelector.BotUser("u1", "bot1")
         );
 
-        when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.empty());
+        InteractionPlan plan = new InteractionPlan(List.of(
+                new PlannedInteraction(null, null, null, "content", null, null, null)
+        ));
+
+        when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.just(plan));
 
         InteractionPlanner.PlanResult result = planner.generate(
                 new InteractionPlanner.PlanInput(
@@ -329,7 +304,113 @@ class InteractionPlannerTest {
                         1, 50, pool, "author", null, 3)
         ).block();
 
-        // When Mono.empty() is returned, .block() returns null
-        assertThat(result).isNull();
+        assertThat(result.interactions()).hasSize(1);
+    }
+
+    @Test
+    void generate_replyWithRemovedParents_reremapsToComment() {
+        List<UserSelector.BotUser> pool = List.of(
+                new UserSelector.BotUser("u1", "bot1"),
+                new UserSelector.BotUser("u2", "bot2")
+        );
+
+        // COMMENT(0), REPLY(1) en blanco -> eliminado, REPLY(2) apuntaba al eliminado
+        InteractionPlan plan = new InteractionPlan(List.of(
+                new PlannedInteraction(AutomationInteractionType.COMMENT, "pro-A", 50, "Comment", null, null, null),
+                new PlannedInteraction(AutomationInteractionType.REPLY, "pro-B", 50, "  ", null, null, 0),
+                new PlannedInteraction(AutomationInteractionType.REPLY, "pro-A", 50, "Reply", null, null, 1)
+        ));
+
+        when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.just(plan));
+
+        InteractionPlanner.PlanResult result = planner.generate(
+                new InteractionPlanner.PlanInput(
+                        "case-1", "Test", "A", "B", "politica",
+                        3, 50, pool, "author", null, 3)
+        ).block();
+
+        assertThat(result.interactions()).hasSize(2);
+        assertThat(result.interactions().get(1).replyToCommentIndex()).isZero();
+    }
+
+    @Test
+    void generate_replyWithKeptParent_preservesTargetAfterShift() {
+        List<UserSelector.BotUser> pool = List.of(
+                new UserSelector.BotUser("u1", "bot1"),
+                new UserSelector.BotUser("u2", "bot2")
+        );
+
+        // COMMENT(0), REPLY(1) en blanco -> eliminado, REPLY(2) apuntaba al COMMENT(0)
+        InteractionPlan plan = new InteractionPlan(List.of(
+                new PlannedInteraction(AutomationInteractionType.COMMENT, "pro-A", 50, "Comment", null, null, null),
+                new PlannedInteraction(AutomationInteractionType.REPLY, "pro-B", 50, "  ", null, null, 0),
+                new PlannedInteraction(AutomationInteractionType.REPLY, "pro-A", 50, "Reply", null, null, 0)
+        ));
+
+        when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.just(plan));
+
+        InteractionPlanner.PlanResult result = planner.generate(
+                new InteractionPlanner.PlanInput(
+                        "case-1", "Test", "A", "B", "politica",
+                        3, 50, pool, "author", null, 3)
+        ).block();
+
+        assertThat(result.interactions()).hasSize(2);
+        assertThat(result.interactions().get(1).replyToCommentIndex()).isZero();
+    }
+
+    @Test
+    void generate_replyWithNullTarget_usesFallbackUser() {
+        List<UserSelector.BotUser> pool = List.of(
+                new UserSelector.BotUser("u1", "bot1"),
+                new UserSelector.BotUser("u2", "bot2")
+        );
+
+        // REPLY sin replyToIndex -> no reparable, fallback final lo mezcla igualmente
+        InteractionPlan plan = new InteractionPlan(List.of(
+                new PlannedInteraction(AutomationInteractionType.REPLY, "pro-A", 50, "Reply", null, null, null)
+        ));
+
+        when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.just(plan));
+
+        InteractionPlanner.PlanResult result = planner.generate(
+                new InteractionPlanner.PlanInput(
+                        "case-1", "Test", "A", "B", "politica",
+                        1, 50, pool, "author", null, 3)
+        ).block();
+
+        assertThat(result.interactions()).hasSize(1);
+        assertThat(result.interactions().get(0).userId()).isNotNull();
+    }
+
+    @Test
+    void generate_moreInteractionsThanCapacity_assignsDuplicates() {
+        List<UserSelector.BotUser> pool = List.of(
+                new UserSelector.BotUser("u1", "bot1")
+        );
+
+        InteractionPlan plan = new InteractionPlan(List.of(
+                new PlannedInteraction(AutomationInteractionType.COMMENT, "pro-A", 50, "One", null, null, null),
+                new PlannedInteraction(AutomationInteractionType.COMMENT, "pro-A", 50, "Two", null, null, null),
+                new PlannedInteraction(AutomationInteractionType.COMMENT, "pro-A", 50, "Three", null, null, null)
+        ));
+
+        when(aiProvider.generateInteractionPlan(any())).thenReturn(Mono.just(plan));
+
+        InteractionPlanner.PlanResult result = planner.generate(
+                new InteractionPlanner.PlanInput(
+                        "case-1", "Test", "A", "B", "politica",
+                        3, 50, pool, "author", null, 1)
+        ).block();
+
+        assertThat(result.interactions()).hasSize(3);
+        assertThat(result.interactions().get(0).userId()).isEqualTo("u1");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> invokeValidatePlan(InteractionPlan plan) throws Exception {
+        var method = InteractionPlanner.class.getDeclaredMethod("validatePlan", InteractionPlan.class);
+        method.setAccessible(true);
+        return (List<String>) method.invoke(planner, plan);
     }
 }

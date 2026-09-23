@@ -8,5 +8,10 @@ public record MediaUploadedEvent(
     String mimeType,
     Integer fileSize
 ) {
-    public String getEventType() { return "MediaUploaded"; }
+    public static final String EVENT_TYPE = "MediaUploaded";
+
+    @SuppressWarnings("java:S3400")
+    public String getEventType() {
+        return EVENT_TYPE;
+    }
 }

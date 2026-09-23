@@ -2,6 +2,10 @@ package com.etribunal.ai.automation.application;
 
 import com.etribunal.ai.automation.api.AutomationWebSocketController;
 import com.etribunal.ai.automation.config.AutomationConfig;
+import com.etribunal.ai.automation.domain.AutomationCaseEntity;
+import com.etribunal.ai.automation.domain.AutomationCaseStatus;
+import com.etribunal.ai.automation.domain.AutomationInteractionEntity;
+import com.etribunal.ai.automation.domain.AutomationInteractionType;
 import com.etribunal.ai.automation.domain.AutomationRunEntity;
 import com.etribunal.ai.automation.domain.AutomationRunStatus;
 import com.etribunal.ai.automation.domain.AutomationInteractionStatus;
@@ -15,6 +19,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
+import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.List;
@@ -27,7 +32,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class AutomationOrchestratorTest {
@@ -246,26 +250,36 @@ class AutomationOrchestratorTest {
         when(interactionRepository.countByStatus(AutomationInteractionStatus.SCHEDULED)).thenReturn(5L);
         when(interactionRepository.countByStatus(AutomationInteractionStatus.PROCESSING)).thenReturn(2L);
         when(interactionRepository.countByStatusAndExecutedAtGreaterThanEqual(
-                eq(AutomationInteractionStatus.SUCCESS), eq(dayStart))).thenReturn(10L);
+                AutomationInteractionStatus.SUCCESS, dayStart)).thenReturn(10L);
         when(interactionRepository.countByStatusAndExecutedAtGreaterThanEqual(
-                eq(AutomationInteractionStatus.FAILED), eq(dayStart))).thenReturn(1L);
+                AutomationInteractionStatus.FAILED, dayStart)).thenReturn(1L);
 
         Map<String, Object> status = orchestrator.getQueueStatus();
 
-        assertThat(status.get("scheduled")).isEqualTo(5L);
-        assertThat(status.get("processing")).isEqualTo(2L);
-        assertThat(status.get("completedToday")).isEqualTo(10L);
-        assertThat(status.get("failedToday")).isEqualTo(1L);
+        assertThat(status)
+                .containsEntry("scheduled", 5L)
+                .containsEntry("processing", 2L)
+                .containsEntry("completedToday", 10L)
+                .containsEntry("failedToday", 1L);
     }
 
     @Test
-    void getRecentTopics_returnsEmptyOnError() {
-        // getRecentTopics is private, tested indirectly via launchRun
+    void getRecentTopics_returnsEmptyOnError() throws Exception {
+        when(jdbcTemplate.queryForList(anyString(), eq(String.class), any(Instant.class)))
+                .thenThrow(new RuntimeException("db down"));
+
+        Object result = invokePrivate(orchestrator, "getRecentTopics");
+
+        assertThat(result).isEqualTo(List.of());
     }
 
     @Test
-    void autoEnableBots_updatesUsersInIdentityDb() {
-        // autoEnableBots is private, tested indirectly via launchRun when pool is empty
+    void autoEnableBots_updatesUsersInIdentityDb() throws Exception {
+        when(identityJdbcTemplate.update(anyString())).thenReturn(15);
+
+        invokePrivate(orchestrator, "autoEnableBots");
+
+        verify(identityJdbcTemplate).update(anyString());
     }
 
     @Test
@@ -287,10 +301,10 @@ class AutomationOrchestratorTest {
         Optional<Map<String, Object>> result = orchestrator.getRunStatus(runId.toString());
 
         assertThat(result).isPresent();
-        assertThat(result.get().get("id")).isEqualTo(runId.toString());
-        assertThat(result.get().get("status")).isEqualTo("RUNNING");
-        assertThat(result.get().get("dryRun")).isEqualTo(true);
-        assertThat(result.get().get("casesRequested")).isEqualTo(5);
+        assertThat(result.get()).containsEntry("id", runId.toString());
+        assertThat(result.get()).containsEntry("status", "RUNNING");
+        assertThat(result.get()).containsEntry("dryRun", true);
+        assertThat(result.get()).containsEntry("casesRequested", 5);
     }
 
     @Test
@@ -339,8 +353,8 @@ class AutomationOrchestratorTest {
         List<Map<String, Object>> runs = orchestrator.getRecentRuns(10);
 
         assertThat(runs).hasSize(2);
-        assertThat(runs.get(0).get("id")).isEqualTo(getId(run1).toString());
-        assertThat(runs.get(1).get("status")).isEqualTo("FAILED");
+        assertThat(runs.get(0)).containsEntry("id", getId(run1).toString());
+        assertThat(runs.get(1)).containsEntry("status", "FAILED");
     }
 
     private void setId(AutomationRunEntity entity, UUID id) {
@@ -351,6 +365,12 @@ class AutomationOrchestratorTest {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    private Object invokePrivate(Object target, String methodName) throws Exception {
+        var method = AutomationOrchestrator.class.getDeclaredMethod(methodName);
+        method.setAccessible(true);
+        return method.invoke(target);
     }
 
     private UUID getId(AutomationRunEntity entity) {
@@ -407,5 +427,125 @@ class AutomationOrchestratorTest {
         assertThatThrownBy(() -> orchestrator.startRun(false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Automation is disabled");
+    }
+
+    @Test
+    void startRun_marksStaleActiveRunAsFailedAndCreatesNew() {
+        UUID fakeRunId = UUID.randomUUID();
+        AutomationRunEntity staleRun = new AutomationRunEntity();
+        setId(staleRun, UUID.randomUUID());
+        staleRun.setStatus(AutomationRunStatus.RUNNING);
+        staleRun.setStartedAt(Instant.now().minusMillis(31 * 60 * 1000)); // > 30 min
+
+        when(runRepository.findFirstByStatusInAndCreatedAtAfter(anyList(), any(Instant.class)))
+                .thenReturn(Optional.of(staleRun));
+        when(runRepository.save(any(AutomationRunEntity.class)))
+                .thenAnswer(invocation -> {
+                    AutomationRunEntity run = invocation.getArgument(0);
+                    if (run.getId() == null) {
+                        var field = AutomationRunEntity.class.getDeclaredField("id");
+                        field.setAccessible(true);
+                        field.set(run, fakeRunId);
+                    }
+                    return run;
+                });
+
+        AutomationOrchestrator.RunResult result = orchestrator.startRun(false);
+
+        assertThat(staleRun.getStatus()).isEqualTo(AutomationRunStatus.FAILED);
+        assertThat(staleRun.getErrorMessage()).isEqualTo("Stale recovery");
+        assertThat(result.started()).isTrue();
+        assertThat(result.runId()).isEqualTo(fakeRunId);
+        verify(runRepository, atLeast(2)).save(any(AutomationRunEntity.class));
+    }
+
+    @Test
+    void launchRun_completesAndSchedulesInteractions() {
+        UUID runId = UUID.randomUUID();
+        AutomationRunEntity run = new AutomationRunEntity();
+        setId(run, runId);
+        run.setStatus(AutomationRunStatus.PENDING);
+
+        List<UserSelector.BotUser> pool = List.of(
+                new UserSelector.BotUser("u1", "bot1"),
+                new UserSelector.BotUser("u2", "bot2")
+        );
+
+        when(runRepository.findById(runId)).thenReturn(Optional.of(run));
+        when(userSelector.selectDailyPool(anyInt())).thenReturn(pool);
+        lenient().when(jdbcTemplate.queryForList(anyString(), any(Class.class), any(Instant.class)))
+                .thenReturn(new java.util.ArrayList<>());
+
+        com.etribunal.ai.automation.domain.dtos.GeneratedCase generated =
+                new com.etribunal.ai.automation.domain.dtos.GeneratedCase(
+                        "Title", "Desc", "Side A", "Side B",
+                        "politica", "classic", "Sub A", "Sub B", "Both", Map.of());
+        when(caseGenerator.generateCase(any(), anyInt(), any(), any(), anyBoolean()))
+                .thenReturn(Mono.just(new CaseGenerator.CaseResult("case-1", AutomationCaseStatus.CREATED,
+                        "u1", null, generated)));
+
+        AutomationCaseEntity automationCase = new AutomationCaseEntity();
+        when(caseRepository.findByCaseId("case-1")).thenReturn(Optional.of(automationCase));
+        when(caseRepository.save(any(AutomationCaseEntity.class))).thenReturn(automationCase);
+        when(interactionPlanner.generate(any())).thenReturn(Mono.just(
+                new InteractionPlanner.PlanResult(
+                        List.of(new InteractionPlanner.PlannedInteractionWithUser(
+                                0, AutomationInteractionType.COMMENT, "u1", "pro-A", 50,
+                                "content", null, null, null)),
+                        null)));
+        when(interactionExecutor.scheduleInteractions(any(), anyList(), any(Instant.class), anyInt(), anyInt(), anyInt()))
+                .thenReturn(List.of(new AutomationInteractionEntity()));
+
+        orchestrator.launchRun(runId, false, 1, 3, 50, 3, 30);
+
+        assertThat(run.getStatus()).isEqualTo(AutomationRunStatus.RUNNING);
+        assertThat(run.getStartedAt()).isNotNull();
+        verify(caseGenerator).generateCase(eq(runId), anyInt(), anyList(), anyList(), anyBoolean());
+        verify(caseRepository).findByCaseId("case-1");
+        verify(interactionPlanner).generate(any());
+        verify(interactionExecutor).scheduleInteractions(
+                any(), anyList(), any(Instant.class), anyInt(), anyInt(), anyInt());
+        verify(wsController).broadcastQueueUpdate(any(Map.class));
+    }
+
+    @Test
+    void launchRun_poolEmpty_autoEnablesBotsOnce() {
+        UUID runId = UUID.randomUUID();
+        AutomationRunEntity run = new AutomationRunEntity();
+        setId(run, runId);
+
+        when(runRepository.findById(runId)).thenReturn(Optional.of(run));
+        lenient().when(runRepository.save(any(AutomationRunEntity.class))).thenReturn(run);
+        when(userSelector.selectDailyPool(anyInt()))
+                .thenReturn(List.of())
+                .thenReturn(List.of(new UserSelector.BotUser("u1", "bot1")));
+        lenient().when(jdbcTemplate.queryForList(anyString(), any(Class.class), any(Instant.class)))
+                .thenReturn(List.of());
+        when(identityJdbcTemplate.update(anyString())).thenReturn(1);
+        when(caseGenerator.generateCase(eq(runId), anyInt(), anyList(), anyList(), anyBoolean()))
+                .thenReturn(Mono.just(new CaseGenerator.CaseResult(null, AutomationCaseStatus.FAILED,
+                        "u1", null, null)));
+
+        orchestrator.launchRun(runId, false, 1, 3, 50, 3, 30);
+
+        verify(identityJdbcTemplate).update(anyString());
+        verify(userSelector, times(2)).selectDailyPool(anyInt());
+    }
+
+    @Test
+    void launchRun_exception_marksRunFailed() {
+        UUID runId = UUID.randomUUID();
+        AutomationRunEntity run = new AutomationRunEntity();
+        setId(run, runId);
+
+        when(runRepository.findById(runId)).thenReturn(Optional.of(run));
+        lenient().when(runRepository.save(any(AutomationRunEntity.class))).thenReturn(run);
+        when(userSelector.selectDailyPool(anyInt())).thenThrow(new RuntimeException("pool broken"));
+
+        orchestrator.launchRun(runId, false, 1, 3, 50, 3, 30);
+
+        assertThat(run.getStatus()).isEqualTo(AutomationRunStatus.FAILED);
+        assertThat(run.getErrorMessage()).contains("pool broken");
+        assertThat(run.getFinishedAt()).isNotNull();
     }
 }

@@ -94,7 +94,7 @@ class SearchServiceTest {
         UUID case3Id = UUID.randomUUID();
 
         // Mock native query returning ranked results
-        Query nativeQuery = stubNativeQuery(List.<Object[]>of(
+        stubNativeQuery(List.<Object[]>of(
                 new Object[]{case2Id, 0.95},
                 new Object[]{case1Id, 0.60},
                 new Object[]{case3Id, 0.30}));
@@ -196,6 +196,7 @@ class SearchServiceTest {
             createdAtField.setAccessible(true);
             createdAtField.set(c, Instant.now());
         } catch (Exception ignored) {
+            // ignorado: valores internos del fixture, el resto se deja como está
         }
         return c;
     }
