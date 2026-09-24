@@ -1,11 +1,10 @@
 <#
 .SYNOPSIS
-    Arranca la plataforma eTribunal completa (infra + 4 servicios + UI) por logs.
+    Arranca la plataforma eTribunal en modo DEV (App Stack via Docker Compose).
 .DESCRIPTION
-    Idempotente: si un puerto ya esta escuchando, salta ese componente.
-    Usa fat-jars pre-compilados (java -jar) para evitar el lock del proyecto Gradle
-    y el cache de variables del daemon. Espera a que Docker Desktop este listo.
-    Usa rutas absolutas para los logs.
+    Idempotente: verifica que infra-local esté corriendo, luego levanta el App Stack
+    via Docker Compose. Usa .env.dev para configuración y .env para secrets.
+    Requiere: infra-local ya levantado en D:\Trabajo\Otros\infra-local
 #>
 
 $ErrorActionPreference = "Stop"
@@ -13,24 +12,29 @@ $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition | Join-Path -C
 $repoRoot = Resolve-Path $repoRoot
 Set-Location $repoRoot
 
-# Directorio de logs (ruta absoluta, obligatorio para la redireccion)
+$infraRoot = "D:\Trabajo\Otros\infra-local"
+
+# Directorio de logs
 $logDir = Join-Path $repoRoot "logs"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
 
-# Cargar .env del repo raiz y setear variables de entorno para herencia
-if (Test-Path (Join-Path $repoRoot ".env")) {
-    Get-Content (Join-Path $repoRoot ".env") | ForEach-Object {
-        if ($_ -match '^\s*([^#=]+)=(.*)$') {
-            $key = $matches[1].Trim()
-            $val = $matches[2].Trim()
-            if ($val -match '^"(.*)"$') { $val = $matches[1] }
-            [Environment]::SetEnvironmentVariable($key, $val, "Process")
+# Cargar .env (secrets) y .env.dev (config dev)
+foreach ($envFile in @(".env", ".env.dev")) {
+    $path = Join-Path $repoRoot $envFile
+    if (Test-Path $path) {
+        Get-Content $path | ForEach-Object {
+            if ($_ -match '^\s*([^#=]+)=(.*)$') {
+                $key = $matches[1].Trim()
+                $val = $matches[2].Trim()
+                if ($val -match '^"(.*)"$') { $val = $matches[1] }
+                [Environment]::SetEnvironmentVariable($key, $val, "Process")
+            }
         }
     }
 }
 
 Write-Host "============================================================"
-Write-Host "  eTribunal Platform - Arranque completo"
+Write-Host "  eTribunal Platform - Modo DEV (App Stack + infra-local)"
 Write-Host "============================================================"
 
 # Funciones auxiliares
@@ -54,12 +58,20 @@ function Wait-Port($port, $name, $maxSeconds) {
     return $true
 }
 
-# 1. Esperar Docker Desktop (puede tardar al iniciar Windows)
-Write-Host "`n[1/6] Esperando Docker Desktop..."
+function Test-Service($url, $name, $timeoutSec = 5) {
+    try {
+        $resp = Invoke-RestMethod -Uri $url -TimeoutSec $timeoutSec -ErrorAction Stop
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+# 1. Verificar Docker Desktop
+Write-Host "`n[1/5] Verificando Docker Desktop..."
 $dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
 $dockerReady = $false
 for ($i = 0; $i -lt 60; $i++) {
-    # cmd /c evita que los warnings a stderr de docker.exe rompan $ErrorActionPreference=Stop
     & $env:ComSpec /c "docker info >NUL 2>&1"
     if ($LASTEXITCODE -eq 0) { $dockerReady = $true; Write-Host "       Docker listo."; break }
     if ($i -eq 10 -and (Test-Path $dockerExe)) {
@@ -70,100 +82,101 @@ for ($i = 0; $i -lt 60; $i++) {
 }
 if (-not $dockerReady) { Write-Error "Docker Desktop no esta disponible tras 180s. Aborta."; exit 1 }
 
-# 2. Infra
-Write-Host "`n[2/6] Infraestructura (Redis + Floci + Zipkin + Kafka + S3)..."
-& (Join-Path $repoRoot "scripts\infra-up.bat")
-if ($LASTEXITCODE -ne 0) { Write-Error "No se pudo levantar la infraestructura"; exit 1 }
-
-# 3. Esperar Floci
-Write-Host "[3/6] Esperando Floci en :4566..."
-for ($i = 0; $i -lt 60; $i++) {
-    if ($null -ne (Invoke-RestMethod -Uri "http://localhost:4566/_localstack/health" -TimeoutSec 2 -ErrorAction SilentlyContinue)) { break }
-    Start-Sleep -Seconds 2
-}
-Write-Host "       Floci listo."
-
-# 4. Servicios backend
-Write-Host "`n[4/6] Servicios backend (java -jar)..."
-$services = @(
-    @{ name="Identity";  jar="services\identity-service\build\libs";       port=8081; log="identity" },
-    @{ name="Core";      jar="services\core-domain-service\build\libs";    port=8082; log="core" },
-    @{ name="Gateway";   jar="services\gateway-service\build\libs";        port=8080; log="gateway" },
-    @{ name="AI Engine"; jar="services\ai-engine-service\build\libs";      port=8083; log="ai-engine" }
+# 2. Verificar infra-local (puertos clave)
+Write-Host "`n[2/5] Verificando infra-local ($infraRoot)..."
+$infraPorts = @(
+    @{ Port=4566; Name="Floci S3" },
+    @{ Port=7002; Name="Floci RDS Identity" },
+    @{ Port=7003; Name="Floci RDS Core" },
+    @{ Port=6379; Name="Redis" },
+    @{ Port=9092; Name="Kafka" },
+    @{ Port=9411; Name="Zipkin" }
 )
 
-foreach ($svc in $services) {
-    Write-Host "`n$($svc.name) (:$($svc.port))..."
-    if (-not (Test-PortFree $svc.port)) {
-        Write-Host "       Ya esta corriendo (puerto $($svc.port) ocupado)."
-        continue
+$infraMissing = @()
+foreach ($svc in $infraPorts) {
+    if (Test-PortFree $svc.Port) {
+        $infraMissing += $svc.Name
     }
-    $jarDir = Join-Path $repoRoot $svc.jar
-    # Elegir el fat-jar (excluye *-plain.jar)
-    $jar = Get-ChildItem -Path $jarDir -Filter "*.jar" -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -notmatch '-plain\.jar$' } | Select-Object -First 1
-    if (-not $jar) {
-        Write-Host "[ERROR] No hay fat-jar en $jarDir. Ejecuta primero: gradlew <servicio>:bootJar"
-        continue
-    }
-    $appArgs = @("--spring.profiles.active=local")
-    if ($svc.log -eq "ai-engine") {
-        $aiKey = [Environment]::GetEnvironmentVariable("AI_API_KEY", "Process")
-        $aiModel = [Environment]::GetEnvironmentVariable("AI_MODEL", "Process")
-        if (-not [string]::IsNullOrEmpty($aiKey)) {
-            $appArgs += "--spring.ai.google.genai.api-key=$aiKey"
-        }
-        if (-not [string]::IsNullOrEmpty($aiModel)) {
-            $appArgs += "--spring.ai.google.genai.chat.options.model=$aiModel"
-        }
-    }
-    $proc = Start-Process -FilePath "java" `
-        -ArgumentList (@("-jar", "`"$($jar.FullName)`"") + $appArgs) `
-        -WorkingDirectory $repoRoot `
-        -RedirectStandardOutput (Join-Path $logDir "$($svc.log).log") `
-        -RedirectStandardError (Join-Path $logDir "$($svc.log).err.log") `
-        -WindowStyle Minimized `
-        -PassThru
-    Write-Host "       PID $($proc.Id) -> logs\$($svc.log).log"
 }
-
-# 5. Frontend UI
-Write-Host "`n[5/6] Frontend UI (:3000)..."
-$uiDir = Join-Path (Split-Path $repoRoot) "etribunal-ui"
-if (Test-PortFree 3000 -and (Test-Path $uiDir)) {
-    Write-Host "       Levantando pnpm dev en $uiDir ..."
-    $proc = Start-Process -FilePath "cmd.exe" `
-        -ArgumentList "/c", "pnpm dev" `
-        -WorkingDirectory $uiDir `
-        -RedirectStandardOutput (Join-Path $logDir "ui.log") `
-        -RedirectStandardError (Join-Path $logDir "ui.err.log") `
-        -WindowStyle Minimized `
-        -PassThru
-    Write-Host "       PID $($proc.Id) -> logs\ui.log"
-} elseif (Test-PortFree 3000) {
-    Write-Host "[ERROR] No existe $uiDir"
+if ($infraMissing.Count -gt 0) {
+    Write-Host "[WARN] Los siguientes servicios de infra-local NO estan accesibles:"
+    $infraMissing | ForEach-Object { Write-Host "       - $_" }
+    Write-Host ""
+    Write-Host "       Levantar infra-local:"
+    Write-Host "         cd $infraRoot"
+    Write-Host "         docker compose up -d"
+    Write-Host ""
+    $choice = Read-Host "¿Continuar de todas formas? (s/N)"
+    if ($choice -notin @('s','S','y','Y')) { exit 1 }
 } else {
-    Write-Host "       Ya esta corriendo (puerto 3000 ocupado)."
+    Write-Host "       infra-local OK (todos los puertos accesibles)."
 }
 
-# 6. Health checks (con timeout por servicio)
-Write-Host "`n[6/6] Esperando health checks..."
-foreach ($svc in $services) {
-    if (-not (Test-PortFree $svc.port)) { continue }
-    Wait-Port $svc.port $svc.name 300 | Out-Null
+# 3. Verificar red etribunal-net
+Write-Host "`n[3/5] Verificando red etribunal-net..."
+$net = docker network ls --format "{{.Name}}" | Where-Object { $_ -eq "etribunal-net" }
+if (-not $net) {
+    Write-Host "       Creando red etribunal-net..."
+    docker network create etribunal-net | Out-Null
 }
-if (Test-PortFree 3000) { Wait-Port 3000 "UI" 120 | Out-Null }
+Write-Host "       Red etribunal-net OK."
+
+# 4. Levantar App Stack via Docker Compose
+Write-Host "`n[4/5] Levantando App Stack (docker compose --env-file .env.dev up -d --build)..."
+$composeCmd = "docker compose --env-file .env.dev up -d --build"
+Write-Host "       Ejecutando: $composeCmd"
+$exitCode = & $env:ComSpec /c $composeCmd
+if ($exitCode -ne 0) {
+    Write-Error "docker compose fallo (exit code $exitCode). Revisa logs."
+    exit 1
+}
+Write-Host "       App Stack levantado."
+
+# 5. Health checks
+Write-Host "`n[5/5] Esperando health checks de los servicios..."
+$appServices = @(
+    @{ Name="Gateway";      Port=8080; Health="/actuator/health" },
+    @{ Name="Identity";     Port=8081; Health="/actuator/health" },
+    @{ Name="Core";         Port=8082; Health="/actuator/health" },
+    @{ Name="AI Engine";    Port=8083; Health="/actuator/health" },
+    @{ Name="UI";           Port=3000; Health="/" }
+)
+
+foreach ($svc in $appServices) {
+    $url = "http://localhost:$($svc.Port)$($svc.Health)"
+    $ok = $false
+    for ($i = 0; $i -lt 60; $i++) {
+        if (Test-Service $url $svc.Name 3) { $ok = $true; break }
+        Start-Sleep -Seconds 3
+    }
+    if ($ok) { Write-Host "[OK]   $($svc.Name) UP en :$($svc.Port)" }
+    else { Write-Host "[WARN] $($svc.Name) NO respondio en :$($svc.Port) tras 180s" }
+}
 
 Write-Host "`n============================================================"
-Write-Host "  PLATAFORMA LISTA"
+Write-Host "  PLATAFORMA LISTA (Modo DEV)"
 Write-Host "============================================================"
 Write-Host ""
 Write-Host "  Gateway API     : http://localhost:8080/api"
+Write-Host "  Identity API    : http://localhost:8081/api"
+Write-Host "  Core API        : http://localhost:8082/api"
 Write-Host "  AI Engine WS    : ws://localhost:8083/ws/automation"
-Write-Host "  Panel Admin     : http://localhost:3000/admin/motor-ia"
 Write-Host "  UI              : http://localhost:3000"
+Write-Host "  Swagger Gateway : http://localhost:8080/swagger-ui"
 Write-Host ""
-Write-Host "  Logs en: .\logs\*.log  (y .err.log para errores)"
+Write-Host "  Infra-local (externo):"
+Write-Host "  Grafana         : http://localhost:3001 (admin/admin)"
+Write-Host "  Prometheus      : http://localhost:9090"
+Write-Host "  Tempo           : http://localhost:3200"
+Write-Host "  Alloy UI        : http://localhost:12345"
+Write-Host "  SonarQube       : http://localhost:9000 (admin/admin)"
+Write-Host "  Floci S3        : http://localhost:4566"
+Write-Host "  Floci RDS       : :7002 (identity), :7003 (core)"
 Write-Host ""
-Write-Host "  Para detener:  scripts\stop-platform.bat"
+Write-Host "  Logs app:  docker compose logs -f -t --tail=100"
+Write-Host "  Logs infra: cd $infraRoot && docker compose logs -f -t --tail=100"
+Write-Host ""
+Write-Host "  Para detener App Stack:  scripts\stop-platform.bat"
+Write-Host "  Para detener TODO:       scripts\stop-platform.bat --with-infra"
 Write-Host "============================================================"
