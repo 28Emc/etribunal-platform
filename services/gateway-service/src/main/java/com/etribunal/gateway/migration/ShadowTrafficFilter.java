@@ -46,13 +46,13 @@ public class ShadowTrafficFilter implements GlobalFilter, Ordered {
     private final ShadowComparer comparer;
     private final WebClient webClient;
 
+    @Autowired
     public ShadowTrafficFilter(FeatureFlagService featureFlags,
                                MigrationProperties properties,
                                ShadowComparer comparer) {
         this(featureFlags, properties, comparer, WebClient.builder().build());
     }
 
-    @Autowired
     ShadowTrafficFilter(FeatureFlagService featureFlags,
                         MigrationProperties properties,
                         ShadowComparer comparer,

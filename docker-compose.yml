@@ -41,7 +41,7 @@ services:
       CORE_URL: http://core-domain-service:8082
       AI_URL: http://ai-engine-service:8083
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-access-secret-0123456789abcdef0123456789abcdef}
-      LOGGING_STRUCTURED_FORMAT: ${LOGGING_STRUCTURED_FORMAT:-console}
+      LOGGING_STRUCTURED_FORMAT: ${LOGGING_STRUCTURED_FORMAT:-}
       MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: ${ZIPKIN_ENDPOINT:-http://host.docker.internal:9411/api/v2/spans}
     networks:
       - etribunal-net
@@ -50,7 +50,7 @@ services:
       - core-domain-service
       - ai-engine-service
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/actuator/health"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -77,12 +77,12 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-access-secret-0123456789abcdef0123456789abcdef}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-only-refresh-secret-fedcba9876543210fedcba9876543210}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-only-internal-token-1234}
-      LOGGING_STRUCTURED_FORMAT: ${LOGGING_STRUCTURED_FORMAT:-console}
+      LOGGING_STRUCTURED_FORMAT: ${LOGGING_STRUCTURED_FORMAT:-}
       MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: ${ZIPKIN_ENDPOINT:-http://host.docker.internal:9411/api/v2/spans}
     networks:
       - etribunal-net
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8081/actuator/health"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8081/api/actuator/health"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -114,11 +114,11 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       S3_BUCKET: ${FLOCI_S3_BUCKET:-etribunal-media}
       ZIPKIN_ENDPOINT: ${ZIPKIN_ENDPOINT:-http://host.docker.internal:9411/api/v2/spans}
-      LOGGING_STRUCTURED_FORMAT: ${LOGGING_STRUCTURED_FORMAT:-console}
+      LOGGING_STRUCTURED_FORMAT: ${LOGGING_STRUCTURED_FORMAT:-}
     networks:
       - etribunal-net
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8082/actuator/health"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8082/api/actuator/health"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -136,6 +136,7 @@ services:
     ports:
       - "8083:8083"
     environment:
+      SPRING_PROFILES_ACTIVE: local
       CORE_DB_HOST: ${FLOCI_HOST:-host.docker.internal}
       CORE_DB_PORT: ${FLOCI_CORE_PORT:-7003}
       CORE_DB_NAME: etribunal_core
@@ -172,11 +173,11 @@ services:
       IDENTITY_URL: http://identity-service:8081/api
       CORE_URL: http://gateway-service:8080/api
       ZIPKIN_ENDPOINT: ${ZIPKIN_ENDPOINT:-http://host.docker.internal:9411/api/v2/spans}
-      LOGGING_STRUCTURED_FORMAT: ${LOGGING_STRUCTURED_FORMAT:-console}
+      LOGGING_STRUCTURED_FORMAT: ${LOGGING_STRUCTURED_FORMAT:-}
     networks:
       - etribunal-net
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8083/actuator/health"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8083/actuator/health"]
       interval: 15s
       timeout: 5s
       retries: 10
